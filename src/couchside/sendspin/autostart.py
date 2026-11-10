@@ -18,7 +18,7 @@ REASON = "Keep this TV available as a Music Assistant speaker"
 
 
 async def request_autostart(enable: bool = True, timeout: float = 120.0) -> bool:
-    from PySide6.QtCore import QObject, Slot
+    from PySide6.QtCore import SLOT, QObject, Slot
     from PySide6.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage
 
     bus = QDBusConnection.sessionBus()
@@ -36,15 +36,16 @@ async def request_autostart(enable: bool = True, timeout: float = 120.0) -> bool
         @Slot(QDBusMessage)
         def on_response(self, msg: QDBusMessage) -> None:
             args = msg.arguments()
+            # Response code 0 = granted. The results map arrives as an opaque
+            # QDBusArgument in PySide6, so the code is the reliable signal.
             code = int(args[0]) if args else 2
-            results = args[1] if len(args) > 1 and isinstance(args[1], dict) else {}
-            granted = code == 0 and bool(results.get("autostart", False)) == enable
+            granted = code == 0
             if not result.done():
                 result.set_result(granted)
 
     receiver = Receiver()
     bus.connect(PORTAL_SERVICE, request_path, "org.freedesktop.portal.Request", "Response",
-                receiver, "on_response(QDBusMessage)")
+                receiver, SLOT("on_response(QDBusMessage)"))
 
     iface = QDBusInterface(PORTAL_SERVICE, PORTAL_PATH, "org.freedesktop.portal.Background", bus)
     options = {
@@ -65,4 +66,4 @@ async def request_autostart(enable: bool = True, timeout: float = 120.0) -> bool
         return False
     finally:
         bus.disconnect(PORTAL_SERVICE, request_path, "org.freedesktop.portal.Request",
-                       "Response", receiver, "on_response(QDBusMessage)")
+                       "Response", receiver, SLOT("on_response(QDBusMessage)"))
