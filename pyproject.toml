@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "couchside"
+version = "0.1.0"
+description = "Music Assistant for Plasma Bigscreen"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "GPL-3.0-or-later" }
+# PySide6 comes from the system / Flatpak PySide BaseApp; sendspin is a Flatpak module.
+dependencies = [
+    "music-assistant-client~=1.8",
+    "zeroconf>=0.136",
+    "qasync>=0.27",
+    "aiosendspin~=10.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-asyncio>=1.0"]
+
+[project.scripts]
+couchside = "couchside.ui.app:main"
+couchside-sendspin = "couchside.sendspin.runner:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"couchside.ui" = ["qml/*.qml"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
