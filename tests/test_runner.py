@@ -7,8 +7,15 @@ from couchside.sendspin.runner import acquire_lock, build_daemon_argv, prepare_l
 
 def test_argv():
     argv = build_daemon_argv(AppSettings(), Path("/cfg/sendspin"))
-    assert argv == [sys.executable, "-m", "sendspin", "daemon",
-                    "--settings-dir", "/cfg/sendspin", "--name", "Living Room TV"]
+    # sendspin has no __main__ module, so call its console-script entry point.
+    assert argv == [sys.executable, "-c", "import sys; from sendspin.cli import main; sys.exit(main())",
+                    "daemon", "--settings-dir", "/cfg/sendspin", "--port", "8937",
+                    "--name", "Living Room TV"]
+
+
+def test_argv_uses_sendspin_port():
+    argv = build_daemon_argv(AppSettings(sendspin_port=9000), Path("/x"))
+    assert argv[argv.index("--port") + 1] == "9000"
 
 
 def test_argv_uses_player_name():

@@ -1,0 +1,5 @@
+# Runtime Python deps bundled into the Flatpak (PySide6 comes from the PySide BaseApp).
+music-assistant-client==1.8.0
+zeroconf
+qasync
+sendspin==9.1.0

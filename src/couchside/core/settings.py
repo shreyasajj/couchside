@@ -21,6 +21,8 @@ class AppSettings:
     qr_caption: str = "Scan to add songs"
     guest_public_url: str | None = None
     autostart_requested: bool = False
+    # Not Sendspin's default (8927/8928) so it can't clash with another Sendspin on the host.
+    sendspin_port: int = 8937
 
 
 def _settings_path() -> Path:

@@ -21,12 +21,15 @@ from couchside.core.settings import AppSettings, load_settings
 log = logging.getLogger(__name__)
 
 MAX_LOG_BYTES = 1_000_000
+DAEMON_ENTRY = "import sys; from sendspin.cli import main; sys.exit(main())"
 
 
 def build_daemon_argv(settings: AppSettings, sendspin_dir: Path) -> list[str]:
-    # The explicit app ("daemon") must come right after "sendspin".
-    return [sys.executable, "-m", "sendspin", "daemon",
-            "--settings-dir", str(sendspin_dir), "--name", settings.player_name]
+    # sendspin has no __main__ module; call its console-script entry point.
+    # The explicit app ("daemon") must come right after the program name.
+    return [sys.executable, "-c", DAEMON_ENTRY, "daemon",
+            "--settings-dir", str(sendspin_dir), "--port", str(settings.sendspin_port),
+            "--name", settings.player_name]
 
 
 def log_path() -> Path:

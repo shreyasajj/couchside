@@ -14,7 +14,7 @@ dependencies = [
     "music-assistant-client~=1.8",
     "zeroconf>=0.136",
     "qasync>=0.27",
-    "aiosendspin~=10.3",
+    "aiosendspin>=10.2",
 ]
 
 [project.optional-dependencies]

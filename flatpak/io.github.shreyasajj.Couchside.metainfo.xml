@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.shreyasajj.Couchside</id>
+  <name>Couchside</name>
+  <summary>Music Assistant for your TV</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.shreyasajj">
+    <name>shreyasajj</name>
+  </developer>
+  <description>
+    <p>
+      Couchside turns a Plasma Bigscreen TV into a Music Assistant speaker and remote.
+      It plays music on the TV through a bundled Sendspin client, shows what is playing
+      with synced lyrics, and is fully usable with a TV remote.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.shreyasajj.Couchside.desktop</launchable>
+  <url type="homepage">https://github.com/shreyasajj/couchside</url>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <control>tv-remote</control>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-11-10">
+      <description><p>Phase 1: connect to Music Assistant, bundled Sendspin player, basic playback controls.</p></description>
+    </release>
+  </releases>
+</component>

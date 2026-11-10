@@ -19,6 +19,7 @@ def test_defaults_when_missing(tmp_path):
     assert s.qr_caption == "Scan to add songs"
     assert s.guest_public_url is None
     assert s.autostart_requested is False
+    assert s.sendspin_port == 8937
 
 
 def test_roundtrip(tmp_path):
