@@ -89,3 +89,15 @@ def load_token(path: Path | None = None) -> str | None:
 
 def save_token(token: str, path: Path | None = None) -> None:
     _atomic_write(path or _token_path(), token.strip(), mode=0o600)
+
+
+def normalize_server_url(url: str) -> str | None:
+    """Turn what a user typed with a remote into an MA base URL (None = use discovery)."""
+    url = url.strip().rstrip("/")
+    if not url:
+        return None
+    if "://" not in url:
+        url = f"http://{url}"
+    if url.startswith("http://") and url.count(":") < 2:  # plain LAN host, no port
+        url = f"{url}:8095"
+    return url

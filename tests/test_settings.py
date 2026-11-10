@@ -88,3 +88,15 @@ def test_xdg_fallbacks(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     assert config_dir() == tmp_path / ".config" / "couchside"
     assert state_dir() == tmp_path / ".local" / "state" / "couchside"
+
+
+from couchside.core.settings import normalize_server_url  # noqa: E402
+
+
+def test_normalize_server_url():
+    assert normalize_server_url("") is None
+    assert normalize_server_url("  ") is None
+    assert normalize_server_url("192.168.30.3") == "http://192.168.30.3:8095"
+    assert normalize_server_url("http://mass.local/") == "http://mass.local:8095"
+    assert normalize_server_url("http://h:9000") == "http://h:9000"
+    assert normalize_server_url("https://ma.example.com") == "https://ma.example.com"
