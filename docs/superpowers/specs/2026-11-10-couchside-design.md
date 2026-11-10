@@ -82,6 +82,35 @@ launcher tile.
   name, so a leftover player (e.g. from the old Jukebox) or another speaker
   with the same name can't be picked by mistake.
 
+- **Packaging: Flatpak, Flathub-acceptable, and the same Flatpak is what the
+  owner installs on the TV box.** This replaces Agents.md's `uv tool install`
+  + systemd user service:
+  - Sendspin is **bundled inside** the Flatpak (built from source in the
+    manifest, with its audio deps). No sandbox escapes
+    (`flatpak-spawn --host` / `org.freedesktop.Flatpak` talk-name are not
+    allowed).
+  - Sendspin runs as a **separate background process** inside the sandbox,
+    started at login via the Background portal (autostart). It keeps running
+    when the UI is closed, so the TV stays a speaker in MA.
+  - Sendspin config lives in the sandbox:
+    `~/.var/app/<app-id>/config/sendspin/`. Preserved across updates.
+  - **Updates (phase 7):** Settings shows bundled vs. latest Sendspin version
+    (latest from PyPI/GitHub). The Update button updates the whole Couchside
+    Flatpak through the Flatpak portal's self-update (`CreateUpdateMonitor` /
+    `Update`), then restarts the Sendspin process. New Sendspin versions ship
+    as Couchside releases.
+  - Install script shrinks to: install the Flatpak, grant/confirm background
+    autostart. Dev iteration on the TV box over SSH still allowed outside the
+    Flatpak (venv against system PySide6) for speed.
+  - Flathub extras: AppStream metainfo, icon, licence, vendored Python deps.
+  - App id must be on a namespace the owner controls (e.g.
+    `io.github.<user>.Couchside`). Owner to supply later; not blocking
+    phase 1 (use a placeholder until then).
+- **Sendspin settings screen:** the TV Settings has a Sendspin section to set
+  up the bundled client: player name, audio output device (from PipeWire),
+  sync/static delay, and any other options the Sendspin client exposes.
+  Changes write the Sendspin config and restart the Sendspin process.
+
 ## Calls made for the owner (changeable)
 
 - **Name:** "Couchside" (from the project folder). App id
