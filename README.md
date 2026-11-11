@@ -4,9 +4,9 @@ A TV-first [Music Assistant](https://music-assistant.io) app for **KDE Plasma Bi
 It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
-Status: **Phase 2 (Now Playing)**: connect, bundled speaker, and the Now Playing screen
-(blurred artwork, progress, shuffle, repeat, volume). Search, lyrics, guest mode and
-admin access follow in later phases
+Status: **Phase 3**: connect, bundled speaker, Now Playing (blurred artwork, progress,
+shuffle, repeat, volume), search with recently played/added, the queue, and the speaker
+and group picker. Lyrics, guest mode and admin access follow in later phases
 (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
 ## Install (on the Bigscreen TV)
@@ -58,6 +58,20 @@ Remote: Left/Right move along the control bar (shuffle, previous, play/pause, ne
 repeat, volume, settings), OK activates, Back goes back (on Now Playing it asks before
 exiting). On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
 Back closes it. Media keys (play/pause, next, previous) work anywhere.
+
+The buttons at the right of the bar open:
+
+- **Search**: OK on the search box starts typing (Bigscreen's on-screen keyboard opens);
+  its Enter, or Back, runs the search and jumps to the results. Up/Down move between
+  rows (Tracks, Albums, Artists, Playlists, Radio), Left/Right along a row, OK offers
+  Play now / Play next / Add to queue. With nothing typed it shows Recently played and
+  Recently added.
+- **Queue**: what is still to play. OK on a song: Play this now, Play next, Move up/down,
+  Remove.
+- **Speakers**: every speaker and group, which one you control, what each is playing.
+  OK on a speaker: Control this speaker, Move the queue here, Sync with the controlled
+  speaker / Stop syncing; groups also have Edit members and Delete group. "New group"
+  makes a synced group from two or more speakers. Couchside always starts on this TV.
 
 Volume keys: Plasma uses the remote's volume keys for the system volume, so they
 don't reach Couchside. Use the on-screen volume bar (it sets this TV's volume in Music
@@ -123,5 +137,16 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
   epoch seconds) is more current than the player's; Couchside uses the queue's and
   falls back to `current_media` for sources without an MA queue. Progress ticks locally
   between updates, so the TV and server clocks should both use NTP.
+- **Recently added** (`music/recently_added_tracks`) needs schema 101; on MA 2.10.9
+  Couchside lists library tracks sorted by `timestamp_added_desc` instead.
+- **Groups.** Speakers report `can_group_with`; syncing is `players/set_members` on the
+  leader. Named groups use the `sync_group` provider (`players/create_group_player`),
+  deleted with `players/remove_group_player`.
+- **Event volume.** While music plays MA sends `queue_updated`/`player_updated` several
+  times a second; Couchside only rebuilds the queue and speaker lists when their
+  contents change, so the remote's focus stays put.
+- **Bigscreen keyboard.** It opens on any focused text field and takes the arrow keys,
+  and it swallows the first key press after it hides; Couchside only starts editing on
+  OK. Run with `--debug-focus` to log focus changes when tracing remote navigation.
 - **Flatpak instead of `uv` + systemd** (owner's decision, see design doc):
   Sendspin is bundled and autostarted through the Background portal.
