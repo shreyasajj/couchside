@@ -34,6 +34,7 @@ def main() -> int:
     import qasync
 
     from couchside.core.settings import load_settings
+    from couchside.core.tasks import keep_running
     from couchside.sendspin.pairing import tail_log
     from couchside.sendspin.runner import log_path
     from couchside.ui.controller import AppController
@@ -62,9 +63,11 @@ def main() -> int:
 
     async def run() -> None:
         tasks = [
-            asyncio.ensure_future(controller.conn.run()),
-            asyncio.ensure_future(tail_log(log_path(), controller.on_pairing_event)),
-            asyncio.ensure_future(_ensure_sendspin(settings)),
+            asyncio.ensure_future(keep_running(controller.conn.run, "MA connection")),
+            asyncio.ensure_future(keep_running(
+                lambda: tail_log(log_path(), controller.on_pairing_event), "pairing log")),
+            asyncio.ensure_future(keep_running(
+                lambda: _ensure_sendspin(settings), "Sendspin start", delay=30)),
         ]
         await closing.wait()
         await controller.conn.stop()

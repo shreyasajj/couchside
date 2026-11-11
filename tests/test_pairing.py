@@ -31,15 +31,15 @@ async def _collect_until(events, n, timeout=2.0):
 
 async def test_tail_reports_appended_lines(tmp_path):
     p = tmp_path / "sendspin.log"
-    p.write_text("INFO:x:Pairing required: enter pairing code 999 on the server.\n")  # old: ignored
+    p.write_text("INFO:x:Starting Sendspin daemon: id0\n")  # before start: replayed once
     events = []
     task = asyncio.create_task(tail_log(p, lambda e, v: events.append((e, v)), poll=0.02))
     await asyncio.sleep(0.1)
     with p.open("a") as fh:
         fh.write("INFO:x:Pairing required: enter pairing code 111 222 on the server.\n")
-    await _collect_until(events, 1)
+    await _collect_until(events, 2)
     task.cancel()
-    assert events == [(PairingEvent.CODE, "111 222")]
+    assert events == [(PairingEvent.STARTED, "id0"), (PairingEvent.CODE, "111 222")]
 
 
 async def test_tail_waits_for_missing_file(tmp_path):
@@ -63,3 +63,35 @@ async def test_tail_handles_truncation(tmp_path):
     await _collect_until(events, 1)
     task.cancel()
     assert events == [(PairingEvent.STARTED, "id2")]
+
+
+async def test_tail_replays_code_logged_before_start(tmp_path):
+    # Daemon autostarted at login and asked for pairing before the UI opened.
+    p = tmp_path / "sendspin.log"
+    p.write_text(
+        "INFO:x:Starting Sendspin daemon: old\n"
+        "INFO:x:Pairing required: enter pairing code 000 on the server.\n"
+        "INFO:x:Starting Sendspin daemon: new\n"
+        "INFO:x:Pairing required: enter pairing code 123 456 on the server.\n"
+        "INFO:x:something else\n"
+    )
+    events = []
+    task = asyncio.create_task(tail_log(p, lambda e, v: events.append((e, v)), poll=0.02))
+    await _collect_until(events, 2)
+    await asyncio.sleep(0.1)
+    task.cancel()
+    assert events == [(PairingEvent.STARTED, "new"), (PairingEvent.CODE, "123 456")]
+
+
+async def test_tail_replay_skips_code_from_previous_daemon_run(tmp_path):
+    p = tmp_path / "sendspin.log"
+    p.write_text(
+        "INFO:x:Pairing required: enter pairing code 000 on the server.\n"
+        "INFO:x:Starting Sendspin daemon: new\n"
+    )
+    events = []
+    task = asyncio.create_task(tail_log(p, lambda e, v: events.append((e, v)), poll=0.02))
+    await _collect_until(events, 1)
+    await asyncio.sleep(0.1)
+    task.cancel()
+    assert events == [(PairingEvent.STARTED, "new")]

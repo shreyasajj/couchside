@@ -8,7 +8,10 @@ Rectangle {
     property real u: 1
     anchors.fill: parent
     color: "#e6000000"
-    visible: app.pairingCode !== ""
+    // While shown it holds focus and swallows keys, so nothing hidden behind it reacts.
+    // Back and media keys are window Shortcuts and still work.
+    focus: visible
+    Keys.onPressed: (event) => { event.accepted = true }
 
     ColumnLayout {
         anchors.centerIn: parent
@@ -34,6 +37,13 @@ Rectangle {
             font.pixelSize: 180 * overlay.u
             font.weight: Font.Black
             font.letterSpacing: 12 * overlay.u
+        }
+        QQC2.Label {
+            Layout.alignment: Qt.AlignHCenter
+            text: "Press Back to hide"
+            color: "#ffffff"
+            opacity: 0.6
+            font.pixelSize: 28 * overlay.u
         }
     }
 }

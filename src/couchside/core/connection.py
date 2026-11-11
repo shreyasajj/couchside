@@ -7,11 +7,27 @@ import logging
 from enum import StrEnum
 from typing import Any, Awaitable, Callable, Protocol
 
-from music_assistant_models.errors import AuthenticationFailed, AuthenticationRequired
+from music_assistant_models.errors import (
+    AuthenticationFailed,
+    AuthenticationRequired,
+    MusicAssistantError,
+)
 
 log = logging.getLogger(__name__)
 
 BACKOFF = [1, 2, 4, 8, 16, 30]
+INIT_TIMEOUT = 30.0  # seconds for MA's initial state fetch after connecting
+
+
+def is_login_rejected(err: Exception) -> bool:
+    """True when the server refused the token, False for a transport hiccup during login.
+
+    music-assistant-client wraps *any* error from the `auth` command in
+    AuthenticationFailed; the server's own refusal arrives as a MusicAssistantError
+    cause (e.g. InvalidToken), a dropped socket or timeout as something else.
+    """
+    cause = err.__cause__
+    return cause is None or isinstance(cause, MusicAssistantError)
 
 
 class ConnState(StrEnum):
@@ -47,7 +63,9 @@ class Connection:
         get_token: Callable[[], str | None],
         client_factory: Callable[[str, str | None], ClientLike] = default_factory,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        init_timeout: float = INIT_TIMEOUT,
     ) -> None:
+        self._init_timeout = init_timeout
         self._get_url = get_url
         self._get_token = get_token
         self._factory = client_factory
@@ -103,8 +121,11 @@ class Connection:
         await self._wait(self._sleep(delay))
 
     async def _wait(self, awaitable: Awaitable[None] | None) -> None:
-        """Wait for `awaitable` (or forever if None), cut short by retry_now()/stop()."""
-        self._wake.clear()
+        """Wait for `awaitable` (or forever if None), cut short by retry_now()/stop().
+
+        `_wake` is cleared only at the top of each attempt, so a retry_now() that
+        arrives mid-attempt (discovery, connect) still cuts the next wait short.
+        """
         waiters = [asyncio.ensure_future(self._wake.wait())]
         if awaitable is not None:
             waiters.append(asyncio.ensure_future(awaitable))
@@ -117,7 +138,12 @@ class Connection:
     # --- main loop -------------------------------------------------------
     async def run(self) -> None:
         while not self._stopped:
-            url = await self._get_url()
+            self._wake.clear()
+            try:
+                url = await self._get_url()
+            except Exception as e:
+                log.warning("Finding the MA server failed (%s): %s", type(e).__name__, e)
+                url = None
             if self._stopped:
                 break
             if not url:
@@ -134,7 +160,16 @@ class Connection:
             client = self._factory(url, token)
             try:
                 await client.connect()
-            except (AuthenticationFailed, AuthenticationRequired) as e:
+            except AuthenticationFailed as e:
+                if not is_login_rejected(e):
+                    log.info("MA login interrupted, retrying: %s", e)
+                    await self._backoff()
+                    continue
+                log.warning("MA login failed: %s", e)
+                self._set_state(ConnState.AUTH_FAILED)
+                await self._wait(None)
+                continue
+            except AuthenticationRequired as e:
                 log.warning("MA login failed: %s", e)
                 self._set_state(ConnState.AUTH_FAILED)
                 await self._wait(None)
@@ -145,6 +180,8 @@ class Connection:
                 continue
 
             await self._listen(client)
+            if self._wake.is_set() and not self._stopped:
+                continue  # retry_now(): reconnect straight away (e.g. new URL/token)
             if not self._stopped:
                 self._set_state(ConnState.RECONNECTING)
                 await self._backoff()
@@ -155,19 +192,30 @@ class Connection:
         unsubscribe = client.subscribe(self._emit)
         listener = asyncio.ensure_future(client.start_listening(init_ready))
         ready = asyncio.ensure_future(init_ready.wait())
+        wake = asyncio.ensure_future(self._wake.wait())
         try:
-            await asyncio.wait([listener, ready], return_when=asyncio.FIRST_COMPLETED)
-            if init_ready.is_set() and not listener.done():
+            await asyncio.wait([listener, ready, wake], timeout=self._init_timeout,
+                               return_when=asyncio.FIRST_COMPLETED)
+            if wake.done() or listener.done():
+                pass
+            elif not init_ready.is_set():
+                log.warning("MA initial state not received within %ss; reconnecting",
+                            self._init_timeout)
+            else:
                 self.client = client
                 self._attempt = 0
                 self._ever_connected = True
                 self._set_state(ConnState.CONNECTED)
-            try:
-                await listener
-            except Exception as e:
+                # Runs until the socket drops or retry_now()/stop() asks to reconnect.
+                await asyncio.wait([listener, wake], return_when=asyncio.FIRST_COMPLETED)
+            if listener.done() and not listener.cancelled() and listener.exception():
+                e = listener.exception()
                 log.info("MA connection lost (%s): %s", type(e).__name__, e)
         finally:
             ready.cancel()
+            wake.cancel()
+            if not listener.done():
+                listener.cancel()
             self.client = None
             try:
                 unsubscribe()

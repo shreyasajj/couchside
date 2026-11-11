@@ -59,3 +59,48 @@ def test_supervise_restarts_after_failure(tmp_path):
     assert rc == 0
     assert counter.read_text() == "2"
     assert "run 1" in log.read_text() and "run 2" in log.read_text()
+
+
+FAIL_N_TIMES = (
+    "import pathlib,sys;p=pathlib.Path(sys.argv[1]);"
+    "n=int(p.read_text()) if p.exists() else 0;p.write_text(str(n+1));"
+    "print('x'*100);sys.exit(1 if n < int(sys.argv[2]) else 0)"
+)
+
+
+def test_sigterm_during_restart_delay_starts_no_new_daemon(tmp_path):
+    import os
+    import signal
+    import threading
+    counter = tmp_path / "count"
+    timer = threading.Timer(0.3, lambda: os.kill(os.getpid(), signal.SIGTERM))
+    timer.start()
+    try:
+        rc = supervise([sys.executable, "-c", FAIL_N_TIMES, str(counter), "99"],
+                       tmp_path / "out.log", restart_delay=1.0)
+    finally:
+        timer.cancel()
+    assert rc == 0
+    assert counter.read_text() == "1"  # stopped while waiting; never started again
+
+
+def test_restart_delay_backs_off(tmp_path):
+    delays = []
+    rc = supervise([sys.executable, "-c", FAIL_N_TIMES, str(tmp_path / "c"), "3"],
+                   tmp_path / "out.log", restart_delay=3.0, sleep=delays.append)
+    assert rc == 0
+    assert delays == [3.0, 6.0, 12.0]
+
+
+def test_restart_delay_capped(tmp_path):
+    delays = []
+    supervise([sys.executable, "-c", FAIL_N_TIMES, str(tmp_path / "c"), "6"],
+              tmp_path / "out.log", restart_delay=10.0, max_delay=60.0, sleep=delays.append)
+    assert delays == [10.0, 20.0, 40.0, 60.0, 60.0, 60.0]
+
+
+def test_log_trimmed_between_restarts(tmp_path):
+    log = tmp_path / "out.log"
+    supervise([sys.executable, "-c", FAIL_N_TIMES, str(tmp_path / "c"), "2"],
+              log, restart_delay=0, max_log_bytes=150, sleep=lambda d: None)
+    assert log.stat().st_size < 300  # three runs of 100+ bytes each, trimmed on the way

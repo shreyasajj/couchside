@@ -28,6 +28,7 @@ Kirigami.ApplicationWindow {
         if (pageStack.depth < 2) pageStack.push(setupComponent)
     }
     function goBack() {
+        if (pairing.visible) { pairing.dismissedCode = app.pairingCode; return }
         if (exitDialog.opened) { exitDialog.close(); return }
         if (pageStack.depth > 1) {
             pageStack.pop()
@@ -37,11 +38,17 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    // Open Setup when it becomes needed, not on every update: after Back the user
+    // stays where they went until the situation changes again.
+    property bool setupWasNeeded: false
     Connections {
         target: app
-        function onChanged() { if (app.needsSetup) root.showSetup() }
+        function onChanged() {
+            if (app.needsSetup && !root.setupWasNeeded) root.showSetup()
+            root.setupWasNeeded = app.needsSetup
+        }
     }
-    Component.onCompleted: if (app.needsSetup) showSetup()
+    Component.onCompleted: { setupWasNeeded = app.needsSetup; if (app.needsSetup) showSetup() }
 
     // Back on any remote; media keys work wherever focus is.
     Shortcut { sequences: ["Back", "Esc"]; onActivated: root.goBack() }
@@ -49,7 +56,19 @@ Kirigami.ApplicationWindow {
     Shortcut { sequence: "Media Next"; onActivated: app.next() }
     Shortcut { sequence: "Media Previous"; onActivated: app.previous() }
 
-    PairingOverlay { u: root.u; z: 100; parent: root.overlay }
+    PairingOverlay {
+        id: pairing
+        u: root.u
+        z: 100
+        parent: root.overlay
+        // Never cover the Connect page (the token is typed there); Back hides this code.
+        property string dismissedCode: ""
+        visible: app.pairingCode !== "" && app.pairingCode !== dismissedCode && pageStack.depth < 2
+        onVisibleChanged: {
+            if (visible) forceActiveFocus()
+            else if (pageStack.currentItem && pageStack.currentItem.focusDefault) pageStack.currentItem.focusDefault()
+        }
+    }
 
     QQC2.Dialog {
         id: exitDialog

@@ -1,5 +1,5 @@
 from couchside.core.connection import ConnState
-from couchside.core.status import status_text
+from couchside.core.status import needs_setup, status_text
 
 
 def test_connecting():
@@ -26,3 +26,16 @@ def test_waiting_for_local_player():
 
 def test_connected_with_player_is_empty():
     assert status_text(ConnState.CONNECTED, True) == ""
+
+
+def test_missing_token_wording():
+    assert status_text(ConnState.AUTH_FAILED, False, has_token=False) == \
+        "Enter your Music Assistant token in Settings"
+
+
+def test_needs_setup():
+    assert needs_setup(ConnState.CONNECTING, has_token=False)
+    assert needs_setup(ConnState.AUTH_FAILED, has_token=True)
+    assert needs_setup(ConnState.NO_SERVER, has_token=True)
+    assert not needs_setup(ConnState.CONNECTED, has_token=True)
+    assert not needs_setup(ConnState.RECONNECTING, has_token=True)

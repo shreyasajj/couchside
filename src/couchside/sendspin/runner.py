@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import IO
+from typing import IO, Callable
 
 from couchside.core.paths import sendspin_settings_dir, state_dir
 from couchside.core.settings import AppSettings, load_settings
@@ -61,8 +61,23 @@ def prepare_log(path: Path, max_bytes: int = MAX_LOG_BYTES) -> None:
         pass
 
 
-def supervise(argv: list[str], log_file: Path, restart_delay: float = 3.0) -> int:
-    """Run argv, restarting it after a non-zero exit. Returns on clean exit or SIGTERM."""
+def _die_with_parent() -> None:
+    """In the child: get SIGTERM if the supervisor dies, so no orphan keeps the port."""
+    try:
+        import ctypes
+
+        PR_SET_PDEATHSIG = 1
+        ctypes.CDLL(None, use_errno=True).prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+    except Exception:
+        pass  # not Linux, or no libc prctl: best effort
+
+
+def supervise(argv: list[str], log_file: Path, restart_delay: float = 3.0,
+              max_delay: float = 60.0, max_log_bytes: int = MAX_LOG_BYTES,
+              sleep: Callable[[float], None] = time.sleep,
+              healthy_after: float = 60.0) -> int:
+    """Run argv, restarting it after a non-zero exit with a growing delay (reset after
+    a run of `healthy_after` seconds). Returns on clean exit or SIGTERM/SIGINT."""
     stopping = False
     child: subprocess.Popen | None = None
 
@@ -74,17 +89,28 @@ def supervise(argv: list[str], log_file: Path, restart_delay: float = 3.0) -> in
 
     old_term = signal.signal(signal.SIGTERM, on_term)
     old_int = signal.signal(signal.SIGINT, on_term)
+    delay = restart_delay
     try:
-        while True:
+        while not stopping:
+            prepare_log(log_file, max_log_bytes)
+            started = time.monotonic()
             with open(log_file, "a", buffering=1) as out:
                 child = subprocess.Popen(argv, stdout=out, stderr=subprocess.STDOUT,
-                                         stdin=subprocess.DEVNULL)
+                                         stdin=subprocess.DEVNULL,
+                                         preexec_fn=_die_with_parent)
+                if stopping:  # signal landed while starting: pass it on
+                    child.terminate()
                 rc = child.wait()
             if rc == 0 or stopping:
                 return 0 if stopping else rc
+            if time.monotonic() - started >= healthy_after:
+                delay = restart_delay
             with open(log_file, "a") as out:
-                out.write(f"couchside-sendspin: daemon exited with {rc}, restarting\n")
-            time.sleep(restart_delay)
+                out.write(f"couchside-sendspin: daemon exited with {rc}, "
+                          f"restarting in {delay:g}s\n")
+            sleep(delay)
+            delay = min(delay * 2, max_delay) if delay else 0
+        return 0
     finally:
         signal.signal(signal.SIGTERM, old_term)
         signal.signal(signal.SIGINT, old_int)

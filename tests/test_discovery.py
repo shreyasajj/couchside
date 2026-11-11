@@ -1,4 +1,4 @@
-from couchside.core.discovery import MassServer, _dedupe, parse_mass_service
+from couchside.core.discovery import choose_server, MassServer, _dedupe, parse_mass_service
 
 REAL_TXT = {
     b"server_id": b"9cc41ff7c04e48e6a502301970c5af11",
@@ -40,3 +40,19 @@ def test_discover_returns_all_servers():
     b = MassServer("b", "B", "http://b:8095", "2.10.9")
     a2 = MassServer("a", "A again", "http://a2:8095", "2.10.9")
     assert _dedupe([a, b, a2]) == [a, b]
+
+
+def _srv(sid, url):
+    return MassServer(server_id=sid, name=sid, base_url=url, version="2.10.9")
+
+
+def test_choose_server_prefers_the_one_used_before():
+    servers = [_srv("a", "http://a:8095"), _srv("b", "http://b:8095")]
+    assert choose_server(servers, "b").server_id == "b"
+
+
+def test_choose_server_first_when_no_preference_or_gone():
+    servers = [_srv("a", "http://a:8095"), _srv("b", "http://b:8095")]
+    assert choose_server(servers, None).server_id == "a"
+    assert choose_server(servers, "zzz").server_id == "a"
+    assert choose_server([], "a") is None

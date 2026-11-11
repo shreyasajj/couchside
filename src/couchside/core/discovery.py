@@ -56,6 +56,14 @@ def _dedupe(servers: list[MassServer]) -> list[MassServer]:
     return out
 
 
+def choose_server(servers: list[MassServer], preferred_id: str | None) -> MassServer | None:
+    """The server used before if it is still there, else the first one found."""
+    for s in servers:
+        if preferred_id and s.server_id == preferred_id:
+            return s
+    return servers[0] if servers else None
+
+
 async def discover_mass(timeout: float = 4.0) -> list[MassServer]:
     from zeroconf import ServiceStateChange
     from zeroconf.asyncio import AsyncServiceBrowser, AsyncServiceInfo, AsyncZeroconf

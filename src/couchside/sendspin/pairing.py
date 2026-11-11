@@ -31,15 +31,37 @@ def parse_log_line(line: str) -> tuple[PairingEvent, str] | None:
     return None
 
 
+def latest_state(lines: list[str]) -> list[tuple[PairingEvent, str]]:
+    """Events still in force at the end of `lines`: the last daemon start and any
+    pairing code / failure logged after it (older runs' codes are stale)."""
+    current: list[tuple[PairingEvent, str]] = []
+    for line in lines:
+        parsed = parse_log_line(line)
+        if parsed is None:
+            continue
+        if parsed[0] is PairingEvent.STARTED:
+            current = [parsed]
+        else:
+            current = [e for e in current if e[0] is PairingEvent.STARTED] + [parsed]
+    return current
+
+
 async def tail_log(
     path: Path, on_event: Callable[[PairingEvent, str], None], poll: float = 0.5
 ) -> None:
-    """Report events from lines appended after start. Survives a missing or truncated file."""
+    """Report the state already in the log (the daemon usually starts at login,
+    before the UI), then events from lines appended later. Survives a missing or
+    truncated file."""
     path = Path(path)
+    offset = 0
     try:
-        offset = path.stat().st_size
+        data = path.read_bytes()
+        offset = data.rfind(b"\n") + 1  # a partial last line is read again by the tail
+        lines = data[:offset].decode("utf-8", errors="replace").split("\n")
+        for event in latest_state(lines):
+            on_event(*event)
     except FileNotFoundError:
-        offset = 0
+        pass
     buffer = ""
     while True:
         try:
