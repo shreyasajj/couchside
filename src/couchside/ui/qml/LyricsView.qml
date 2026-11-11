@@ -90,6 +90,24 @@ ListView {
         opacity: current ? 1.0 : distance === 1 ? 0.85 : distance > 1 ? 0.45 : 0.35
         Behavior on font.pixelSize { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: 300 } }
+        // English underneath (optional translation): the current line's at the "next line"
+        // size, the others smaller; sits in the bottom padding so the line keeps its size.
+        readonly property string sub: modelData.sub || ""
+        bottomPadding: sub !== "" ? subText.implicitHeight + 6 * view.u : 0
+        Text {
+            id: subText
+            visible: line.sub !== ""
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            text: line.sub
+            color: "#ffffff"
+            opacity: 0.75
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            font.italic: true
+            font.pixelSize: line.current ? view.refWidth * view.scale[1] * 0.8 : view.refWidth * view.scale[2] * 0.75
+        }
         layer.enabled: current
         layer.effect: MultiEffect {
             shadowEnabled: true

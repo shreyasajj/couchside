@@ -30,3 +30,13 @@ def test_is_english():
     assert not is_english(lines("Despacito, quiero respirar tu cuello despacito", "Deja que te diga cosas al oído"))
     assert not is_english(lines("hae, ni old school jihi e", "ni tera koi mukabla nahin"))  # romanized Punjabi
     assert not is_english([])
+
+
+def test_romanize_inherent_vowels():
+    # the unwritten "a": at the start of a word before another consonant, and before a nasal
+    assert romanize("ਨੀ ਤੇਰਾ ਕੋਈ ਮੁਕਾਬਲਾ ਨਹੀਂ") == "ni tera koi mukabla nahin"
+    assert romanize("ਹੋਸ਼ ਕਿੱਥੇ ਰਹਿੰਦੀ") == "hosh kitthe rahindi"
+    assert romanize("ਰੰਗ ਤੇਰਾ") == "rang tera"
+    assert romanize("ਬੋਤਲੇ") == "botle"          # mid-word: no extra vowel
+    assert romanize("ਕੰਮ") == "kamm"
+    assert romanize("रंग") == "rang"

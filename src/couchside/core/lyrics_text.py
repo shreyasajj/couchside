@@ -13,6 +13,14 @@ _NASALS = "ਂੰंँ"
 _LABIALS = "ਪਫਬਭਮपफबभम"
 _ADDAK = "ੱ"  # Gurmukhi: doubles the next consonant (ਗੱਲਾਂ -> gallan)
 _GURMUKHI_VOWEL_SIGNS = set(chr(c) for c in range(0x0A3E, 0x0A4D))
+# Gurmukhi letters with a nukta dot (both the precomposed and the letter + dot forms);
+# anyascii writes the dot as an apostrophe ("hos'" for ਹੋਸ਼).
+_NUKTA = {"\u0a36": "sh", "\u0a38\u0a3c": "sh", "\u0a59": "kh", "\u0a16\u0a3c": "kh",
+          "\u0a5a": "gh", "\u0a17\u0a3c": "gh", "\u0a5b": "z", "\u0a1c\u0a3c": "z",
+          "\u0a5e": "f", "\u0a2b\u0a3c": "f", "\u0a33": "l", "\u0a32\u0a3c": "l"}
+# consonants of Gurmukhi and Devanagari (incl. nukta forms)
+_CONSONANTS = set(chr(c) for c in [*range(0x0A15, 0x0A3A), *range(0x0A59, 0x0A5F),
+                                   *range(0x0915, 0x093A), *range(0x0958, 0x0960)])
 
 
 def _needs_romanizing(ch: str) -> bool:
@@ -26,9 +34,22 @@ def _needs_romanizing(ch: str) -> bool:
 
 
 def _prepare_indic(run: str) -> str:
+    """Fix-ups anyascii doesn't do for Gurmukhi/Devanagari: nasal marks, addak, and the
+    unwritten inherent "a" (said at the start of a word before another consonant and
+    before a nasal mark; mid-word it is usually silent: ਮੁਕਾਬਲਾ -> mukabla)."""
+    for dotted, latin in _NUKTA.items():
+        run = run.replace(dotted, latin)
     out: list[str] = []
     for i, ch in enumerate(run):
         nxt = run[i + 1] if i + 1 < len(run) else ""
+        prev = run[i - 1] if i > 0 else ""
+        if ch in _CONSONANTS:
+            out.append(ch)
+            word_start = not prev or not (prev in _CONSONANTS or prev.isalpha() or prev in _NASALS
+                                          or prev in _GURMUKHI_VOWEL_SIGNS or "\u0900" <= prev <= "\u0a7f")
+            if (nxt and nxt in _NASALS) or (word_start and nxt in _CONSONANTS):
+                out.append("a")
+            continue
         if ch in _NASALS:
             out.append("m" if nxt and nxt in _LABIALS else "n")
         elif ch == _ADDAK:

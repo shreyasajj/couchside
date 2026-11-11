@@ -79,3 +79,16 @@ def test_sizes_and_centering(view):
     expr = QQmlExpression(QQmlEngine.contextForObject(line), line,
                           "horizontalAlignment === Text.AlignHCenter")
     assert expr.evaluate()[0] is True
+
+
+def test_translation_shows_under_the_line(view):
+    root = view.rootObject()
+    root.setProperty("refWidth", 1920)
+    root.setProperty("lines", [{"t": 0.0, "text": "hae, ni old school jihi e", "sub": "Hey, not like old school"}])
+    root.setProperty("position", 1.0)
+    pump(0.5)
+    line = first_line(root)
+    sub = [c for c in line.childItems() if c.property("text") == "Hey, not like old school"]
+    assert sub and sub[0].property("visible")
+    assert line.property("bottomPadding") > 0
+    assert sub[0].property("font").pixelSize() < line.property("font").pixelSize()
