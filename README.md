@@ -88,6 +88,12 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
   `client_id` is the base64url public key derived from `identity-daemon.json` in its
   settings dir, not the player name. Couchside reads it there to find its own player
   in MA and matches on ids only (`player_id`, or an `output_protocols[]` id).
+  Verified on MA 2.10.9: the Sendspin client is wrapped in a `universal_player`
+  (e.g. `upa0dd8b65`) whose `output_protocols[0]` id is the Sendspin client id, so
+  the match goes through `output_protocols`.
+- **Pause reads as idle.** After pausing a Sendspin player, MA reports
+  `playback_state` = `idle`, not `paused`. Play/pause from idle resumes the queue,
+  so the button still works; the UI treats anything but `playing` as "show Play".
 - **Pairing code is only logged.** `sendspin daemon` writes
   `Pairing required: enter pairing code … on the server.` to its log and nothing
   else; there is no "paired" message. Couchside follows the log and hides the code
