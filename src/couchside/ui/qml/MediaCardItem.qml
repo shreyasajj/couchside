@@ -66,6 +66,7 @@ FocusScope {
         anchors { left: parent.left; right: parent.right; top: artBox.bottom; topMargin: 16 * card.u }
         spacing: 2 * card.u
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: card.title
             color: "#ffffff"
@@ -74,6 +75,7 @@ FocusScope {
             elide: Text.ElideRight
         }
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             visible: text !== ""
             text: card.subtitle

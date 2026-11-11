@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0b1a">
+<title>Couchside</title>
+<style>
+  :root { --bg: #0d0b1a; --card: #1b1730; --line: #2c2650; --text: #fff; --dim: #b9b4d6;
+          --accent: #4fc3f7; --warn: #ffd479; --bad: #ff8a80; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+               font: 17px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 96px; }
+  h1 { font-size: 22px; margin: 4px 0 16px; }
+  h2 { font-size: 17px; color: var(--dim); font-weight: 600; margin: 24px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+  .card { background: var(--card); border-radius: 16px; padding: 14px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .art { width: 52px; height: 52px; border-radius: 8px; background: var(--line); object-fit: cover; flex: none; }
+  .art.big { width: 72px; height: 72px; }
+  .meta { flex: 1; min-width: 0; }
+  .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s { color: var(--dim); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .by { color: var(--accent); font-size: 14px; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 10px 16px;
+           background: var(--accent); color: #00131c; min-height: 44px; cursor: pointer; }
+  button.ghost { background: var(--line); color: var(--text); }
+  button:disabled { opacity: .45; }
+  input { font: inherit; width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line);
+          background: #120f24; color: var(--text); min-height: 48px; }
+  input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; color: var(--dim); font-size: 14px; margin-top: 10px; }
+  .pill { background: var(--line); border-radius: 999px; padding: 4px 10px; }
+  .empty { color: var(--dim); padding: 8px 0; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: 92%;
+           background: #3a1d24; color: #fff; padding: 12px 18px; border-radius: 14px; display: none;
+           box-shadow: 0 6px 24px #0008; }
+  #toast.ok { background: #13394a; }
+  .hidden { display: none !important; }
+  form.inline { display: flex; gap: 8px; }
+  form.inline input { flex: 1; }
+</style>
+</head>
+<body>
+<main>
+  <section id="join" class="hidden">
+    <h1>Add songs to the party</h1>
+    <form id="joinForm" class="card">
+      <label for="name" class="s">Your name (shown on the TV next to your songs)</label>
+      <input id="name" maxlength="24" autocomplete="nickname" placeholder="Name" required>
+      <div style="margin-top:12px"><button type="submit">Join</button></div>
+    </form>
+  </section>
+
+  <section id="app" class="hidden">
+    <h1 id="hello">Hi</h1>
+
+    <div class="card">
+      <div class="row" id="now"></div>
+      <div class="stats" id="stats"></div>
+      <div style="margin-top:12px"><button id="skip" class="ghost">Skip this song</button></div>
+    </div>
+
+    <h2>Add a song</h2>
+    <form id="searchForm" class="inline">
+      <input id="q" type="search" placeholder="Search songs" maxlength="100" enterkeyhint="search">
+      <button type="submit">Search</button>
+    </form>
+    <div id="results" class="card hidden" style="margin-top:10px"></div>
+
+    <h2>Up next</h2>
+    <div id="upcoming" class="card"></div>
+  </section>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+  // Relative URLs only: works on the LAN and behind a reverse proxy at any path.
+  const api = (p) => new URL("api/" + p, location.href);
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+
+  let deviceId = store.get("couchside-device");
+  if (!deviceId || !/^[A-Za-z0-9_-]{8,64}$/.test(deviceId)) {
+    const bytes = new Uint8Array(16);
+    (window.crypto || window.msCrypto).getRandomValues(bytes);
+    deviceId = Array.from(bytes, (b) => "abcdefghijklmnopqrstuvwxyz0123456789-_"[b % 38]).join("") + "x";
+    store.set("couchside-device", deviceId);
+  }
+
+  let toastTimer = null;
+  function toast(msg, ok) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.className = ok ? "ok" : "";
+    t.style.display = "block";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.style.display = "none"; }, 3500);
+  }
+
+  async function call(method, path, body) {
+    const url = api(path);
+    if (method === "GET" && body) for (const [k, v] of Object.entries(body)) url.searchParams.set(k, v);
+    const r = await fetch(url, {
+      method, cache: "no-store",
+      headers: method === "POST" ? { "Content-Type": "application/json" } : {},
+      body: method === "POST" ? JSON.stringify(body || {}) : undefined,
+    });
+    let data = {};
+    try { data = await r.json(); } catch (e) {}
+    if (!r.ok) {
+      const err = new Error(data.error || "Something went wrong");
+      err.status = r.status;
+      throw err;
+    }
+    return data;
+  }
+
+  // Music Assistant artwork goes through our server (the phone may not reach MA itself).
+  function img(url) {
+    if (!url) return "";
+    return url.includes("/imageproxy/") ? api("img") + "?u=" + encodeURIComponent(url) : url;
+  }
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function art(url, big) {
+    const i = el("img", "art" + (big ? " big" : ""));
+    i.alt = "";
+    i.loading = "lazy";
+    if (url) i.src = img(url);
+    return i;
+  }
+  function songRow(song, extra) {
+    const row = el("div", "row");
+    row.append(art(song.imageUrl));
+    const meta = el("div", "meta");
+    meta.append(el("div", "t", song.title), el("div", "s", song.artist || song.subtitle || ""));
+    if (song.addedBy) meta.append(el("div", "by", "Added by " + song.addedBy));
+    row.append(meta);
+    if (extra) row.append(extra);
+    return row;
+  }
+
+  function showJoin() {
+    $("app").classList.add("hidden");
+    $("join").classList.remove("hidden");
+    $("name").value = store.get("couchside-name") || "";
+  }
+
+  async function join(name) {
+    const r = await call("POST", "join", { deviceId, name });
+    store.set("couchside-name", r.name);
+    $("join").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    $("hello").textContent = "Hi " + r.name;
+    await refresh();
+    connect();
+  }
+
+  let last = null;
+  async function refresh() {
+    let st;
+    try { st = await call("GET", "state", { deviceId }); }
+    catch (e) {
+      if (e.status === 400) return showJoin();          // the TV restarted guest mode
+      if (e.status === 403) { toast(e.message); return; }
+      toast(e.message);
+      return;
+    }
+    last = st;
+    const now = $("now");
+    now.replaceChildren();
+    if (st.nowPlaying) {
+      const r = songRow(st.nowPlaying);
+      r.replaceChild(art(st.nowPlaying.imageUrl, true), r.firstChild);
+      now.replaceChildren(...r.childNodes);
+    } else {
+      now.append(el("div", "empty", "Nothing playing right now"));
+    }
+    const rem = st.remaining;
+    $("stats").replaceChildren(
+      el("span", "pill", `Your songs waiting: ${rem.waiting}/${rem.maxWaiting}`),
+      el("span", "pill", `Skips left: ${rem.skips}`),
+      el("span", "pill", `Boosts left: ${rem.boosts}`));
+    $("skip").disabled = rem.skips <= 0 || !st.nowPlaying;
+    $("skip").textContent = rem.skips > 0 ? `Skip this song (${rem.skips} left)` : "No skips left";
+
+    const up = $("upcoming");
+    up.replaceChildren();
+    if (!st.upcoming.length) up.append(el("div", "empty", "Nothing queued yet — add a song!"));
+    for (const song of st.upcoming) {
+      let btn = null;
+      if (song.mine) {
+        btn = el("button", rem.boosts > 0 ? "" : "ghost", "Boost");
+        btn.title = "Play this one next";
+        btn.disabled = rem.boosts <= 0;
+        btn.onclick = () => act(btn, "boost", { itemId: song.itemId }, "Boosted — it plays next");
+      }
+      up.append(songRow(song, btn));
+    }
+  }
+
+  async function act(btn, path, body, okMsg) {
+    btn.disabled = true;
+    try {
+      await call("POST", path, Object.assign({ deviceId }, body));
+      if (okMsg) toast(okMsg, true);
+      await refresh();
+    } catch (e) {
+      if (e.status === 400 && /name first/i.test(e.message)) return showJoin();
+      toast(e.message);
+      btn.disabled = false;
+    }
+  }
+
+  async function search(q) {
+    const box = $("results");
+    box.classList.remove("hidden");
+    box.replaceChildren(el("div", "empty", "Searching…"));
+    let res;
+    try { res = await call("GET", "search", { deviceId, q }); }
+    catch (e) { box.replaceChildren(el("div", "empty", e.message)); return; }
+    box.replaceChildren();
+    if (!res.results.length) box.append(el("div", "empty", "No songs found"));
+    for (const song of res.results) {
+      const btn = el("button", "", "Add");
+      btn.onclick = async () => {
+        await act(btn, "add", { uri: song.uri }, `Added “${song.title}”`);
+        btn.textContent = "Added";
+      };
+      box.append(songRow(song, btn));
+    }
+  }
+
+  // Live updates: WebSocket pings, else poll every 3 s (some proxies block WebSockets).
+  let ws = null, pollTimer = null, retryTimer = null;
+  function poll() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(refresh, 3000);
+  }
+  function connect() {
+    if (ws && ws.readyState <= 1) return;
+    const u = api("ws");
+    u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    u.searchParams.set("deviceId", deviceId);
+    try { ws = new WebSocket(u); } catch (e) { poll(); return; }
+    ws.onopen = () => { clearInterval(pollTimer); pollTimer = null; };
+    ws.onmessage = () => refresh();
+    ws.onclose = () => {
+      poll();
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(connect, 15000);
+    };
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+
+  $("joinForm").onsubmit = async (ev) => {
+    ev.preventDefault();
+    try { await join($("name").value); } catch (e) { toast(e.message); }
+  };
+  $("searchForm").onsubmit = (ev) => {
+    ev.preventDefault();
+    const q = $("q").value.trim();
+    if (q) search(q);
+    $("q").blur();
+  };
+  $("skip").onclick = () => {
+    if (!last || !last.nowPlaying) return;
+    // name the song: if someone else skipped it a moment ago, this one isn't used up
+    if (confirm("Skip the song that's playing now? It uses one of your skips."))
+      act($("skip"), "skip", { currentItemId: last.nowPlaying.itemId }, "Skipped");
+  };
+
+  const saved = store.get("couchside-name");
+  if (saved) join(saved).catch(() => showJoin()); else showJoin();
+})();
+</script>
+</body>
+</html>

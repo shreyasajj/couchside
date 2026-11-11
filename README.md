@@ -4,9 +4,9 @@ A TV-first [Music Assistant](https://music-assistant.io) app for **KDE Plasma Bi
 It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
-Status: **Phase 4**: connect, bundled speaker, Now Playing (blurred artwork, progress,
+Status: **Phase 5**: connect, bundled speaker, Now Playing (blurred artwork, progress,
 shuffle, repeat, volume, synced lyrics), search with recently played/added, the queue,
-and the speaker and group picker. Guest mode and admin access follow in later phases
+the speaker and group picker, and guest mode. Admin access follows in a later phase
 (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
 ## Install (on the Bigscreen TV)
@@ -78,6 +78,21 @@ Settings → **Lyrics**:
 
 With English underneath on, the playing song's lyrics are sent to the chosen service.
 Romanization is rule-based and approximate (Japanese kanji get Chinese readings).
+
+**Guest mode.** Settings → Guest mode → On shows a QR code (with your caption) in the
+top-right of Now Playing. Guests scan it, enter a name, and can search and add songs,
+skip the playing song and boost one of their own songs to play next, within the limits
+you set (skips and boosts per guest, songs waiting per guest, wait between adds). Their
+songs play first come, first served, right after the current song (ahead of Music
+Assistant's autoplay suggestions); the TV shows "Added by <name>". Guests can't change
+volume, shuffle, reorder, remove others' songs or switch speakers. Turning guest mode off
+and on makes a new QR code (old links stop working); guest mode is off when the app
+starts.
+
+The guest page is served by Couchside on port **8765** of this TV (plain HTTP on your
+network). For HTTPS or access from outside, put a reverse proxy in front of it and set
+**Guest page public URL**; the proxy must pass WebSocket upgrades (`/g/<token>/api/ws`)
+— if it doesn't, phones fall back to polling every 3 s.
 
 The buttons at the right of the bar open:
 
@@ -172,6 +187,10 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
   `metadata.lrc_lyrics` of the track (`music/item_by_uri`) and otherwise asks LRCLIB
   (`/api/get` with the first artist — MA joins artists with `/` — then `/api/search` by
   title, matched on length within 3 s). Plain (unsynced) lyrics are not shown.
+- **Guest songs and "play next".** MA queues items carry no marker for autoplay
+  ("don't stop the music") additions, so guests' songs are added as `next` and moved
+  below the other guests' waiting songs; MA inserts `next` after the song already
+  buffered for gapless playback, so one song may play first.
 - **Translation APIs.** Google: `translate.googleapis.com/translate_a/single?client=gtx`
   (unofficial). DeepL: `POST /v2/translate` on `api-free.deepl.com` for keys ending in
   `:fx`, `api.deepl.com` otherwise. LibreTranslate: `POST <url>/translate` with a list `q`.

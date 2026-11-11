@@ -17,6 +17,7 @@ Rectangle {
         anchors.centerIn: parent
         spacing: 32 * overlay.u
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.alignment: Qt.AlignHCenter
             text: "Pair this TV with Music Assistant"
             color: "#ffffff"
@@ -24,6 +25,7 @@ Rectangle {
             font.weight: Font.Bold
         }
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.alignment: Qt.AlignHCenter
             text: "Enter this code in Music Assistant"
             color: "#ffffff"
@@ -31,6 +33,7 @@ Rectangle {
             font.pixelSize: 34 * overlay.u
         }
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.alignment: Qt.AlignHCenter
             text: app.pairingCode
             color: "#ffffff"
@@ -39,6 +42,7 @@ Rectangle {
             font.letterSpacing: 12 * overlay.u
         }
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.alignment: Qt.AlignHCenter
             text: "Press Back to hide"
             color: "#ffffff"

@@ -27,6 +27,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         QQC2.Label {
+            textFormat: Text.PlainText
             text: app.formatTime(progress.position)
             color: "#ffffff"
             opacity: 0.8
@@ -35,6 +36,7 @@ ColumnLayout {
         }
         Item { Layout.fillWidth: true }
         QQC2.Label {
+            textFormat: Text.PlainText
             visible: progress.known
             text: "−" + app.formatTime(Math.max(0, progress.duration - progress.position))
             color: "#ffffff"

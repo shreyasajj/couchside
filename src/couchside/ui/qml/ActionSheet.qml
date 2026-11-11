@@ -60,6 +60,7 @@ Rectangle {
             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 32 * sheet.u }
             spacing: 20 * sheet.u
             QQC2.Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: sheet.title
                 color: "#ffffff"
@@ -88,6 +89,7 @@ Rectangle {
                     border.width: ListView.isCurrentItem && list.activeFocus ? 5 * sheet.u : 0
                     border.color: "#4fc3f7"
                     QQC2.Label {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         x: 28 * sheet.u
                         text: actionItem.modelData.label

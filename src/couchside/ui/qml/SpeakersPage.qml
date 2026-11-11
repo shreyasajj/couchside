@@ -66,6 +66,8 @@ Kirigami.Page {
         spacing: 24 * page.u
 
         QQC2.Label {
+
+            textFormat: Text.PlainText
             text: "Speakers"
             color: "#ffffff"
             font.pixelSize: 48 * page.u
