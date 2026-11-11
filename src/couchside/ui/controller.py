@@ -13,11 +13,15 @@ from couchside.core.paths import sendspin_settings_dir
 from couchside.core import library, queue, speakers
 from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
+from couchside.core.lyrics_text import is_english, romanize
+from couchside.core.translate import DeepLTranslator, GoogleTranslator, LibreTranslator
 from couchside.core.playback import Playback, find_local_player
 from couchside.core.settings import (
     AppSettings,
     load_token,
     normalize_server_url,
+    load_secret,
+    save_secret,
     save_settings,
     save_token,
 )
@@ -81,6 +85,10 @@ class AppController(QObject):
         self._lyrics_key: str | None = None
         self._lyric_lines: list[dict] = []
         self._lyrics_pending = False
+        self._raw_lyrics: list = []          # LyricLine list as found, current song
+        self._raw_english = False
+        self._translation: list[str] | None = None
+        self._translations: dict[tuple[str, str], list[str]] = {}  # (song, service)
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
@@ -135,6 +143,8 @@ class AppController(QObject):
             return
         self._lyrics_key = key
         self._lyric_lines = []
+        self._raw_lyrics = []
+        self._translation = None
         np = self.playback.now_playing
         self._lyrics_pending = bool(key and np and self._settings.lyrics_enabled)
         self.lyricsChanged.emit()
@@ -147,10 +157,123 @@ class AppController(QObject):
             lines = await self._lyrics_fetcher.get(info)
             if key != self._lyrics_key:
                 return  # the song changed while looking: drop it
-            self._lyric_lines = [{"t": line.time, "text": line.text} for line in (lines or [])]
+            self._raw_lyrics = list(lines or [])
+            self._raw_english = is_english(self._raw_lyrics)
+            self._translation = None
             self._lyrics_pending = False
-            self.lyricsChanged.emit()
+            self._rebuild_lyrics()
+            self._maybe_translate()
         self._spawn(fetch())
+
+    def _rebuild_lyrics(self) -> None:
+        """Displayed lines from the raw lyrics + language setting + translation."""
+        language = self.lyricsLanguage
+        raw = self._raw_lyrics
+        if language == "english_only" and not self._raw_english:
+            raw = []  # not sung in English: artwork layout
+        sub = self._translation if (self._settings.lyrics_translate and self._translation) else None
+        self._lyric_lines = [
+            {"t": line.time,
+             "text": romanize(line.text) if language == "romanized" else line.text,
+             "sub": sub[i] if sub and i < len(sub) else ""}
+            for i, line in enumerate(raw)]
+        self.lyricsChanged.emit()
+
+    def _translator(self):
+        service = self._settings.translate_service
+        if service == "deepl":
+            return DeepLTranslator(self._http, load_secret("deepl_key") or "")
+        if service == "libretranslate":
+            return LibreTranslator(self._http, self._settings.libretranslate_url or "")
+        return GoogleTranslator(self._http)
+
+    def _maybe_translate(self) -> None:
+        """English underneath: only when switched on, only for songs not in English."""
+        key = self._lyrics_key
+        if (not self._settings.lyrics_translate or not self._raw_lyrics or self._raw_english
+                or key is None):
+            return
+        service = self._settings.translate_service
+        cached = self._translations.get((key, service))
+        if cached is not None:
+            self._translation = cached
+            self._rebuild_lyrics()
+            return
+        texts = [line.text for line in self._raw_lyrics]
+        translator = self._translator()
+
+        async def run():
+            out = await translator.translate(texts)
+            if out is None or key != self._lyrics_key or service != self._settings.translate_service:
+                return  # failed, or the song / service changed meanwhile
+            self._translations[(key, service)] = out
+            while len(self._translations) > 100:
+                self._translations.pop(next(iter(self._translations)))
+            self._translation = out
+            self._rebuild_lyrics()
+        self._spawn(run())
+
+    _LANGUAGES = ("romanized", "original", "english_only")
+    _SERVICES = ("google", "deepl", "libretranslate")
+
+    @Property(str, notify=lyricsChanged)
+    def lyricsLanguage(self) -> str:
+        lang = self._settings.lyrics_language
+        return lang if lang in self._LANGUAGES else "romanized"
+
+    @Slot()
+    def cycleLyricsLanguage(self) -> None:
+        langs = self._LANGUAGES
+        self._settings.lyrics_language = langs[(langs.index(self.lyricsLanguage) + 1) % len(langs)]
+        save_settings(self._settings)
+        self._rebuild_lyrics()
+
+    @Property(bool, notify=lyricsChanged)
+    def lyricsTranslate(self) -> bool:
+        return self._settings.lyrics_translate
+
+    @Slot()
+    def toggleLyricsTranslate(self) -> None:
+        self._settings.lyrics_translate = not self._settings.lyrics_translate
+        save_settings(self._settings)
+        self._rebuild_lyrics()
+        self._maybe_translate()
+
+    @Property(str, notify=lyricsChanged)
+    def translateService(self) -> str:
+        svc = self._settings.translate_service
+        return svc if svc in self._SERVICES else "google"
+
+    @Slot()
+    def cycleTranslateService(self) -> None:
+        svcs = self._SERVICES
+        self._settings.translate_service = svcs[(svcs.index(self.translateService) + 1) % len(svcs)]
+        save_settings(self._settings)
+        self._translation = None
+        self._rebuild_lyrics()
+        self._maybe_translate()
+
+    @Property(bool, notify=lyricsChanged)
+    def hasDeeplKey(self) -> bool:
+        return load_secret("deepl_key") is not None
+
+    @Slot(str)
+    def saveDeeplKey(self, key: str) -> None:
+        if key.strip():
+            save_secret("deepl_key", key)
+        self.lyricsChanged.emit()
+        self._maybe_translate()
+
+    @Property(str, notify=lyricsChanged)
+    def libretranslateUrl(self) -> str:
+        return self._settings.libretranslate_url or ""
+
+    @Slot(str)
+    def setLibretranslateUrl(self, url: str) -> None:
+        self._settings.libretranslate_url = url.strip() or None
+        save_settings(self._settings)
+        self.lyricsChanged.emit()
+        self._maybe_translate()
 
     @Property(bool, notify=lyricsChanged)
     def lyricsPending(self) -> bool:

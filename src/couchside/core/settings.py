@@ -21,6 +21,10 @@ class AppSettings:
     qr_caption: str = "Scan to add songs"
     lyrics_enabled: bool = True
     lyrics_size: str = "medium"  # small | medium | large
+    lyrics_language: str = "romanized"  # romanized | original | english_only
+    lyrics_translate: bool = False  # English translation under each line
+    translate_service: str = "google"  # google | deepl | libretranslate
+    libretranslate_url: str | None = None
     guest_public_url: str | None = None
     autostart_requested: bool = False
     # Not Sendspin's default (8927/8928) so it can't clash with another Sendspin on the host.
@@ -93,6 +97,15 @@ def load_token(path: Path | None = None) -> str | None:
 
 def save_token(token: str, path: Path | None = None) -> None:
     _atomic_write(path or _token_path(), token.strip(), mode=0o600)
+
+
+def load_secret(name: str) -> str | None:
+    """A credential kept in its own 0600 file next to settings.json (never in it)."""
+    return load_token(config_dir() / name)
+
+
+def save_secret(name: str, value: str) -> None:
+    save_token(value, config_dir() / name)
 
 
 def normalize_server_url(url: str) -> str | None:

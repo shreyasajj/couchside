@@ -117,3 +117,27 @@ def test_lyrics_size_round_trip(tmp_path):
     assert load_settings(p).lyrics_size == "medium"
     save_settings(AppSettings(lyrics_size="small"), p)
     assert load_settings(p).lyrics_size == "small"
+
+
+def test_lyrics_language_settings_round_trip(tmp_path):
+    from couchside.core.settings import AppSettings, load_settings, save_settings
+    p = tmp_path / "settings.json"
+    s = load_settings(p)
+    assert (s.lyrics_language, s.lyrics_translate, s.translate_service, s.libretranslate_url) == \
+        ("romanized", False, "google", None)
+    save_settings(AppSettings(lyrics_language="original", lyrics_translate=True,
+                              translate_service="libretranslate", libretranslate_url="http://pi:5000"), p)
+    s = load_settings(p)
+    assert (s.lyrics_language, s.lyrics_translate, s.translate_service, s.libretranslate_url) == \
+        ("original", True, "libretranslate", "http://pi:5000")
+
+
+def test_secret_file_is_private(tmp_path, monkeypatch):
+    import stat
+    from couchside.core.settings import load_secret, save_secret
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert load_secret("deepl_key") is None
+    save_secret("deepl_key", "  abc:fx \n")
+    assert load_secret("deepl_key") == "abc:fx"
+    mode = (tmp_path / "couchside" / "deepl_key").stat().st_mode
+    assert stat.S_IMODE(mode) == 0o600
