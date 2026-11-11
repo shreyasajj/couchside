@@ -4,10 +4,10 @@ A TV-first [Music Assistant](https://music-assistant.io) app for **KDE Plasma Bi
 It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
-Status: **Phase 5**: connect, bundled speaker, Now Playing (blurred artwork, progress,
+Status: **Phase 6**: connect, bundled speaker, Now Playing (blurred artwork, progress,
 shuffle, repeat, volume, synced lyrics), search with recently played/added, the queue,
-the speaker and group picker, and guest mode. Admin access follows in a later phase
-(see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
+the speaker and group picker, guest mode and admin access. Sendspin updates and the
+visualizer follow in later phases (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
 ## Install (on the Bigscreen TV)
 
@@ -88,6 +88,23 @@ Assistant's autoplay suggestions); the TV shows "Added by <name>". Guests can't 
 volume, shuffle, reorder, remove others' songs or switch speakers. Turning guest mode off
 and on makes a new QR code (old links stop working); guest mode is off when the app
 starts.
+
+**Admins.** While guest mode is on, Settings → Guest mode → **Guests and admins** lists
+the guests who joined. Make someone an admin either way:
+
+- **Admin code:** "Show an admin code" puts a 6-digit code on the TV. On their phone the
+  guest taps "Have an admin code from the host?" and enters it. It works once, for 10
+  minutes; Back cancels it, and five wrong tries cancel it too.
+- **Promote:** OK on a guest → Make admin.
+
+Admins see an Admin panel on the guest page: skip without limits, add without limits,
+move any song up or down, play it next, remove it, shuffle, volume, and which speaker
+plays ("Control" switches the speaker the TV controls; "Move music" moves the queue
+there). They can give a guest their skips and boosts back, or remove a guest from the
+party, but can't change other admins. From the TV you can do all of that to anyone and
+remove admin at any time. Admin belongs to the phone (it survives reloads) until you
+remove it or guest mode ends. A removed guest can't rejoin until guest mode restarts;
+their songs stay in the queue.
 
 The guest page is served by Couchside on port **8765** of this TV (plain HTTP on your
 network). For HTTPS or access from outside, put a reverse proxy in front of it and set
@@ -191,6 +208,9 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
   ("don't stop the music") additions, so guests' songs are added as `next` and moved
   below the other guests' waiting songs; MA inserts `next` after the song already
   buffered for gapless playback, so one song may play first.
+- **Volume handed to another control.** When a player's `volume_control` in MA points
+  at another entity (as on the test TV), `players/cmd/volume_set` succeeds but the level
+  doesn't change; the TV's volume bar and the admins' volume buttons both depend on it.
 - **Translation APIs.** Google: `translate.googleapis.com/translate_a/single?client=gtx`
   (unofficial). DeepL: `POST /v2/translate` on `api-free.deepl.com` for keys ending in
   `:fx`, `api.deepl.com` otherwise. LibreTranslate: `POST <url>/translate` with a list `q`.
