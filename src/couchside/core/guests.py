@@ -1,0 +1,123 @@
+"""Guest mode: the session (token, guests, who added what) and its rules. Qt-free.
+
+Rules (host settings): skips and boosts per guest, songs a guest may have waiting in the
+queue at once, and an optional cooldown between adds. A skip ends whatever is playing,
+whoever added it. A boost moves one of the guest's own waiting songs to play next (the
+newest boost wins, because each one is moved right after the current song).
+"""
+
+from __future__ import annotations
+
+import re
+import secrets
+from dataclasses import dataclass, field
+from typing import Iterable
+
+_DEVICE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+MAX_NAME = 24
+
+
+class GuestError(Exception):
+    """A rule said no; the message is shown to the guest as is."""
+
+
+@dataclass
+class GuestRules:
+    skips: int = 3
+    boosts: int = 2
+    max_waiting: int = 3
+    cooldown: float = 0.0  # seconds between a guest's adds (0 = off)
+
+
+@dataclass
+class Guest:
+    device_id: str
+    name: str
+    skips_used: int = 0
+    boosts_used: int = 0
+    last_add: float | None = None
+
+
+@dataclass
+class GuestSession:
+    rules: GuestRules = field(default_factory=GuestRules)
+    token: str = ""
+    guests: dict[str, Guest] = field(default_factory=dict)
+    _credits: dict[str, str] = field(default_factory=dict)  # queue item id -> device id
+
+    def __post_init__(self) -> None:
+        if not self.token:
+            self.new_token()
+
+    def new_token(self) -> None:
+        """New QR link; old links, guests and credits are forgotten."""
+        self.token = secrets.token_urlsafe(12)[:16]
+        self.guests.clear()
+        self._credits.clear()
+
+    # --- guests ---------------------------------------------------------------------
+    def join(self, device_id: str, name: str) -> Guest:
+        if not isinstance(device_id, str) or not _DEVICE_ID.match(device_id):
+            raise GuestError("This phone couldn't be recognised — reload the page")
+        name = (name or "").strip() if isinstance(name, str) else ""
+        if not name or len(name) > MAX_NAME or any(not c.isprintable() for c in name):
+            raise GuestError(f"Enter a name (up to {MAX_NAME} characters)")
+        guest = self.guests.get(device_id)
+        if guest is None:
+            guest = self.guests[device_id] = Guest(device_id, name)
+        else:
+            guest.name = name
+        return guest
+
+    def guest(self, device_id: str) -> Guest:
+        guest = self.guests.get(device_id) if isinstance(device_id, str) else None
+        if guest is None:
+            raise GuestError("Enter your name first")
+        return guest
+
+    # --- rules ----------------------------------------------------------------------
+    def waiting_count(self, guest: Guest, upcoming_ids: Iterable[str]) -> int:
+        return sum(1 for i in upcoming_ids if self._credits.get(i) == guest.device_id)
+
+    def check_add(self, guest: Guest, upcoming_ids: Iterable[str], now: float) -> None:
+        r = self.rules
+        if self.waiting_count(guest, upcoming_ids) >= r.max_waiting:
+            raise GuestError(f"You already have {r.max_waiting} songs waiting — "
+                             "add more once one has played")
+        if r.cooldown and guest.last_add is not None and now - guest.last_add < r.cooldown:
+            wait = int(r.cooldown - (now - guest.last_add) + 0.999)
+            raise GuestError(f"Wait {wait} s before adding another song")
+
+    def note_added(self, guest: Guest, item_id: str | None, now: float) -> None:
+        guest.last_add = now
+        if item_id:
+            self._credits[item_id] = guest.device_id
+
+    def use_skip(self, guest: Guest) -> None:
+        if guest.skips_used >= self.rules.skips:
+            raise GuestError("No skips left")
+        guest.skips_used += 1
+
+    def use_boost(self, guest: Guest, item_id: str, upcoming_ids: Iterable[str]) -> None:
+        if self._credits.get(item_id) != guest.device_id:
+            raise GuestError("You can only boost your own songs")
+        if item_id not in list(upcoming_ids):
+            raise GuestError("That song is already playing or not waiting any more")
+        if guest.boosts_used >= self.rules.boosts:
+            raise GuestError("No boosts left")
+        guest.boosts_used += 1
+
+    # --- credits --------------------------------------------------------------------
+    def added_by(self, item_id: str | None) -> str | None:
+        device = self._credits.get(item_id or "")
+        guest = self.guests.get(device) if device else None
+        return guest.name if guest else None
+
+    def owns(self, guest: Guest, item_id: str) -> bool:
+        return self._credits.get(item_id) == guest.device_id
+
+    def remaining(self, guest: Guest, upcoming_ids: Iterable[str]) -> dict:
+        return {"skips": max(0, self.rules.skips - guest.skips_used),
+                "boosts": max(0, self.rules.boosts - guest.boosts_used),
+                "waiting": self.waiting_count(guest, upcoming_ids),
+                "maxWaiting": self.rules.max_waiting}
