@@ -33,7 +33,7 @@ def test_progress_and_modes(ctl):
 
 def test_artwork_sizes(ctl):
     assert "size=1024" in ctl.artUrlLarge
-    assert "size=600" in ctl.artUrl
+    assert "size=1024" in ctl.artUrl  # 600 requested, proxy only serves 256/512/1024
 
 
 def test_no_volume_control(ctl):

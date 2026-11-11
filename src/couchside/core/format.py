@@ -5,6 +5,7 @@ from __future__ import annotations
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 DEFAULT_BACKGROUND = "#0d0b1a"
+PROXY_SIZES = (256, 512, 1024)  # the only sizes MA 2.10's image proxy accepts
 
 
 def format_time(seconds: float | None) -> str:
@@ -16,14 +17,16 @@ def format_time(seconds: float | None) -> str:
 
 
 def art_url(url: str | None, size: int) -> str:
-    """Ask MA's image proxy for `size` pixels; other image URLs are left alone."""
+    """Ask MA's image proxy for at least `size` pixels (rounded up to a size it
+    accepts, capped at the largest); other image URLs are left alone."""
     if not url:
         return ""
     parts = urlsplit(url)
     if "/imageproxy/" not in parts.path:
         return url
     query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "size"]
-    query.insert(0, ("size", str(size)))
+    snapped = next((s for s in PROXY_SIZES if s >= size), PROXY_SIZES[-1])
+    query.insert(0, ("size", str(snapped)))
     return urlunsplit(parts._replace(query=urlencode(query)))
 
 

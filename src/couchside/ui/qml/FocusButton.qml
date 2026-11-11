@@ -7,6 +7,7 @@ QQC2.AbstractButton {
     id: control
     property string iconName: ""
     property bool primary: false
+    property bool active: false  // on/off controls (shuffle, repeat): accent dot when on
     property real u: 1
     property real size: (primary ? 132 : 104) * u
 
@@ -28,6 +29,16 @@ QQC2.AbstractButton {
             color: control.primary ? "#ffffff" : (control.activeFocus ? "#33ffffff" : "#22ffffff")
             scale: control.down ? 0.94 : 1.0
             Behavior on scale { NumberAnimation { duration: 80 } }
+        }
+        Rectangle {  // "on" indicator
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 12 * control.u
+            width: 12 * control.u
+            height: width
+            radius: width / 2
+            color: "#4fc3f7"
+            visible: control.active
         }
         Rectangle {  // focus ring
             anchors.fill: parent
