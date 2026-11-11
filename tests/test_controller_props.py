@@ -254,7 +254,7 @@ async def test_lyrics_fetched_on_track_change(ctl):
     ctl._lyrics_fetcher = FakeLyrics([LyricLine(1.0, "hello")])
     song(ctl, "x://1")
     await settle()
-    assert ctl.hasLyrics and ctl.lyricLines == [{"t": 1.0, "text": "hello"}]
+    assert ctl.hasLyrics and ctl.lyricLines == [{"t": 1.0, "text": "hello", "sub": ""}]
     info = ctl._lyrics_fetcher.asked[0]
     assert (info.title, info.artist, info.album, info.duration, info.uri) == ("T", "A", "B", 261, "x://1")
 
@@ -312,3 +312,116 @@ async def test_metadata_change_on_same_uri_refetches(ctl):
     song(ctl, "x://station", title="Song B")
     await settle()
     assert [i.title for i in f.asked] == ["Song A", "Song B"]
+
+
+def test_lyrics_size_cycles_and_saves(ctl, tmp_path):
+    from couchside.core.settings import load_settings
+    assert ctl.lyricsSize == "medium"
+    ctl.cycleLyricsSize()
+    assert ctl.lyricsSize == "large"
+    ctl.cycleLyricsSize()
+    assert ctl.lyricsSize == "small"
+    assert load_settings().lyrics_size == "small"
+
+
+def test_unknown_lyrics_size_reads_as_medium(ctl):
+    ctl._settings.lyrics_size = "huge"
+    assert ctl.lyricsSize == "medium"
+
+
+# --- lyrics language / translation ---------------------------------------------------
+
+PUNJABI = [LyricLine(1.0, "ਹਾਏ, ਨੀ old school ਜਿਹੀ ਏ"), LyricLine(2.0, ""), LyricLine(3.0, "ਲਾਲ ਗੱਲਾਂ")]
+ENGLISH = [LyricLine(1.0, "I will shelter you"), LyricLine(2.0, "For days, for weeks, for years")]
+
+
+class FakeTranslator:
+    def __init__(self, result=None, gate=None):
+        self.result, self.gate, self.asked = result, gate, []
+
+    async def translate(self, lines):
+        self.asked.append(lines)
+        if self.gate is not None:
+            await self.gate.wait()
+        return self.result
+
+
+async def lyrics_for(ctl, lines, uri="x://1"):
+    ctl._lyrics_fetcher = FakeLyrics(lines)
+    song(ctl, uri)
+    await settle()
+
+
+async def test_romanized_by_default(ctl):
+    await lyrics_for(ctl, PUNJABI)
+    assert [l["text"] for l in ctl.lyricLines] == ["hae, ni old school jihi e", "", "lal gallan"]
+    assert all(l["sub"] == "" for l in ctl.lyricLines)
+
+
+async def test_original_keeps_script(ctl):
+    await lyrics_for(ctl, PUNJABI)
+    ctl.cycleLyricsLanguage()                     # romanized -> original
+    assert ctl.lyricsLanguage == "original"
+    assert ctl.lyricLines[0]["text"] == "ਹਾਏ, ਨੀ old school ਜਿਹੀ ਏ"
+
+
+async def test_english_only_hides_other_languages(ctl):
+    await lyrics_for(ctl, PUNJABI)
+    ctl.cycleLyricsLanguage()
+    ctl.cycleLyricsLanguage()                     # -> english_only
+    assert ctl.lyricsLanguage == "english_only" and not ctl.hasLyrics
+    await lyrics_for(ctl, ENGLISH, uri="x://2")
+    assert ctl.hasLyrics and ctl.lyricLines[0]["text"] == "I will shelter you"
+    ctl.cycleLyricsLanguage()                     # back to romanized
+    assert ctl.lyricsLanguage == "romanized"
+
+
+async def test_translation_fills_lines_underneath(ctl, monkeypatch):
+    t = FakeTranslator(["Hey, not like old school", "", "red things"])
+    monkeypatch.setattr(ctl, "_translator", lambda: t)
+    ctl.toggleLyricsTranslate()
+    await lyrics_for(ctl, PUNJABI)
+    await settle()
+    assert [l["sub"] for l in ctl.lyricLines] == ["Hey, not like old school", "", "red things"]
+    assert t.asked == [[l.text for l in PUNJABI]]  # the original text is translated
+
+
+async def test_translation_off_or_english_sends_nothing(ctl, monkeypatch):
+    t = FakeTranslator(["x"])
+    monkeypatch.setattr(ctl, "_translator", lambda: t)
+    await lyrics_for(ctl, PUNJABI)                # switch is off by default
+    await lyrics_for(ctl, ENGLISH, uri="x://2")
+    ctl.toggleLyricsTranslate()                   # on, but this song is already English
+    await settle()
+    assert t.asked == []
+
+
+async def test_stale_translation_dropped(ctl, monkeypatch):
+    gate = asyncio.Event()
+    slow = FakeTranslator(["old", "", "old"], gate=gate)
+    monkeypatch.setattr(ctl, "_translator", lambda: slow)
+    ctl.toggleLyricsTranslate()
+    await lyrics_for(ctl, PUNJABI)
+    await lyrics_for(ctl, ENGLISH, uri="x://2")   # next song before the translation came back
+    gate.set()
+    await settle()
+    assert all(l["sub"] == "" for l in ctl.lyricLines)
+
+
+def test_translate_service_cycles_and_saves(ctl):
+    from couchside.core.settings import load_settings
+    assert ctl.translateService == "google"
+    ctl.cycleTranslateService()
+    assert ctl.translateService == "deepl"
+    ctl.cycleTranslateService()
+    assert ctl.translateService == "libretranslate"
+    assert load_settings().translate_service == "libretranslate"
+    ctl.setLibretranslateUrl(" http://pi:5000 ")
+    assert ctl.libretranslateUrl == "http://pi:5000"
+
+
+def test_deepl_key_saved_privately(ctl):
+    from couchside.core.settings import load_secret
+    assert not ctl.hasDeeplKey
+    ctl.saveDeeplKey("abc:fx")
+    assert ctl.hasDeeplKey and load_secret("deepl_key") == "abc:fx"

@@ -6,6 +6,7 @@ import asyncio
 import bisect
 import logging
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -17,7 +18,9 @@ LRCLIB = "https://lrclib.net/api"
 USER_AGENT = f"Couchside/{__version__} (https://github.com/shreyasajj/couchside)"
 SEARCH_DURATION_SLACK = 3.0  # seconds
 
-_TIME_TAG = re.compile(r"\[(?:(\d+):)?(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]")
+# [mm:ss], [mm:ss.xx], [mm:ss:xx] (colon hundredths), [h:mm:ss.xx]
+_TIME_TAG = re.compile(r"\[(\d{1,3}):(\d{1,2})(?::(\d{1,2}))?(?:\.(\d{1,3}))?\]")
+_WORD_STAMP = re.compile(r"<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>")
 _OFFSET = re.compile(r"^\s*\[offset:\s*([+-]?\d+)\s*\]", re.IGNORECASE | re.MULTILINE)
 _ARTIST_SPLIT = re.compile(r"\s*(?:/|,|&|\bfeat\.?\b|\bft\.?\b|\s+x\s+)\s*", re.IGNORECASE)
 
@@ -38,22 +41,47 @@ class TrackInfo:
     uri: str | None
 
 
+def _tag_seconds(m: re.Match) -> float:
+    a, b, c, frac = m.group(1), m.group(2), m.group(3), m.group(4)
+    if c is not None and frac is not None:   # [h:mm:ss.xx]
+        return int(a) * 3600 + int(b) * 60 + int(c) + float("0." + frac)
+    if c is not None:                        # [mm:ss:xx] colon hundredths
+        return int(a) * 60 + int(b) + float("0." + c)
+    return int(a) * 60 + int(b) + (float("0." + frac) if frac else 0.0)
+
+
 def parse_lrc(text: str | None) -> list[LyricLine]:
-    """Timed lines from LRC text; tags without a time and untimed lines are ignored."""
+    """Timed lines from LRC text.
+
+    Tags at the start of a line share the text after them; a tag in the middle of a
+    line starts a new line (text before it belongs to the earlier tags). Per-word
+    `<mm:ss.xx>` stamps (enhanced LRC) are removed. Tags without a time and lines that
+    do not start with a time are ignored.
+    """
     if not text:
         return []
     m = _OFFSET.search(text)
     offset = int(m.group(1)) / 1000 if m else 0.0
     lines: list[LyricLine] = []
+
+    def emit(times: list[float], words: str) -> None:
+        words = " ".join(_WORD_STAMP.sub("", words).split())
+        lines.extend(LyricLine(round(max(0.0, t - offset), 3), words) for t in times)
+
     for raw in text.splitlines():
         tags = list(_TIME_TAG.finditer(raw))
-        if not tags or tags[0].start() != raw.find("["):
+        if not tags or raw[:tags[0].start()].strip("\ufeff \t"):
             continue
-        lyric = raw[tags[-1].end():].strip()
-        for t in tags:
-            hours = int(t.group(1) or 0)
-            seconds = hours * 3600 + int(t.group(2)) * 60 + float(t.group(3).replace(":", "."))
-            lines.append(LyricLine(round(max(0.0, seconds - offset), 3), lyric))
+        pending: list[float] = []
+        pos = tags[0].start()
+        for tag in tags:
+            between = raw[pos:tag.start()]
+            if between.strip() and pending:
+                emit(pending, between)
+                pending = []
+            pending.append(_tag_seconds(tag))
+            pos = tag.end()
+        emit(pending, raw[pos:])
     lines.sort(key=lambda line: line.time)
     if not any(line.text for line in lines):
         return []  # only timestamps / blank lines: nothing to sing along to
@@ -86,18 +114,30 @@ class LyricsFetcher:
     """
 
     def __init__(self, http_get: HttpGet, ma_lookup: MaLookup | None = None,
-                 timeout: float = 10.0, ma_timeout: float = 2.0):
+                 timeout: float = 10.0, ma_timeout: float = 2.0, max_entries: int = 300):
         self._http = http_get
         self._ma = ma_lookup
         self._timeout = timeout
         self._ma_timeout = ma_timeout
-        self._cache: dict[str, list[LyricLine] | None] = {}
+        self._max = max_entries
+        self._cache: OrderedDict[str, list[LyricLine] | None] = OrderedDict()  # LRU
+        self._inflight: dict[str, asyncio.Future] = {}
 
     async def get(self, info: TrackInfo) -> list[LyricLine] | None:
         if not info.duration:
             return None
         if info.key in self._cache:
+            self._cache.move_to_end(info.key)
             return self._cache[info.key]
+        # The same song asked for again while a lookup runs (A -> B -> A): share it.
+        fut = self._inflight.get(info.key)
+        if fut is None:
+            fut = asyncio.ensure_future(self._lookup(info))
+            self._inflight[info.key] = fut
+            fut.add_done_callback(lambda _f: self._inflight.pop(info.key, None))
+        return await asyncio.shield(fut)
+
+    async def _lookup(self, info: TrackInfo) -> list[LyricLine] | None:
         try:
             lines, definite = await asyncio.wait_for(self._chain(info), self._timeout)
         except Exception as e:
@@ -105,6 +145,8 @@ class LyricsFetcher:
             lines, definite = None, False
         if lines or definite:
             self._cache[info.key] = lines or None
+            while len(self._cache) > self._max:
+                self._cache.popitem(last=False)
         return lines or None
 
     async def _chain(self, info: TrackInfo) -> tuple[list[LyricLine] | None, bool]:
@@ -162,16 +204,41 @@ class LyricsFetcher:
         return None
 
 
-async def aiohttp_get(url: str, params: dict) -> tuple[int, Any]:
-    """The real HTTP getter: JSON or None, with Couchside's User-Agent."""
-    import aiohttp
+class HttpClient:
+    """GET -> (status, JSON or None) over one shared aiohttp session (created on first
+    use, so it binds to the running loop), with Couchside's User-Agent."""
 
-    timeout = aiohttp.ClientTimeout(total=8)
-    async with aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": USER_AGENT}) as s:
-        async with s.get(url, params=params) as r:
-            if r.status != 200:
-                return r.status, None
-            try:
-                return r.status, await r.json(content_type=None)
-            except Exception:
-                return r.status, None
+    def __init__(self, timeout: float = 8.0):
+        self._timeout = timeout
+        self._session = None
+
+    def _ensure(self):
+        import aiohttp
+
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self._timeout),
+                headers={"User-Agent": USER_AGENT})
+        return self._session
+
+    @staticmethod
+    async def _read(r) -> tuple[int, Any]:
+        if r.status != 200:
+            return r.status, None
+        try:
+            return r.status, await r.json(content_type=None)
+        except Exception:
+            return r.status, None
+
+    async def get(self, url: str, params: dict) -> tuple[int, Any]:
+        async with self._ensure().get(url, params=params) as r:
+            return await self._read(r)
+
+    async def post_json(self, url: str, body: dict, headers: dict | None = None) -> tuple[int, Any]:
+        async with self._ensure().post(url, json=body, headers=headers) as r:
+            return await self._read(r)
+
+    async def close(self) -> None:
+        if self._session is not None:
+            await self._session.close()
+            self._session = None

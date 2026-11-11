@@ -60,11 +60,24 @@ exiting). On the volume button, OK opens a volume bar: Left/Right change it by 5
 Back closes it. Media keys (play/pause, next, previous) work anywhere.
 
 **Lyrics.** When a song has time-synced lyrics, Now Playing switches to the lyrics
-layout: the line being sung is very large, the next one medium, and they scroll with the
+layout: centered, the line being sung large, the next one smaller, scrolling with the
 music. Songs without synced lyrics keep the big-artwork layout. Lyrics come from the
 track's own metadata in Music Assistant when present, otherwise from
 [LRCLIB](https://lrclib.net) (Couchside sends the song's title, first artist, album and
-length — nothing else). Turn them off under Settings → Display → Show lyrics.
+length — nothing else).
+
+Settings → **Lyrics**:
+
+| Setting | Choices (default first) |
+|---|---|
+| Show lyrics | On / Off |
+| Size | Medium / Large / Small |
+| Language | **Romanized** (other scripts — Gurmukhi, Devanagari, Cyrillic, Hangul… — written in English letters) / **Original** (as sung) / **English only** (songs not sung in English show the artwork) |
+| English underneath | Off / On — a translation under each line, only for songs not in English |
+| Translation service | **Google** (no setup; unofficial, may stop working) / **DeepL** (free API key from deepl.com/pro-api, stored like the MA token) / **LibreTranslate** (your own server's address) |
+
+With English underneath on, the playing song's lyrics are sent to the chosen service.
+Romanization is rule-based and approximate (Japanese kanji get Chinese readings).
 
 The buttons at the right of the bar open:
 
@@ -159,5 +172,9 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
   `metadata.lrc_lyrics` of the track (`music/item_by_uri`) and otherwise asks LRCLIB
   (`/api/get` with the first artist — MA joins artists with `/` — then `/api/search` by
   title, matched on length within 3 s). Plain (unsynced) lyrics are not shown.
+- **Translation APIs.** Google: `translate.googleapis.com/translate_a/single?client=gtx`
+  (unofficial). DeepL: `POST /v2/translate` on `api-free.deepl.com` for keys ending in
+  `:fx`, `api.deepl.com` otherwise. LibreTranslate: `POST <url>/translate` with a list `q`.
+  One request per song; a result with the wrong number of lines is discarded.
 - **Flatpak instead of `uv` + systemd** (owner's decision, see design doc):
   Sendspin is bundled and autostarted through the Background portal.

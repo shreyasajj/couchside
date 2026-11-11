@@ -179,3 +179,115 @@ async def test_total_wait_is_bounded():
 
 def test_parse_lrc_with_no_words_is_empty():
     assert parse_lrc("[00:00.00]\n[00:05.00]  ") == []
+
+
+# --- unusual LRC files -------------------------------------------------------------
+
+def test_parse_colon_centiseconds():
+    # some files write [mm:ss:cc] instead of [mm:ss.cc]
+    assert parse_lrc("[00:01:50]a\n[01:02:05]b") == [LyricLine(1.5, "a"), LyricLine(62.05, "b")]
+
+
+def test_parse_text_between_mid_line_tags():
+    assert parse_lrc("[00:01.00]hello [00:02.00]world") == [LyricLine(1.0, "hello"), LyricLine(2.0, "world")]
+
+
+def test_parse_strips_word_timestamps():
+    # enhanced LRC: per-word <mm:ss.xx> stamps
+    assert parse_lrc("[00:01.00]<00:01.00>I <00:01.40>will <00:01.90>shelter") == [
+        LyricLine(1.0, "I will shelter")]
+
+
+def test_parse_leading_tags_share_text():
+    assert parse_lrc("[00:01.00][00:09.00] chorus line") == [
+        LyricLine(1.0, "chorus line"), LyricLine(9.0, "chorus line")]
+
+
+# --- lookup efficiency -------------------------------------------------------------
+
+async def test_concurrent_lookups_share_one_request():
+    gate = asyncio.Event()
+
+    async def http(url, params):
+        calls.append(url)
+        await gate.wait()
+        return 200, {"syncedLyrics": LRC}
+    calls = []
+    f = LyricsFetcher(http)
+    a = asyncio.ensure_future(f.get(INFO))
+    b = asyncio.ensure_future(f.get(INFO))   # A -> B -> A quickly: same song again
+    await asyncio.sleep(0.01)
+    gate.set()
+    ra, rb = await a, await b
+    assert ra == rb and ra[0].text == "I will shelter you"
+    assert len(calls) == 1
+
+
+async def test_cache_is_bounded():
+    from dataclasses import replace
+    http = Http({"get": (404, None), "search": (200, [])})
+    f = LyricsFetcher(http, max_entries=2)
+    for k in ("a", "b", "c"):
+        await f.get(replace(INFO, key=k))
+    before = len(http.calls)
+    await f.get(replace(INFO, key="a"))      # evicted: asked again
+    await f.get(replace(INFO, key="c"))      # still cached
+    assert len(http.calls) == before + 2
+
+
+async def test_http_client_reuses_one_session(monkeypatch):
+    import couchside.core.lyrics as lyr
+    made = []
+
+    class FakeResp:
+        status = 200
+        async def json(self, content_type=None):
+            return {"ok": True}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    class FakeSession:
+        def __init__(self, **kw):
+            made.append(kw)
+            self.closed = False
+        def get(self, url, params=None):
+            return FakeResp()
+        async def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("aiohttp.ClientSession", FakeSession)
+    client = lyr.HttpClient()
+    assert await client.get("u", {}) == (200, {"ok": True})
+    assert await client.get("u", {}) == (200, {"ok": True})
+    assert len(made) == 1 and made[0]["headers"]["User-Agent"].startswith("Couchside/")
+    await client.close()
+
+
+async def test_http_client_post_json(monkeypatch):
+    import couchside.core.lyrics as lyr
+    sent = []
+
+    class FakeResp:
+        status = 200
+        async def json(self, content_type=None):
+            return {"ok": 1}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    class FakeSession:
+        def __init__(self, **kw):
+            self.closed = False
+        def post(self, url, json=None, headers=None):
+            sent.append((url, json, headers))
+            return FakeResp()
+        async def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("aiohttp.ClientSession", FakeSession)
+    c = lyr.HttpClient()
+    assert await c.post_json("u", {"a": 1}, headers={"H": "v"}) == (200, {"ok": 1})
+    assert sent == [("u", {"a": 1}, {"H": "v"})]

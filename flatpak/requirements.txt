@@ -3,3 +3,4 @@ music-assistant-client==1.8.0
 zeroconf
 qasync
 sendspin==9.1.0
+anyascii

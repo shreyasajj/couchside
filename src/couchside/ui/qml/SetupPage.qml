@@ -3,7 +3,10 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 
-// Music Assistant server + token. Every field reachable with up/down; OK opens the on-screen keyboard.
+// Settings: Music Assistant connection and lyrics. Up/Down move between rows (the page
+// scrolls to follow), OK changes a row. Text fields only start editing on OK, because
+// Bigscreen's on-screen keyboard takes the arrow keys while a field is being edited;
+// the keyboard's Enter or Back stops editing.
 Kirigami.Page {
     id: page
     property real u: 1
@@ -16,137 +19,273 @@ Kirigami.Page {
     function focusDefault() { (app.hasToken ? saveButton : tokenField).forceActiveFocus() }
     Component.onCompleted: {
         urlField.text = app.serverUrl
+        libreField.text = app.libretranslateUrl
         focusDefault()
     }
+    // Back while a field is being edited: stop editing, stay on the page.
+    function handleBack() {
+        for (const f of [urlField, tokenField, deeplField, libreField])
+            if (f.editing) { f.stopEditing(); return true }
+        return false
+    }
+    // Up/Down: next focusable row in that direction (skips hidden rows, no wrap-around).
+    function move(from, forward) {
+        var next = from.nextItemInFocusChain(forward)
+        if (!next) return
+        var a = from.mapToItem(column, 0, 0).y, b = next.mapToItem(column, 0, 0).y
+        if (forward ? b > a : b < a) next.forceActiveFocus()
+    }
+    // keep the focused row on screen
+    function follow(item) {
+        if (!item) return
+        var p = item.mapToItem(column, 0, 0)
+        if (p.x < 0 || p.y < 0 || p.y > column.height) return  // not inside this page
+        var y = p.y + column.y
+        var margin = 120 * page.u
+        if (y - margin < flick.contentY) flick.contentY = Math.max(0, y - margin)
+        else if (y + item.height + margin > flick.contentY + flick.height)
+            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height,
+                                                  y + item.height + margin - flick.height))
+    }
+    Connections {
+        target: page.Window.window
+        function onActiveFocusItemChanged() { page.follow(page.Window.window.activeFocusItem) }
+    }
 
-    component TvField: QQC2.TextField {
+    // A text field that edits only on OK (see the comment at the top).
+    component TvField: FocusScope {
+        id: tv
+        property alias text: input.text
+        property alias placeholderText: input.placeholderText
+        property alias echoMode: input.echoMode
+        property alias inputMethodHints: input.inputMethodHints
+        readonly property bool editing: input.activeFocus
+        signal accepted()
         Layout.fillWidth: true
-        font.pixelSize: 32 * page.u
-        color: "#ffffff"
-        placeholderTextColor: "#99ffffff"
-        padding: 20 * page.u
-        background: Rectangle {
-            radius: 10 * page.u
-            color: "#22ffffff"
-            border.width: parent.activeFocus ? 5 * page.u : 0
-            border.color: "#4fc3f7"
+        implicitHeight: input.implicitHeight
+        activeFocusOnTab: true
+        function startEditing() { input.forceActiveFocus(); Qt.inputMethod.show() }
+        function stopEditing() { input.focus = false; Qt.inputMethod.hide(); tv.forceActiveFocus() }
+        Keys.onReturnPressed: startEditing()
+        Keys.onEnterPressed: startEditing()
+        Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { startEditing(); event.accepted = true } }
+        Keys.onUpPressed: page.move(tv, false)
+        Keys.onDownPressed: page.move(tv, true)
+        QQC2.TextField {
+            id: input
+            anchors.fill: parent
+            focus: false
+            activeFocusOnTab: false
+            font.pixelSize: 32 * page.u
+            color: "#ffffff"
+            placeholderTextColor: "#99ffffff"
+            padding: 20 * page.u
+            onAccepted: { tv.stopEditing(); tv.accepted() }
+            background: Rectangle {
+                radius: 10 * page.u
+                color: input.activeFocus ? "#33ffffff" : "#22ffffff"
+                border.width: tv.activeFocus ? 5 * page.u : 0
+                border.color: "#4fc3f7"
+            }
         }
     }
 
-    ColumnLayout {
-        anchors.centerIn: parent
-        width: Math.min(parent.width - 144 * page.u, 1300 * page.u)
-        spacing: 28 * page.u
-
-        QQC2.Label {
-            text: "Connect to Music Assistant"
-            color: "#ffffff"
-            font.pixelSize: 56 * page.u
-            font.weight: Font.Bold
-        }
-        QQC2.Label {
-            Layout.fillWidth: true
-            visible: app.connState === "auth_failed" && app.hasToken
-            text: "Music Assistant did not accept the token. Create a new one and enter it below."
-            color: "#ffd479"
-            font.pixelSize: 30 * page.u
-            wrapMode: Text.WordWrap
-        }
-
-        QQC2.Label { text: "Server address"; color: "#ffffff"; opacity: 0.8; font.pixelSize: 30 * page.u }
-        TvField {
-            id: urlField
-            placeholderText: "Leave empty to find it automatically"
-            inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
-            KeyNavigation.down: tokenField
-        }
-
-        QQC2.Label {
-            Layout.fillWidth: true
-            text: "Access token — in the Music Assistant web app: Settings → your profile → Long-lived access tokens"
-            color: "#ffffff"
-            opacity: 0.8
-            font.pixelSize: 30 * page.u
-            wrapMode: Text.WordWrap
-        }
-        TvField {
-            id: tokenField
-            placeholderText: app.hasToken ? "Saved — leave empty to keep it" : "Paste or type the token"
-            echoMode: TextInput.Password
-            inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
-            KeyNavigation.up: urlField
-            KeyNavigation.down: saveButton.enabled ? saveButton : lyricsRow
-        }
-
-        QQC2.Button {
-            id: saveButton
-            Layout.alignment: Qt.AlignLeft
-            text: "Save and connect"
-            font.pixelSize: 32 * page.u
-            padding: 24 * page.u
-            KeyNavigation.up: tokenField
-            KeyNavigation.down: lyricsRow
-            Keys.onReturnPressed: clicked()
-            Keys.onEnterPressed: clicked()
-            enabled: tokenField.text.trim() !== "" || app.hasToken
-            background: Rectangle {
-                radius: 12 * page.u
-                color: saveButton.enabled ? "#ffffff" : "#55ffffff"
-                border.width: saveButton.activeFocus ? 6 * page.u : 0
-                border.color: "#4fc3f7"
-            }
-            contentItem: QQC2.Label {
-                text: saveButton.text
-                font: saveButton.font
-                color: "#000000"
-                horizontalAlignment: Text.AlignHCenter
-            }
-            onClicked: {
-                app.saveConnection(urlField.text, tokenField.text)
-                tokenField.text = ""
-                page.done()
-            }
-        }
-
-        QQC2.Label {
-            Layout.topMargin: 24 * page.u
-            text: "Display"
-            color: "#ffffff"
-            font.pixelSize: 40 * page.u
-            font.weight: Font.Bold
-        }
-        // OK toggles; takes effect on Now Playing straight away.
-        Rectangle {
-            id: lyricsRow
-            Layout.fillWidth: true
-            implicitHeight: 96 * page.u
-            radius: 12 * page.u
-            activeFocusOnTab: true
-            color: activeFocus ? "#33ffffff" : "#1affffff"
-            border.width: activeFocus ? 5 * page.u : 0
-            border.color: "#4fc3f7"
-            KeyNavigation.up: saveButton.enabled ? saveButton : tokenField
-            Keys.onReturnPressed: app.lyricsEnabled = !app.lyricsEnabled
-            Keys.onEnterPressed: app.lyricsEnabled = !app.lyricsEnabled
-            Keys.onPressed: (event) => {
-                if (event.key === Qt.Key_Select) { app.lyricsEnabled = !app.lyricsEnabled; event.accepted = true }
-            }
+    // A row that toggles or cycles a setting with OK.
+    component SettingRow: Rectangle {
+        id: row
+        property string label: ""
+        property string value: ""
+        property string hint: ""
+        signal activated()
+        Layout.fillWidth: true
+        implicitHeight: (hint !== "" ? 124 : 96) * page.u
+        radius: 12 * page.u
+        activeFocusOnTab: true
+        color: activeFocus ? "#33ffffff" : "#1affffff"
+        border.width: activeFocus ? 5 * page.u : 0
+        border.color: "#4fc3f7"
+        Keys.onReturnPressed: activated()
+        Keys.onEnterPressed: activated()
+        Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { activated(); event.accepted = true } }
+        Keys.onUpPressed: page.move(row, false)
+        Keys.onDownPressed: page.move(row, true)
+        ColumnLayout {
+            anchors { fill: parent; leftMargin: 28 * page.u; rightMargin: 28 * page.u }
+            spacing: 2 * page.u
             RowLayout {
-                anchors { fill: parent; leftMargin: 28 * page.u; rightMargin: 28 * page.u }
+                Layout.fillWidth: true
                 QQC2.Label {
                     Layout.fillWidth: true
-                    text: "Show lyrics"
+                    text: row.label
                     color: "#ffffff"
                     font.pixelSize: 32 * page.u
                 }
                 QQC2.Label {
-                    text: app.lyricsEnabled ? "On" : "Off"
-                    color: app.lyricsEnabled ? "#4fc3f7" : "#99ffffff"
+                    text: row.value
+                    color: "#4fc3f7"
                     font.pixelSize: 32 * page.u
                     font.weight: Font.Bold
                 }
             }
-            MouseArea { anchors.fill: parent; onClicked: app.lyricsEnabled = !app.lyricsEnabled }
+            QQC2.Label {
+                Layout.fillWidth: true
+                visible: row.hint !== ""
+                text: row.hint
+                color: "#ffffff"
+                opacity: 0.6
+                font.pixelSize: 26 * page.u
+                elide: Text.ElideRight
+            }
+        }
+        MouseArea { anchors.fill: parent; onClicked: { row.forceActiveFocus(); row.activated() } }
+    }
+
+    component Heading: QQC2.Label {
+        Layout.topMargin: 24 * page.u
+        color: "#ffffff"
+        font.pixelSize: 40 * page.u
+        font.weight: Font.Bold
+    }
+    component Note: QQC2.Label {
+        Layout.fillWidth: true
+        color: "#ffffff"
+        opacity: 0.8
+        font.pixelSize: 28 * page.u
+        wrapMode: Text.WordWrap
+    }
+
+    Flickable {
+        id: flick
+        anchors.fill: parent
+        contentHeight: column.implicitHeight + 144 * page.u
+        interactive: false
+        clip: true
+        Behavior on contentY { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+        ColumnLayout {
+            id: column
+            x: (flick.width - width) / 2
+            y: 72 * page.u
+            width: Math.min(flick.width - 144 * page.u, 1300 * page.u)
+            spacing: 24 * page.u
+
+            QQC2.Label {
+                text: "Settings"
+                color: "#ffffff"
+                font.pixelSize: 56 * page.u
+                font.weight: Font.Bold
+            }
+
+            Heading { text: "Music Assistant" }
+            QQC2.Label {
+                Layout.fillWidth: true
+                visible: app.connState === "auth_failed" && app.hasToken
+                text: "Music Assistant did not accept the token. Create a new one and enter it below."
+                color: "#ffd479"
+                font.pixelSize: 30 * page.u
+                wrapMode: Text.WordWrap
+            }
+            Note { text: "Server address" }
+            TvField {
+                id: urlField
+                placeholderText: "Leave empty to find it automatically"
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
+            }
+            Note { text: "Access token — in the Music Assistant web app: Settings → your profile → Long-lived access tokens" }
+            TvField {
+                id: tokenField
+                placeholderText: app.hasToken ? "Saved — leave empty to keep it" : "Press OK, then paste or type the token"
+                echoMode: TextInput.Password
+                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
+            }
+            QQC2.Button {
+                id: saveButton
+                Layout.alignment: Qt.AlignLeft
+                text: "Save and connect"
+                font.pixelSize: 32 * page.u
+                padding: 24 * page.u
+                Keys.onReturnPressed: clicked()
+                Keys.onEnterPressed: clicked()
+                Keys.onUpPressed: page.move(saveButton, false)
+                Keys.onDownPressed: page.move(saveButton, true)
+                background: Rectangle {
+                    radius: 12 * page.u
+                    color: (tokenField.text.trim() !== "" || app.hasToken) ? "#ffffff" : "#55ffffff"
+                    border.width: saveButton.activeFocus ? 6 * page.u : 0
+                    border.color: "#4fc3f7"
+                }
+                contentItem: QQC2.Label {
+                    text: saveButton.text
+                    font: saveButton.font
+                    color: "#000000"
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                onClicked: {
+                    if (tokenField.text.trim() === "" && !app.hasToken) return
+                    app.saveConnection(urlField.text, tokenField.text)
+                    tokenField.text = ""
+                    page.done()
+                }
+            }
+
+            Heading { text: "Lyrics" }
+            SettingRow {
+                label: "Show lyrics"
+                value: app.lyricsEnabled ? "On" : "Off"
+                onActivated: app.lyricsEnabled = !app.lyricsEnabled
+            }
+            SettingRow {
+                label: "Size"
+                value: ({ small: "Small", medium: "Medium", large: "Large" })[app.lyricsSize]
+                onActivated: app.cycleLyricsSize()
+            }
+            SettingRow {
+                label: "Language"
+                value: ({ romanized: "Romanized", original: "Original", english_only: "English only" })[app.lyricsLanguage]
+                hint: ({ romanized: "Other scripts written in English letters",
+                         original: "As sung, in the song's own script",
+                         english_only: "Songs not sung in English show the artwork instead" })[app.lyricsLanguage]
+                onActivated: app.cycleLyricsLanguage()
+            }
+            SettingRow {
+                label: "English underneath"
+                value: app.lyricsTranslate ? "On" : "Off"
+                hint: "A translation under each line, for songs not in English"
+                onActivated: app.toggleLyricsTranslate()
+            }
+            SettingRow {
+                visible: app.lyricsTranslate
+                label: "Translation service"
+                value: ({ google: "Google", deepl: "DeepL", libretranslate: "LibreTranslate" })[app.translateService]
+                hint: ({ google: "No setup · unofficial, may stop working",
+                         deepl: app.hasDeeplKey ? "Using your DeepL key" : "Needs a free DeepL API key (below)",
+                         libretranslate: app.libretranslateUrl !== "" ? app.libretranslateUrl
+                                                                      : "Needs your LibreTranslate address (below)" })[app.translateService]
+                onActivated: app.cycleTranslateService()
+            }
+            Note {
+                visible: app.lyricsTranslate && app.translateService === "deepl"
+                text: "DeepL API key — free at deepl.com/pro-api (keys ending in :fx are free keys)"
+            }
+            TvField {
+                id: deeplField
+                visible: app.lyricsTranslate && app.translateService === "deepl"
+                placeholderText: app.hasDeeplKey ? "Saved — press OK to replace it" : "Press OK to enter the key"
+                echoMode: TextInput.Password
+                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
+                onAccepted: { app.saveDeeplKey(text); text = "" }
+            }
+            Note {
+                visible: app.lyricsTranslate && app.translateService === "libretranslate"
+                text: "LibreTranslate address, e.g. http://192.168.30.3:5000"
+            }
+            TvField {
+                id: libreField
+                visible: app.lyricsTranslate && app.translateService === "libretranslate"
+                placeholderText: "Press OK to enter the address"
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
+                onAccepted: app.setLibretranslateUrl(text)
+            }
         }
     }
 }

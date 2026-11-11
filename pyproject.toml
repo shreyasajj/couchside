@@ -15,6 +15,7 @@ dependencies = [
     "zeroconf>=0.136",
     "qasync>=0.27",
     "aiosendspin>=10.2",
+    "anyascii>=0.3",
 ]
 
 [project.optional-dependencies]
