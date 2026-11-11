@@ -4,6 +4,9 @@ Rules (host settings): skips and boosts per guest, songs a guest may have waitin
 queue at once, and an optional cooldown between adds. A skip ends whatever is playing,
 whoever added it. A boost moves one of the guest's own waiting songs to play next (the
 newest boost wins, because each one is moved right after the current song).
+
+Admins (granted by the host: a one-time code or promotion) have no limits; admin status
+belongs to the device and lasts until revoked or guest mode ends.
 """
 
 from __future__ import annotations
@@ -17,6 +20,8 @@ from typing import Iterable
 _DEVICE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 MAX_NAME = 24
 MAX_GUESTS = 50
+CODE_TTL = 600.0   # seconds an admin code stays valid
+CODE_TRIES = 5     # wrong tries (all phones together) before the code is cancelled
 
 
 class GuestError(Exception):
@@ -38,6 +43,9 @@ class Guest:
     skips_used: int = 0
     boosts_used: int = 0
     last_add: float | None = None
+    admin: bool = False
+    # shown in lists; the device id is the phone's secret and never leaves the server
+    public_id: str = field(default_factory=lambda: secrets.token_urlsafe(9))
     # songs this guest's own searches returned: the only URIs they may add
     offered: set[str] = field(default_factory=set)
 
@@ -54,6 +62,12 @@ class GuestSession:
     guests: dict[str, Guest] = field(default_factory=dict)
     _credits: dict[str, str] = field(default_factory=dict)  # queue item id -> device id
     _lock: asyncio.Lock | None = None
+    admin_code: str | None = None
+    code_expires: float = 0.0
+    code_cancelled: bool = False   # the last code was cancelled by wrong tries
+    _code_misses: int = 0
+    _banned: set[str] = field(default_factory=set)
+    _former: dict[str, str] = field(default_factory=dict)  # removed guests' names (credits)
 
     def __post_init__(self) -> None:
         if not self.token:
@@ -72,11 +86,16 @@ class GuestSession:
         self.token = secrets.token_urlsafe(12)[:16]
         self.guests.clear()
         self._credits.clear()
+        self._banned.clear()
+        self._former.clear()
+        self.cancel_admin_code()
 
     # --- guests ---------------------------------------------------------------------
     def join(self, device_id: str, name: str) -> Guest:
         if not isinstance(device_id, str) or not _DEVICE_ID.match(device_id):
             raise GuestError("This phone couldn't be recognised — reload the page")
+        if device_id in self._banned:
+            raise GuestError("The host removed you from this party")
         name = (name or "").strip() if isinstance(name, str) else ""
         if not name or len(name) > MAX_NAME or any(not c.isprintable() for c in name):
             raise GuestError(f"Enter a name (up to {MAX_NAME} characters)")
@@ -95,12 +114,72 @@ class GuestSession:
             raise GuestError("Enter your name first")
         return guest
 
+    def by_public_id(self, public_id: str) -> Guest:
+        for g in self.guests.values():
+            if isinstance(public_id, str) and g.public_id == public_id:
+                return g
+        raise GuestError("That guest has left")
+
+    # --- admins -----------------------------------------------------------------------
+    def new_admin_code(self, now: float) -> str:
+        self.admin_code = f"{secrets.randbelow(1_000_000):06d}"
+        self.code_expires = now + CODE_TTL
+        self.code_cancelled = False
+        self._code_misses = 0
+        return self.admin_code
+
+    def cancel_admin_code(self) -> None:
+        self.admin_code = None
+        self._code_misses = 0
+
+    def redeem_code(self, guest: Guest, code, now: float) -> None:
+        if self.admin_code is not None and now > self.code_expires:
+            self.cancel_admin_code()
+        if self.admin_code is None:
+            raise GuestError("That code isn't valid — ask the host for a new one")
+        if not isinstance(code, str) or not secrets.compare_digest(code.strip().encode(),
+                                                                   self.admin_code.encode()):
+            self._code_misses += 1
+            if self._code_misses >= CODE_TRIES:
+                self.cancel_admin_code()
+                self.code_cancelled = True
+            raise GuestError("That code isn't right")
+        guest.admin = True
+        self.cancel_admin_code()
+
+    def promote(self, public_id: str) -> Guest:
+        g = self.by_public_id(public_id)
+        g.admin = True
+        return g
+
+    def revoke(self, public_id: str) -> Guest:
+        g = self.by_public_id(public_id)
+        g.admin = False
+        return g
+
+    def reset(self, public_id: str) -> Guest:
+        g = self.by_public_id(public_id)
+        g.skips_used = g.boosts_used = 0
+        g.last_add = None
+        return g
+
+    def remove(self, public_id: str) -> Guest:
+        """Forget the guest and keep them out until guest mode restarts; their songs stay
+        in the queue with their name."""
+        g = self.by_public_id(public_id)
+        del self.guests[g.device_id]
+        self._banned.add(g.device_id)
+        self._former[g.device_id] = g.name
+        return g
+
     # --- rules ----------------------------------------------------------------------
     def waiting_count(self, guest: Guest, upcoming_ids: Iterable[str]) -> int:
         return sum(1 for i in upcoming_ids if self._credits.get(i) == guest.device_id)
 
     def check_add(self, guest: Guest, upcoming_ids: Iterable[str], now: float) -> None:
         r = self.rules
+        if guest.admin:
+            return
         if self.waiting_count(guest, upcoming_ids) >= r.max_waiting:
             raise GuestError(f"You already have {r.max_waiting} songs waiting — "
                              "add more once one has played")
@@ -114,6 +193,8 @@ class GuestSession:
             self._credits[item_id] = guest.device_id
 
     def use_skip(self, guest: Guest) -> None:
+        if guest.admin:
+            return
         if guest.skips_used >= self.rules.skips:
             raise GuestError("No skips left")
         guest.skips_used += 1
@@ -123,6 +204,8 @@ class GuestSession:
             raise GuestError("You can only boost your own songs")
         if item_id not in list(upcoming_ids):
             raise GuestError("That song is already playing or not waiting any more")
+        if guest.admin:
+            return
         if guest.boosts_used >= self.rules.boosts:
             raise GuestError("No boosts left")
         guest.boosts_used += 1
@@ -131,7 +214,7 @@ class GuestSession:
     def added_by(self, item_id: str | None) -> str | None:
         device = self._credits.get(item_id or "")
         guest = self.guests.get(device) if device else None
-        return guest.name if guest else None
+        return guest.name if guest else self._former.get(device) if device else None
 
     def owns(self, guest: Guest, item_id: str) -> bool:
         return self._credits.get(item_id) == guest.device_id
