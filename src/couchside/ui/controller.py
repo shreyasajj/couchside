@@ -10,8 +10,9 @@ from PySide6.QtCore import Property, QObject, Signal, Slot
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
+from couchside.core import library, queue, speakers
 from couchside.core.format import art_url, format_time, palette_colour
-from couchside.core.playback import Playback
+from couchside.core.playback import Playback, find_local_player
 from couchside.core.settings import (
     AppSettings,
     load_token,
@@ -26,8 +27,29 @@ from couchside.sendspin.pairing import PairingEvent
 log = logging.getLogger(__name__)
 
 
+_FAIL_TEXT = {
+    "now": "Couldn't play that", "next": "Couldn't add it as next", "add": "Couldn't add to the queue",
+    "play": "Couldn't play that song", "up": "Couldn't move it", "down": "Couldn't move it",
+    "remove": "Couldn't remove it", "sync": "Couldn't sync that speaker",
+    "unsync": "Couldn't stop syncing", "transfer": "Couldn't move the queue",
+    "create_group": "Couldn't create the group", "edit_group": "Couldn't change the group",
+    "delete_group": "Couldn't delete the group",
+}
+_QUEUE_EVENTS = {"queue_items_updated", "queue_updated"}
+_PLAYER_EVENTS = {"player_added", "player_updated", "player_removed"}
+
+
+def _card(c: library.MediaCard) -> dict:
+    return {"key": c.key, "kind": c.kind, "title": c.title, "subtitle": c.subtitle,
+            "imageUrl": art_url(c.image_url, 256), "uri": c.uri}
+
+
 class AppController(QObject):
     changed = Signal()
+    libraryChanged = Signal()
+    queueChanged = Signal()
+    speakersChanged = Signal()
+    toastChanged = Signal()
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -42,7 +64,17 @@ class AppController(QObject):
         self._pending_server_id: str | None = None
         self.conn = Connection(self._get_url, load_token)
         self.playback = Playback(self.conn, self._get_client_id)
+        self._library_rows: list[dict] = []
+        self._library_error = ""
+        self._library_busy = False
+        self._search_gen = 0
+        self._queue_rows: list[dict] = []
+        self._queue_visible = False
+        self._toast = ""
+        self._last_speaker_rows: list[dict] = []
+        self._last_current_item: str | None = None
         self.conn.on_state(lambda _s: self._on_update())
+        self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
 
     # --- core hooks ------------------------------------------------------
@@ -69,11 +101,72 @@ class AppController(QObject):
         self.changed.emit()
 
     def _on_update(self) -> None:
+        self._emit_speakers_if_changed()  # controlled speaker may have changed
         if self.conn.state is ConnState.CONNECTED and self._pending_server_id:
             self._preferred_server_id = self._pending_server_id
         if self.playback.local_player_found and self._pairing_code:
             self._pairing_code = ""
         self.changed.emit()
+
+    def _on_event(self, event) -> None:
+        kind = str(getattr(getattr(event, "event", None), "value", "") or "")
+        if kind in _PLAYER_EVENTS:
+            self._emit_speakers_if_changed()
+        if self._queue_visible and kind in _QUEUE_EVENTS:
+            if getattr(event, "object_id", None) not in (None, self._queue_id()):
+                return
+            # queue_updated arrives several times a second; reload only when the
+            # items or the current song changed (keeps the remote's focus steady).
+            current = self._current_item_id(self._queue_id())
+            if kind == "queue_items_updated" or current != self._last_current_item:
+                self._last_current_item = current
+                self.loadQueue()
+
+    def _emit_speakers_if_changed(self) -> None:
+        rows = self._speaker_rows()
+        if rows != self._last_speaker_rows:
+            self._last_speaker_rows = rows
+            self.speakersChanged.emit()
+
+    def _local_id(self) -> str | None:
+        client, cid = self.conn.client, self._get_client_id()
+        if client is None or not cid:
+            return None
+        local = find_local_player(list(client.players), cid)
+        return local.player_id if local is not None else None
+
+    def _queue_id(self) -> str | None:
+        """The controlled speaker's MA queue (its active source if that is a queue)."""
+        client, pid = self.conn.client, self.playback.active_player_id
+        if client is None or pid is None:
+            return None
+        player = client.players.get(pid)
+        source = getattr(player, "active_source", None)
+        try:
+            if source and client.player_queues.get(source) is not None:
+                return source
+        except Exception:
+            pass
+        return pid
+
+    def _current_item_id(self, queue_id: str | None) -> str | None:
+        client = self.conn.client
+        try:
+            q = client.player_queues.get(queue_id) if client is not None and queue_id else None
+        except Exception:
+            q = None
+        return getattr(getattr(q, "current_item", None), "queue_item_id", None)
+
+    def _set_toast(self, text: str) -> None:
+        self._toast = text
+        self.toastChanged.emit()
+
+    async def _run(self, coro, action: str, after=None) -> None:
+        ok = await coro
+        if not ok:
+            self._set_toast(_FAIL_TEXT.get(action, "That didn't work"))
+        if after is not None:
+            after()
 
     def _spawn(self, coro) -> None:
         task = asyncio.ensure_future(coro)
@@ -213,6 +306,156 @@ class AppController(QObject):
     @Slot(float, result=str)
     def formatTime(self, seconds: float) -> str:
         return format_time(seconds)
+
+    # --- library ---------------------------------------------------------------
+    @Property("QVariantList", notify=libraryChanged)
+    def libraryRows(self) -> list:
+        return self._library_rows
+
+    @Property(str, notify=libraryChanged)
+    def libraryError(self) -> str:
+        return self._library_error
+
+    @Property(bool, notify=libraryChanged)
+    def libraryBusy(self) -> bool:
+        return self._library_busy
+
+    def _set_library(self, rows, error: str = "", busy: bool = False) -> None:
+        self._library_rows = [{"title": t, "items": [_card(c) for c in cards]} for t, cards in rows]
+        self._library_error, self._library_busy = error, busy
+        self.libraryChanged.emit()
+
+    @Slot(str)
+    def search(self, query: str) -> None:
+        self._search_gen += 1
+        gen = self._search_gen
+        if not query.strip():
+            self.loadRecents()
+            return
+        self._library_busy = True
+        self.libraryChanged.emit()
+
+        async def run():
+            client = self.conn.client
+            out = await library.search(client, query) if client is not None else \
+                library.SearchOutcome(error=library.SEARCH_ERROR)
+            if gen == self._search_gen:  # a newer search wins
+                self._set_library(out.rows, out.error)
+        self._spawn(run())
+
+    @Slot()
+    def loadRecents(self) -> None:
+        self._search_gen += 1
+        gen = self._search_gen
+        self._library_busy = True
+        self.libraryChanged.emit()
+
+        async def run():
+            client = self.conn.client
+            rows = await library.recents(client) if client is not None else []
+            if gen == self._search_gen:
+                self._set_library(rows)
+        self._spawn(run())
+
+    @Slot(str, str)
+    def playUri(self, uri: str, mode: str) -> None:
+        client, pid = self.conn.client, self.playback.active_player_id
+        if client is None or pid is None:
+            self._set_toast(_FAIL_TEXT.get(mode, "That didn't work"))
+            return
+
+        async def done():
+            return await library.play(client, pid, uri, mode)
+        self._spawn(self._run(done(), mode, after=self.loadQueue if self._queue_visible else None))
+
+    # --- queue -----------------------------------------------------------------
+    @Property("QVariantList", notify=queueChanged)
+    def queueRows(self) -> list:
+        return self._queue_rows
+
+    @Property(bool, notify=queueChanged)
+    def queueVisible(self) -> bool:
+        return self._queue_visible
+
+    @queueVisible.setter
+    def queueVisible(self, visible: bool) -> None:
+        self._queue_visible = bool(visible)
+        if visible:
+            self.loadQueue()
+
+    @Slot()
+    def loadQueue(self) -> None:
+        client = self.conn.client
+        qid = self._queue_id()
+
+        async def run():
+            rows = await queue.load_queue(client, qid, self._current_item_id(qid)) if client else []
+            self._queue_rows = [{"itemId": r.item_id, "title": r.title, "subtitle": r.subtitle,
+                                 "imageUrl": art_url(r.image_url, 256), "duration": r.duration or 0,
+                                 "current": r.current} for r in rows]
+            self.queueChanged.emit()
+        self._spawn(run())
+
+    @Slot(str, str)
+    def queueAction(self, item_id: str, action: str) -> None:
+        client = self.conn.client
+        if client is None:
+            self._set_toast(_FAIL_TEXT.get(action, "That didn't work"))
+            return
+        self._spawn(self._run(queue.queue_action(client, self._queue_id(), item_id, action),
+                              action, after=self.loadQueue))
+
+    # --- speakers --------------------------------------------------------------
+    @Property("QVariantList", notify=speakersChanged)
+    def speakerRows(self) -> list:
+        return self._speaker_rows()
+
+    def _speaker_rows(self) -> list:
+        client = self.conn.client
+        if client is None:
+            return []
+        rows = speakers.speaker_rows(list(client.players), self.playback.active_player_id, self._local_id())
+        return [{"playerId": r.player_id, "name": r.name, "isGroup": r.is_group,
+                 "available": r.available, "controlled": r.controlled, "local": r.local,
+                 "syncedTo": r.synced_to or "", "members": list(r.members),
+                 "canSync": r.can_sync, "playing": r.playing} for r in rows]
+
+    @Slot(str)
+    def controlSpeaker(self, player_id: str) -> None:
+        self.playback.user_player_id = player_id or None
+        self.playback.refresh()
+        self._emit_speakers_if_changed()
+        if self._queue_visible:
+            self.loadQueue()
+
+    def _speaker(self, player_id: str, action: str, members=()) -> None:
+        client = self.conn.client
+        if client is None:
+            self._set_toast(_FAIL_TEXT.get(action, "That didn't work"))
+            return
+        coro = speakers.speaker_action(client, self.playback.active_player_id, player_id, action, members)
+        self._spawn(self._run(coro, action, after=self._emit_speakers_if_changed))
+
+    @Slot(str, str)
+    def speakerAction(self, player_id: str, action: str) -> None:
+        self._speaker(player_id, action)
+
+    @Slot("QVariantList")
+    def createGroup(self, member_ids: list) -> None:
+        self._speaker("", "create_group", [str(m) for m in member_ids])
+
+    @Slot(str, "QVariantList")
+    def editGroup(self, group_id: str, member_ids: list) -> None:
+        self._speaker(group_id, "edit_group", [str(m) for m in member_ids])
+
+    # --- toast -----------------------------------------------------------------
+    @Property(str, notify=toastChanged)
+    def toast(self) -> str:
+        return self._toast
+
+    @Slot()
+    def clearToast(self) -> None:
+        self._set_toast("")
 
     @Slot(str, str)
     def saveConnection(self, url: str, token: str) -> None:
