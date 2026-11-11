@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Literal
 
@@ -80,6 +81,7 @@ class Playback:
         self.active_player_id: str | None = None
         self.local_player_found = False
         self.now_playing: NowPlaying | None = None
+        self._local_stamp: tuple[float, float] | None = None  # (elapsed, local time)
         self._cbs: list[Callable[[], None]] = []
         conn.on_state(lambda _state: self.refresh())
         conn.on_event(lambda _event: self.refresh())
@@ -114,8 +116,14 @@ class Playback:
                 except Exception:
                     log.exception("playback listener failed")
 
-    @staticmethod
-    def _snapshot(client: Any, active: Any, media: Any) -> NowPlaying:
+    def _stamp(self, elapsed: float) -> float:
+        """Local time for a position report that came without a timestamp; kept while
+        the reported position is unchanged so progress does not jump back on refresh."""
+        if self._local_stamp is None or self._local_stamp[0] != elapsed:
+            self._local_stamp = (elapsed, time.time())
+        return self._local_stamp[1]
+
+    def _snapshot(self, client: Any, active: Any, media: Any) -> NowPlaying:
         queue = None
         queues = getattr(client, "player_queues", None)
         if queues is not None:
@@ -128,7 +136,9 @@ class Playback:
         # MA's own queue keeps the accurate position; other sources only report via the player.
         src = queue if queue is not None else media
         elapsed = _num(getattr(src, "elapsed_time", None)) or 0.0
-        elapsed_at = _num(getattr(src, "elapsed_time_last_updated", None)) or 0.0
+        elapsed_at = _num(getattr(src, "elapsed_time_last_updated", None))
+        if not elapsed_at or elapsed_at <= 0:
+            elapsed_at = self._stamp(elapsed)
         duration = _num(getattr(media, "duration", None))
         if not duration and queue is not None:
             duration = _num(getattr(getattr(queue, "current_item", None), "duration", None))

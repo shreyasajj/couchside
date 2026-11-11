@@ -122,7 +122,8 @@ Kirigami.Page {
                         id: artImage
                         anchors.fill: parent
                         source: app.artUrl
-                        sourceSize: Qt.size(600, 600)
+                        // decode at the card's real size: sharp on a 4K TV (URL serves 1024 px)
+                        sourceSize: Qt.size(artCard.side, artCard.side)
                     }
                 }
                 MultiEffect {  // rounded corners + soft shadow

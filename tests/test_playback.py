@@ -163,8 +163,10 @@ def test_now_playing_from_player_media():
                image_url="http://img/1.jpg")
     _, pb, _ = make([player(CID, state="playing", media=media)])
     pb.refresh()
-    assert pb.now_playing == NowPlaying("Midnight City", "M83", "Hurry Up, We're Dreaming",
-                                        "http://img/1.jpg", "playing")
+    from dataclasses import replace
+    # no timestamp in this media: it gets a local one (see test_missing_timestamp_*)
+    assert replace(pb.now_playing, elapsed_at=0.0) == NowPlaying(
+        "Midnight City", "M83", "Hurry Up, We're Dreaming", "http://img/1.jpg", "playing")
 
 
 def test_now_playing_none_when_nothing_loaded():
@@ -276,3 +278,30 @@ async def test_queue_commands_noop_when_disconnected():
     await pb.cycle_repeat()
     await pb.set_volume(10)
     assert conn.client.player_queues.calls == [] and conn.client.players.calls == []
+
+
+def test_missing_timestamp_is_stamped_with_snapshot_time(monkeypatch):
+    # PlayerMedia.elapsed_time_last_updated defaults to None (sources without an MA queue).
+    import couchside.core.playback as pbm
+    monkeypatch.setattr(pbm.time, "time", lambda: 5000.0)
+    np = make_playing(queue=None, media_elapsed=30.0, media_at=None, duration=None)
+    assert np.elapsed_at == 5000.0
+    assert position_at(np, 5002.0) == 32.0  # not ~5000 s
+
+
+def test_stamped_time_kept_across_refreshes(monkeypatch):
+    # Re-stamping on every event would make the progress jump back each refresh.
+    import couchside.core.playback as pbm
+    clock = [5000.0]
+    monkeypatch.setattr(pbm.time, "time", lambda: clock[0])
+    media = NS(title="T", artist="A", album="", image_url=None, duration=None,
+               elapsed_time=30.0, elapsed_time_last_updated=None, palette=None)
+    p = player(CID, state="playing", media=media, active_source=CID, volume_level=1, volume_control="x")
+    conn, pb, _ = make([p])
+    pb.refresh()
+    clock[0] = 5010.0
+    conn.fire_event()
+    assert pb.now_playing.elapsed_at == 5000.0
+    media.elapsed_time = 12.0  # a new position report (seek / new track) gets a new stamp
+    conn.fire_event()
+    assert pb.now_playing.elapsed_at == 5010.0

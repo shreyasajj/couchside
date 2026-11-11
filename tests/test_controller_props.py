@@ -11,10 +11,8 @@ PROXY = "http://ma:8095/imageproxy/abc?size=512&fmt=jpg"
 
 
 @pytest.fixture
-def ctl(tmp_path, monkeypatch):
+def ctl(tmp_path, monkeypatch, qt_app):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    if QtCore.QCoreApplication.instance() is None:
-        QtCore.QCoreApplication([])
     from couchside.ui.controller import AppController
     c = AppController(AppSettings())
     c.playback.now_playing = NowPlaying(
