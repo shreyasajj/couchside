@@ -212,20 +212,31 @@ class HttpClient:
         self._timeout = timeout
         self._session = None
 
-    async def get(self, url: str, params: dict) -> tuple[int, Any]:
+    def _ensure(self):
         import aiohttp
 
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=self._timeout),
                 headers={"User-Agent": USER_AGENT})
-        async with self._session.get(url, params=params) as r:
-            if r.status != 200:
-                return r.status, None
-            try:
-                return r.status, await r.json(content_type=None)
-            except Exception:
-                return r.status, None
+        return self._session
+
+    @staticmethod
+    async def _read(r) -> tuple[int, Any]:
+        if r.status != 200:
+            return r.status, None
+        try:
+            return r.status, await r.json(content_type=None)
+        except Exception:
+            return r.status, None
+
+    async def get(self, url: str, params: dict) -> tuple[int, Any]:
+        async with self._ensure().get(url, params=params) as r:
+            return await self._read(r)
+
+    async def post_json(self, url: str, body: dict, headers: dict | None = None) -> tuple[int, Any]:
+        async with self._ensure().post(url, json=body, headers=headers) as r:
+            return await self._read(r)
 
     async def close(self) -> None:
         if self._session is not None:

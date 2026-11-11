@@ -263,3 +263,31 @@ async def test_http_client_reuses_one_session(monkeypatch):
     assert await client.get("u", {}) == (200, {"ok": True})
     assert len(made) == 1 and made[0]["headers"]["User-Agent"].startswith("Couchside/")
     await client.close()
+
+
+async def test_http_client_post_json(monkeypatch):
+    import couchside.core.lyrics as lyr
+    sent = []
+
+    class FakeResp:
+        status = 200
+        async def json(self, content_type=None):
+            return {"ok": 1}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    class FakeSession:
+        def __init__(self, **kw):
+            self.closed = False
+        def post(self, url, json=None, headers=None):
+            sent.append((url, json, headers))
+            return FakeResp()
+        async def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("aiohttp.ClientSession", FakeSession)
+    c = lyr.HttpClient()
+    assert await c.post_json("u", {"a": 1}, headers={"H": "v"}) == (200, {"ok": 1})
+    assert sent == [("u", {"a": 1}, {"H": "v"})]
