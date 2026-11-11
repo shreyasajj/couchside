@@ -78,6 +78,7 @@ Rectangle {
             }
         }
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.preferredWidth: 90 * popup.u
             horizontalAlignment: Text.AlignRight
             text: popup.level

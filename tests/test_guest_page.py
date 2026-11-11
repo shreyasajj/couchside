@@ -25,3 +25,8 @@ def test_page_never_renders_server_text_as_html():
 def test_page_is_packaged():
     text = (Path(__file__).parents[1] / "pyproject.toml").read_text()
     assert "web/*.html" in text
+
+
+def test_skip_names_the_song_being_skipped():
+    html = PAGE.read_text()
+    assert 'act($("skip"), "skip", { currentItemId: last.nowPlaying.itemId }' in html

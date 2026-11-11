@@ -8,6 +8,7 @@ newest boost wins, because each one is moved right after the current song).
 
 from __future__ import annotations
 
+import asyncio
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ from typing import Iterable
 
 _DEVICE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 MAX_NAME = 24
+MAX_GUESTS = 50
 
 
 class GuestError(Exception):
@@ -36,6 +38,13 @@ class Guest:
     skips_used: int = 0
     boosts_used: int = 0
     last_add: float | None = None
+    # songs this guest's own searches returned: the only URIs they may add
+    offered: set[str] = field(default_factory=set)
+
+    def offer(self, uris) -> None:
+        self.offered.update(uris)
+        if len(self.offered) > 500:  # keep it bounded; the newest search matters
+            self.offered = set(list(self.offered)[-500:])
 
 
 @dataclass
@@ -44,10 +53,19 @@ class GuestSession:
     token: str = ""
     guests: dict[str, Guest] = field(default_factory=dict)
     _credits: dict[str, str] = field(default_factory=dict)  # queue item id -> device id
+    _lock: asyncio.Lock | None = None
 
     def __post_init__(self) -> None:
         if not self.token:
             self.new_token()
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Serialises guest actions: a rule check and the change it allows happen together,
+        so parallel requests can't slip past the limits."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     def new_token(self) -> None:
         """New QR link; old links, guests and credits are forgotten."""
@@ -64,6 +82,8 @@ class GuestSession:
             raise GuestError(f"Enter a name (up to {MAX_NAME} characters)")
         guest = self.guests.get(device_id)
         if guest is None:
+            if len(self.guests) >= MAX_GUESTS:
+                raise GuestError("This party is full — ask the host")
             guest = self.guests[device_id] = Guest(device_id, name)
         else:
             guest.name = name

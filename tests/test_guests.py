@@ -98,3 +98,13 @@ def test_credits_and_remaining():
     s.use_skip(g)
     assert s.added_by("a") == "Sam" and s.added_by("zzz") is None
     assert s.remaining(g, upcoming_ids=["a"]) == {"skips": 2, "boosts": 2, "waiting": 1, "maxWaiting": 3}
+
+
+def test_party_has_a_guest_cap():
+    from couchside.core.guests import MAX_GUESTS
+    s = session()
+    for n in range(MAX_GUESTS):
+        s.join(f"device-{n:04d}-abc", f"G{n}")
+    with pytest.raises(GuestError, match="full"):
+        s.join("device-extra-abc", "Late")
+    s.join("device-0001-abc", "G1 again")  # someone already in can still rejoin

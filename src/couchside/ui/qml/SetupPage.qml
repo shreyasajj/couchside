@@ -118,12 +118,14 @@ Kirigami.Page {
             RowLayout {
                 Layout.fillWidth: true
                 QQC2.Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: row.label
                     color: "#ffffff"
                     font.pixelSize: 32 * page.u
                 }
                 QQC2.Label {
+                    textFormat: Text.PlainText
                     text: row.value
                     color: "#4fc3f7"
                     font.pixelSize: 32 * page.u
@@ -131,6 +133,7 @@ Kirigami.Page {
                 }
             }
             QQC2.Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: row.hint !== ""
                 text: row.hint
@@ -173,6 +176,8 @@ Kirigami.Page {
             spacing: 24 * page.u
 
             QQC2.Label {
+
+                textFormat: Text.PlainText
                 text: "Settings"
                 color: "#ffffff"
                 font.pixelSize: 56 * page.u
@@ -181,6 +186,7 @@ Kirigami.Page {
 
             Heading { text: "Music Assistant" }
             QQC2.Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: app.connState === "auth_failed" && app.hasToken
                 text: "Music Assistant did not accept the token. Create a new one and enter it below."

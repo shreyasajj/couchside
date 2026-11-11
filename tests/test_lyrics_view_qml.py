@@ -92,3 +92,16 @@ def test_translation_shows_under_the_line(view):
     assert sub and sub[0].property("visible")
     assert line.property("bottomPadding") > 0
     assert sub[0].property("font").pixelSize() < line.property("font").pixelSize()
+
+
+def test_text_from_outside_is_never_rich_text(view):
+    root = view.rootObject()
+    root.setProperty("lines", [{"t": 0.0, "text": "<img src=http://a.b/c><b>x</b>", "sub": "<h1>big</h1>"}])
+    root.setProperty("position", 1.0)
+    pump(0.4)
+    from PySide6.QtQml import QQmlEngine, QQmlExpression
+    line = first_line(root)
+    ctx = QQmlEngine.contextForObject(line)
+    assert QQmlExpression(ctx, line, "textFormat === Text.PlainText").evaluate()[0] is True
+    sub = [c for c in line.childItems() if c.property("text") == "<h1>big</h1>"][0]
+    assert QQmlExpression(ctx, sub, "textFormat === Text.PlainText").evaluate()[0] is True

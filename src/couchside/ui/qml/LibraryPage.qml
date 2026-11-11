@@ -57,6 +57,8 @@ Kirigami.Page {
         spacing: 24 * page.u
 
         QQC2.Label {
+
+            textFormat: Text.PlainText
             text: "Search"
             color: "#ffffff"
             font.pixelSize: 48 * page.u
@@ -96,6 +98,8 @@ Kirigami.Page {
         }
 
         QQC2.Label {
+
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             visible: text !== ""
             text: app.libraryBusy ? "Searching…"
@@ -140,6 +144,8 @@ Kirigami.Page {
                 spacing: 16 * page.u
 
                 QQC2.Label {
+
+                    textFormat: Text.PlainText
                     text: rowItem.modelData.title
                     color: "#ffffff"
                     opacity: rowItem.ListView.isCurrentItem ? 1 : 0.7

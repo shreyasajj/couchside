@@ -448,24 +448,35 @@ class FakeGuestServer:
 def guest_ctl(ctl, monkeypatch):
     fake = FakeGuestServer()
     monkeypatch.setattr(ctl, "_make_guest_server", lambda: fake)
-    monkeypatch.setattr("couchside.ui.controller.lan_ip", lambda probe="": "192.168.30.153")
+    calls = []
+
+    def fake_lan_ip(probe=""):
+        calls.append(probe)
+        return "192.168.30.153"
+    monkeypatch.setattr("couchside.ui.controller.lan_ip", fake_lan_ip)
     ctl._fake_server = fake
+    ctl._lan_calls = calls
     return ctl
+
+
+async def settle_long():
+    for _ in range(100):
+        await asyncio.sleep(0.002)
 
 
 async def test_guest_mode_starts_server_and_rotates_link(guest_ctl):
     ctl = guest_ctl
     assert not ctl.guestMode and ctl.guestUrl == ""
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     assert ctl.guestMode and ctl._fake_server.started == 1
     first = ctl.guestUrl
     assert first.startswith("http://192.168.30.153:8765/g/") and first.endswith("/")
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     assert not ctl.guestMode and ctl._fake_server.stopped == 1 and ctl.guestUrl == ""
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     assert ctl.guestUrl != first  # new link every time
 
 
@@ -473,14 +484,14 @@ async def test_guest_url_uses_public_url(guest_ctl):
     ctl = guest_ctl
     ctl.setGuestPublicUrl(" https://party.example.com/ ")
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     assert ctl.guestUrl.startswith("https://party.example.com/g/")
 
 
 async def test_qr_rows_encode_the_link(guest_ctl):
     ctl = guest_ctl
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     rows = ctl.qrRows
     assert len(rows) >= 21 and all(len(r) == len(rows) for r in rows)
     assert rows[0].startswith("1111111")  # finder pattern
@@ -491,7 +502,7 @@ async def test_guest_rules_cycle_save_and_apply_live(guest_ctl):
     from couchside.core.settings import load_settings
     ctl = guest_ctl
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     before = ctl.guestSkips
     ctl.cycleGuestSkips()
     assert ctl.guestSkips != before
@@ -508,7 +519,7 @@ async def test_credits_on_queue_rows_and_now_playing(guest_ctl, monkeypatch):
     ctl = guest_ctl
     wire(ctl)
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     g = ctl._guest_session.join("device-abcdef12", "Sam")
     ctl._guest_session.note_added(g, "a", now=0)
 
@@ -526,6 +537,21 @@ async def test_guests_notified_on_queue_changes(guest_ctl, monkeypatch):
     ctl = guest_ctl
     wire(ctl)
     ctl.toggleGuestMode()
-    await settle()
+    await settle_long()
     ctl._on_event(NS(event=NS(value="queue_items_updated"), object_id="tv"))
     assert ctl._fake_server.notified >= 1
+
+
+async def test_qr_link_worked_out_once_per_session(guest_ctl):
+    ctl = guest_ctl
+    ctl.toggleGuestMode()
+    await settle_long()
+    for _ in range(5):
+        ctl.guestUrl, ctl.qrRows
+        ctl.guestChanged.emit()          # joins, adds, song changes
+    assert len(ctl._lan_calls) == 1
+    ctl.toggleGuestMode()
+    await settle_long()
+    ctl.toggleGuestMode()                # new session: worked out again
+    await settle_long()
+    assert len(ctl._lan_calls) == 2

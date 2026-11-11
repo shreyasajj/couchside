@@ -27,6 +27,7 @@ async def env(tmp_path):
     yield NS(tc=tc, session=session, client=client, server=server, state=state,
              base=f"/g/{session.token}/")
     await tc.close()
+    await server.stop()  # closes the image proxy's HTTP session
 
 
 async def join(env, name="Sam"):
@@ -69,15 +70,18 @@ async def test_actions_need_a_joined_guest(env):
 
 async def test_add_skip_boost(env):
     await join(env)
-    r = await env.tc.post(env.base + "api/add", json={"deviceId": DEV, "uri": "x://t/9"})
+    await env.tc.get(env.base + "api/search", params={"deviceId": DEV, "q": "love"})
+    r = await env.tc.post(env.base + "api/add", json={"deviceId": DEV, "uri": "x://t/1"})
     assert r.status == 200
     new = next(i.queue_item_id for i in env.client.player_queues.items if env.session.added_by(i.queue_item_id))
     assert env.session.added_by(new) == "Sam"
     r = await env.tc.post(env.base + "api/boost", json={"deviceId": DEV, "itemId": new})
     assert r.status == 200
-    r = await env.tc.post(env.base + "api/skip", json={"deviceId": DEV})
+    cur = env.client.player_queues.current
+    r = await env.tc.post(env.base + "api/skip", json={"deviceId": DEV, "currentItemId": cur})
     assert r.status == 200
-    r = await env.tc.post(env.base + "api/skip", json={"deviceId": DEV})
+    cur = env.client.player_queues.current
+    r = await env.tc.post(env.base + "api/skip", json={"deviceId": DEV, "currentItemId": cur})
     assert r.status == 400 and "No skips left" in (await r.json())["error"]
 
 
@@ -101,8 +105,18 @@ async def test_body_size_capped(env):
 
 
 async def test_image_proxy_only_for_ma_images(env, monkeypatch):
-    r = await env.tc.get(env.base + "api/img", params={"u": "http://evil.example/x.jpg"})
-    assert r.status == 400
+    for bad in ("http://evil.example/x.jpg",
+                "http://ma:8095/imageproxy/../info",
+                "http://ma:8095/imageproxy/%2e%2e/info",
+                "http://ma:8095/imageproxy?path=http://192.168.1.1/&provider=builtin",
+                "http://ma:8095.evil.com/imageproxy/abc",
+                "http://user@ma:8095/imageproxy/abc",
+                "http://ma:8095/imageproxy/abc?size=256&path=x",
+                "https://ma:8095/imageproxy/abc"):
+        r = await env.tc.get(env.base + "api/img", params={"u": bad})
+        assert r.status == 400, bad
+    r = await env.tc.get(env.base + "api/img", params={"u": "http://ma:8095/imageproxy/abc123?size=256"})
+    assert r.status != 400  # allowed (MA isn't reachable in the test, so 502)
 
 
 async def test_websocket_gets_change_pings(env):
@@ -120,3 +134,101 @@ async def test_new_token_locks_out_old_links(env):
     old = env.base
     env.session.new_token()
     assert (await env.tc.get(old)).status == 403
+
+
+# --- review fixes: abuse limits and server lifecycle -------------------------------------
+
+async def test_devices_per_address_capped_on_the_lan(env):
+    for n in range(3):
+        r = await env.tc.post(env.base + "api/join", json={"deviceId": f"device-{n}-abcdef", "name": f"G{n}"})
+        assert r.status == 200
+    r = await env.tc.post(env.base + "api/join", json={"deviceId": "device-9-abcdef", "name": "Sneaky"})
+    assert r.status == 429
+
+
+async def test_search_is_rate_limited(env):
+    await join(env)
+    codes = []
+    for _ in range(15):
+        r = await env.tc.get(env.base + "api/search", params={"deviceId": DEV, "q": "x"})
+        codes.append(r.status)
+    assert 429 in codes and codes[0] == 200
+
+
+async def test_websockets_capped(env, monkeypatch):
+    import couchside.core.guest_server as gs
+    monkeypatch.setattr(gs, "MAX_SOCKETS", 2)
+    socks = [await env.tc.ws_connect(env.base + "api/ws") for _ in range(2)]
+    r = await env.tc.get(env.base + "api/ws", headers={"Upgrade": "websocket", "Connection": "Upgrade",
+                                                       "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="})
+    assert r.status == 503
+    r.release()
+    for w in socks:
+        await w.close()
+
+
+def _free_port():
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+async def _listening(port):
+    try:
+        _, w = await asyncio.open_connection("127.0.0.1", port)
+        w.close()
+        return True
+    except OSError:
+        return False
+
+
+async def test_start_after_a_failed_bind(tmp_path):
+    import socket
+    page = tmp_path / "p.html"
+    page.write_text("x")
+    port = _free_port()
+    blocker = socket.socket()
+    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    blocker.bind(("0.0.0.0", port))
+    blocker.listen()
+    server = GuestServer(lambda: None, lambda: None, page_path=page, port=port)
+    with pytest.raises(OSError):
+        await server.start()
+    blocker.close()
+    await server.start()                       # works once the port is free
+    assert await _listening(port)
+    await server.stop()
+
+
+async def test_quick_off_then_on_keeps_the_server_running(tmp_path):
+    page = tmp_path / "p.html"
+    page.write_text("x")
+    port = _free_port()
+    server = GuestServer(lambda: None, lambda: None, page_path=page, port=port)
+    await server.start()
+    stop = asyncio.ensure_future(server.stop())
+    start = asyncio.ensure_future(server.start())
+    await asyncio.gather(stop, start)
+    assert await _listening(port)
+    await server.stop()
+    assert not await _listening(port)
+
+
+def test_lan_ip_never_loopback_when_a_lan_route_exists(monkeypatch):
+    import couchside.core.guest_server as gs
+
+    class FakeSock:
+        def __init__(self, *a):
+            self.target = None
+        def connect(self, addr):
+            self.target = addr[0]
+        def getsockname(self):
+            return ("127.0.0.1" if self.target in ("127.0.0.1", "localhost") else "10.0.0.5", 0)
+        def close(self):
+            pass
+    monkeypatch.setattr(gs.socket, "socket", FakeSock)
+    assert gs.lan_ip("127.0.0.1") == "10.0.0.5"   # MA on this same box
+    assert gs.lan_ip("192.168.30.3") == "10.0.0.5"

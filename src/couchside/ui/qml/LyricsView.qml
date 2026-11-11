@@ -60,6 +60,8 @@ ListView {
     }
 
     delegate: Text {
+
+        textFormat: Text.PlainText
         id: line
         required property var modelData
         required property int index
@@ -95,6 +97,7 @@ ListView {
         readonly property string sub: modelData.sub || ""
         bottomPadding: sub !== "" ? subText.implicitHeight + 6 * view.u : 0
         Text {
+            textFormat: Text.PlainText
             id: subText
             visible: line.sub !== ""
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

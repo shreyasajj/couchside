@@ -83,6 +83,7 @@ Kirigami.Page {
 
     // --- status ---------------------------------------------------------------------
     QQC2.Label {
+        textFormat: Text.PlainText
         anchors { left: parent.left; top: parent.top; margins: page.margin }
         width: parent.width * 0.6
         visible: text !== ""
@@ -166,6 +167,8 @@ Kirigami.Page {
                 spacing: 12 * page.u
 
                 QQC2.Label {
+
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: page.hasMedia ? app.title : (app.hasLocalPlayer ? "Nothing playing" : "")
                     color: "#ffffff"
@@ -177,6 +180,7 @@ Kirigami.Page {
                     lineHeight: 1.05
                 }
                 QQC2.Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: text !== ""
                     text: page.hasMedia ? app.artist : "Play something from Music Assistant"
@@ -186,6 +190,7 @@ Kirigami.Page {
                     elide: Text.ElideRight
                 }
                 QQC2.Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: page.hasMedia && text !== ""
                     text: app.album
@@ -231,6 +236,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 spacing: 6 * page.u
                 QQC2.Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: app.title
                     color: "#ffffff"
@@ -239,6 +245,7 @@ Kirigami.Page {
                     elide: Text.ElideRight
                 }
                 QQC2.Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: [app.artist, app.album].filter(s => s !== "").join(" · ")
                     color: "#ffffff"
@@ -274,6 +281,7 @@ Kirigami.Page {
             anchors.horizontalCenter: parent.horizontalCenter
         }
         QQC2.Label {
+            textFormat: Text.PlainText
             width: guestQr.width + 40 * page.u
             anchors.horizontalCenter: parent.horizontalCenter
             text: app.qrCaption
@@ -294,6 +302,7 @@ Kirigami.Page {
         radius: height / 2
         color: "#334fc3f7"
         QQC2.Label {
+            textFormat: Text.PlainText
             id: creditText
             anchors.centerIn: parent
             text: "Added by " + app.nowPlayingCredit

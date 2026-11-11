@@ -48,12 +48,15 @@ Kirigami.Page {
         spacing: 24 * page.u
 
         QQC2.Label {
+
+            textFormat: Text.PlainText
             text: "Queue"
             color: "#ffffff"
             font.pixelSize: 48 * page.u
             font.weight: Font.Bold
         }
         QQC2.Label {
+            textFormat: Text.PlainText
             visible: list.count === 0
             text: "Nothing queued — add songs from Search"
             color: "#ffffff"

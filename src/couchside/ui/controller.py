@@ -60,6 +60,7 @@ class AppController(QObject):
     toastChanged = Signal()
     lyricsChanged = Signal()
     guestChanged = Signal()
+    qrChanged = Signal()
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -92,6 +93,8 @@ class AppController(QObject):
         self._guest_session: GuestSession | None = None
         self._guest_server = None
         self._guest_last_current: str | None = None
+        self._guest_url = ""
+        self._qr_rows: list[str] = []
         self._raw_lyrics: list = []          # LyricLine list as found, current song
         self._raw_english = False
         self._translation: list[str] | None = None
@@ -714,7 +717,9 @@ class AppController(QObject):
         import couchside
         page = Path(couchside.__file__).parent / "web" / "guest.html"
         return GuestServer(lambda: self._guest_session, self._guest_context, page,
-                           on_change=self.guestChanged.emit)
+                           on_change=self.guestChanged.emit,
+                           # behind a reverse proxy every phone has the proxy's address
+                           limit_per_address=lambda: not self._settings.guest_public_url)
 
     @Property(bool, notify=guestChanged)
     def guestMode(self) -> bool:
@@ -737,34 +742,51 @@ class AppController(QObject):
                     self._set_toast(f"Couldn't start guest mode (port {GUEST_PORT} busy?)")
                     self.guestChanged.emit()
             self._spawn(start())
+            self._update_guest_link()
         else:
             self._guest_session = None
+            self._guest_url, self._qr_rows = "", []
+            self.qrChanged.emit()
             if self._guest_server is not None:
                 self._spawn(self._guest_server.stop())
         self.guestChanged.emit()
-        self.queueChanged.emit()
+        self.loadQueue()  # credits appear / disappear
 
-    @Property(str, notify=guestChanged)
-    def guestUrl(self) -> str:
-        if self._guest_session is None:
-            return ""
-        base = (self._settings.guest_public_url or "").strip().rstrip("/")
-        if not base:
-            host = None
-            url = self._settings.server_url
-            if url:
+    def _update_guest_link(self) -> None:
+        """Work out the guest link and its QR once per session (or when the public URL
+        changes), off the UI thread: finding the LAN address may resolve a host name."""
+        session = self._guest_session
+        if session is None:
+            return
+        token = session.token
+        public = (self._settings.guest_public_url or "").strip().rstrip("/")
+        ma_url = self._settings.server_url
+
+        def build():
+            base = public
+            if not base:
                 from urllib.parse import urlsplit
-                host = urlsplit(url).hostname
-            base = f"http://{lan_ip(host or '192.168.0.1')}:{GUEST_PORT}"
-        return f"{base}/g/{self._guest_session.token}/"
+                host = urlsplit(ma_url).hostname if ma_url else None
+                base = f"http://{lan_ip(host or '192.168.0.1')}:{GUEST_PORT}"
+            url = f"{base}/g/{token}/"
+            import segno
+            rows = ["".join("1" if m else "0" for m in row) for row in segno.make(url, error="m").matrix]
+            return url, rows
 
-    @Property("QVariantList", notify=guestChanged)
+        async def run():
+            url, rows = await asyncio.get_running_loop().run_in_executor(None, build)
+            if self._guest_session is not None and self._guest_session.token == token:
+                self._guest_url, self._qr_rows = url, rows
+                self.qrChanged.emit()
+        self._spawn(run())
+
+    @Property(str, notify=qrChanged)
+    def guestUrl(self) -> str:
+        return self._guest_url
+
+    @Property("QVariantList", notify=qrChanged)
     def qrRows(self) -> list:
-        url = self.guestUrl
-        if not url:
-            return []
-        import segno
-        return ["".join("1" if m else "0" for m in row) for row in segno.make(url, error="m").matrix]
+        return self._qr_rows
 
     @Property(str, notify=guestChanged)
     def nowPlayingCredit(self) -> str:
@@ -790,9 +812,16 @@ class AppController(QObject):
 
     @Slot(str)
     def setGuestPublicUrl(self, url: str) -> None:
-        self._settings.guest_public_url = url.strip().rstrip("/") or None
+        url = url.strip().rstrip("/")
+        if url and "://" not in url:
+            url = "https://" + url  # a bare host name would make the QR plain text
+        if url and not url.lower().startswith(("http://", "https://")):
+            self._set_toast("The public URL must start with https:// or http://")
+            return
+        self._settings.guest_public_url = url or None
         save_settings(self._settings)
         self.guestChanged.emit()
+        self._update_guest_link()
 
     def _cycle_rule(self, field: str, choices: tuple[int, ...]) -> None:
         value = getattr(self._settings, field)

@@ -275,7 +275,10 @@
     $("q").blur();
   };
   $("skip").onclick = () => {
-    if (confirm("Skip the song that's playing now? It uses one of your skips.")) act($("skip"), "skip", {}, "Skipped");
+    if (!last || !last.nowPlaying) return;
+    // name the song: if someone else skipped it a moment ago, this one isn't used up
+    if (confirm("Skip the song that's playing now? It uses one of your skips."))
+      act($("skip"), "skip", { currentItemId: last.nowPlaying.itemId }, "Skipped");
   };
 
   const saved = store.get("couchside-name");

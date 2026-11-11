@@ -71,6 +71,7 @@ FocusScope {
                 Layout.fillWidth: true
                 spacing: 16 * row.u
                 QQC2.Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: row.title
                     color: "#ffffff"
@@ -87,6 +88,7 @@ FocusScope {
                         implicitHeight: badge.implicitHeight + 8 * row.u
                         implicitWidth: badge.implicitWidth + 28 * row.u
                         QQC2.Label {
+                            textFormat: Text.PlainText
                             id: badge
                             anchors.centerIn: parent
                             text: parent.modelData
@@ -97,6 +99,7 @@ FocusScope {
                 }
             }
             QQC2.Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: text !== ""
                 text: row.subtitle
@@ -108,6 +111,8 @@ FocusScope {
         }
 
         QQC2.Label {
+
+            textFormat: Text.PlainText
             visible: text !== ""
             text: row.trailing
             color: "#ffffff"

@@ -60,12 +60,15 @@ Rectangle {
             spacing: 20 * editor.u
 
             QQC2.Label {
+
+                textFormat: Text.PlainText
                 text: editor.groupId === "" ? "New group" : "Edit group"
                 color: "#ffffff"
                 font.pixelSize: 40 * editor.u
                 font.weight: Font.Bold
             }
             QQC2.Label {
+                textFormat: Text.PlainText
                 text: "Pick two or more speakers to play in sync"
                 color: "#ffffff"
                 opacity: 0.75
@@ -105,6 +108,7 @@ Rectangle {
                             border.width: 3 * editor.u
                             border.color: option.lit ? "#000000" : "#ffffff"
                             QQC2.Label {
+                                textFormat: Text.PlainText
                                 anchors.centerIn: parent
                                 visible: option.on
                                 text: "✓"
@@ -114,6 +118,7 @@ Rectangle {
                             }
                         }
                         QQC2.Label {
+                            textFormat: Text.PlainText
                             Layout.fillWidth: true
                             text: option.modelData.name
                             color: option.lit ? "#000000" : "#ffffff"

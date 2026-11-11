@@ -16,6 +16,8 @@ Rectangle {
     z: 300
 
     QQC2.Label {
+
+        textFormat: Text.PlainText
         id: label
         anchors.centerIn: parent
         text: app.toast

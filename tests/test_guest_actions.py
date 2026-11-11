@@ -18,12 +18,17 @@ class FakeQueues:
         self.items, self.current, self.calls = list(items), current, []
         self.fail = set()
 
+    current_index = None
+
     def get(self, qid):
         cur = next((i for i in self.items if i.queue_item_id == self.current), None)
-        return NS(queue_id=qid, current_item=cur)
+        idx = self.current_index
+        if idx is None and cur is not None:
+            idx = self.items.index(cur)
+        return NS(queue_id=qid, current_item=cur, current_index=idx)
 
     async def get_queue_items(self, qid, limit=500, offset=0):
-        return list(self.items)
+        return list(self.items[offset:offset + limit])
 
     async def play_media(self, qid, media, option=None):
         opt = str(getattr(option, "value", option))
@@ -51,13 +56,18 @@ class FakeQueues:
 
 
 class FakePlayers:
-    def __init__(self):
-        self.calls, self.fail = [], False
+    def __init__(self, queues=None):
+        self.calls, self.fail, self.queues = [], False, queues
 
     async def next_track(self, pid):
         self.calls.append(("next", pid))
         if self.fail:
             raise RuntimeError("nope")
+        q = self.queues
+        if q is not None:  # MA moves on to the next song
+            ids = [i.queue_item_id for i in q.items]
+            if q.current in ids and ids.index(q.current) + 1 < len(ids):
+                q.current = ids[ids.index(q.current) + 1]
 
 
 class FakeMusic:
@@ -75,7 +85,7 @@ class FakeMusic:
 
 def setup(items=None, **rules):
     queues = FakeQueues(items if items is not None else [item("cur", "Now")])
-    client = NS(player_queues=queues, players=FakePlayers(), music=FakeMusic(),
+    client = NS(player_queues=queues, players=FakePlayers(queues), music=FakeMusic(),
                 server_info=NS(base_url="http://ma:8095"))
     s = GuestSession(GuestRules(**rules))
     g = s.join("device-abcdef12", "Sam")
@@ -84,6 +94,7 @@ def setup(items=None, **rules):
 
 async def test_add_track_credits_the_new_item():
     client, s, g = setup()
+    g.offered.add("x://t/9")
     await add_track(client, Q, "tv", s, g, "x://t/9", now=1)
     new = [i.queue_item_id for i in client.player_queues.items if s.added_by(i.queue_item_id)]
     assert len(new) == 1
@@ -92,6 +103,7 @@ async def test_add_track_credits_the_new_item():
 
 async def test_add_respects_waiting_limit():
     client, s, g = setup(max_waiting=1)
+    g.offered.update({"x://t/1", "x://t/2"})
     await add_track(client, Q, "tv", s, g, "x://t/1", now=1)
     with pytest.raises(GuestError, match="1 songs waiting"):
         await add_track(client, Q, "tv", s, g, "x://t/2", now=2)
@@ -99,6 +111,7 @@ async def test_add_respects_waiting_limit():
 
 async def test_add_failure_is_a_guest_error():
     client, s, g = setup()
+    g.offered.add("x://t/1")
     client.player_queues.fail.add("add")
     with pytest.raises(GuestError, match="Couldn't add"):
         await add_track(client, Q, "tv", s, g, "x://t/1", now=1)
@@ -114,11 +127,11 @@ async def test_only_track_uris_accepted():
 
 async def test_skip_uses_a_skip_and_refunds_on_failure():
     client, s, g = setup(skips=2)
-    await skip(client, "tv", s, g)
+    await skip(client, Q, "tv", s, g, "cur")
     assert client.players.calls == [("next", "tv")] and g.skips_used == 1
     client.players.fail = True
     with pytest.raises(GuestError):
-        await skip(client, "tv", s, g)
+        await skip(client, Q, "tv", s, g, "cur")
     assert g.skips_used == 1
 
 
@@ -151,16 +164,19 @@ async def test_guest_state():
 
 async def test_guest_search_is_tracks_only():
     client, s, g = setup()
-    results = await guest_search(client, "love")
+    results = await guest_search(client, "love", guest=g)
     assert client.music.calls == [("love", ["track"], 20)]
     assert results == [{"uri": "x://t/1", "title": "Song", "subtitle": "Band", "imageUrl": ""}]
-    assert await guest_search(client, "  ") == []
+    assert await guest_search(client, "  ", guest=g) == []
+    assert "x://t/1" in g.offered
 
 
 async def test_guest_songs_play_first_come_first_served_before_the_rest():
     # autoplay / other queued songs stay behind the guests' songs
     client, s, g = setup([item("cur", "Now"), item("auto1", "Auto 1"), item("auto2", "Auto 2")])
     ana = s.join("device-ana-12345", "Ana")
+    g.offered.update({"x://t/1", "x://t/3"})
+    ana.offered.add("x://t/2")
     await add_track(client, Q, "tv", s, g, "x://t/1", now=1)    # Sam first
     await add_track(client, Q, "tv", s, ana, "x://t/2", now=2)  # then Ana
     await add_track(client, Q, "tv", s, g, "x://t/3", now=3)    # then Sam again
@@ -168,3 +184,70 @@ async def test_guest_songs_play_first_come_first_served_before_the_rest():
     assert order == ["Now", "Sam", "Ana", "Sam", "Auto 1", "Auto 2"]
     uris = [i.media_item.uri for i in client.player_queues.items[1:4]]
     assert uris == ["x://t/1", "x://t/2", "x://t/3"]
+
+
+# --- review fixes -------------------------------------------------------------------
+
+import asyncio  # noqa: E402
+
+
+async def searched(client, s, g, *uris):
+    """Pretend the guest's own search returned these uris (only those can be added)."""
+    for u in uris:
+        g.offered.add(u)
+
+
+async def test_parallel_adds_cannot_beat_the_limits():
+    client, s, g = setup(max_waiting=3, cooldown=60)
+    slow = client.player_queues.play_media
+
+    async def slowed(*a, **k):
+        await asyncio.sleep(0.01)
+        return await slow(*a, **k)
+    client.player_queues.play_media = slowed
+    uris = [f"x://t/{n}" for n in range(10)]
+    await searched(client, s, g, *uris)
+    results = await asyncio.gather(*(add_track(client, Q, "tv", s, g, u, now=1) for u in uris),
+                                   return_exceptions=True)
+    assert sum(1 for r in results if r is None) == 1          # cooldown: only the first gets in
+    assert all(isinstance(r, GuestError) for r in results if r is not None)
+
+
+async def test_only_songs_from_the_guests_own_search_can_be_added():
+    client, s, g = setup()
+    for bad in ("http://192.168.1.1/stream.mp3", "https://music.youtube.com/playlist?list=1", "x://t/never-searched"):
+        with pytest.raises(GuestError):
+            await add_track(client, Q, "tv", s, g, bad, now=1)
+    assert client.player_queues.calls == []
+
+
+async def test_search_results_become_addable():
+    client, s, g = setup()
+    await guest_search(client, "love", guest=g)
+    await add_track(client, Q, "tv", s, g, "x://t/1", now=1)
+
+
+async def test_queue_read_from_the_current_song_in_long_queues():
+    many = [item(f"old{n}", f"Old {n}") for n in range(600)] + [item("cur", "Now"), item("next", "Next")]
+    client, s, g = setup(many)
+    client.player_queues.current_index = 600
+    st = await guest_state(client, Q, s, g)
+    assert st["nowPlaying"]["title"] == "Now" and [u["itemId"] for u in st["upcoming"]] == ["next"]
+
+
+async def test_skip_names_the_song_and_two_at_once_skip_one():
+    client, s, g = setup([item("cur", "Now"), item("next", "Next")])
+    ana = s.join("device-ana-12345", "Ana")
+    r = await asyncio.gather(skip(client, Q, "tv", s, g, "cur"), skip(client, Q, "tv", s, ana, "cur"),
+                             return_exceptions=True)
+    client.player_queues.current = "next"   # (MA moved on after the first skip)
+    assert client.players.calls == [("next", "tv")]
+    assert sum(1 for x in r if isinstance(x, GuestError)) == 1
+    assert g.skips_used + ana.skips_used == 1
+
+
+async def test_skip_when_the_song_already_changed_is_refused_and_free():
+    client, s, g = setup()
+    with pytest.raises(GuestError, match="already changed"):
+        await skip(client, Q, "tv", s, g, "something-else")
+    assert g.skips_used == 0 and client.players.calls == []
