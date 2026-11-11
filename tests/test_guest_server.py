@@ -185,19 +185,20 @@ async def _listening(port):
         return False
 
 
-async def test_start_after_a_failed_bind(tmp_path):
-    import socket
+async def test_start_after_a_failed_bind(tmp_path, monkeypatch):
+    from aiohttp import web
     page = tmp_path / "p.html"
     page.write_text("x")
     port = _free_port()
-    blocker = socket.socket()
-    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    blocker.bind(("0.0.0.0", port))  # lgtm[py/bind-socket-all-network-interfaces] same address the server binds, to make it fail
-    blocker.listen()
+    real_start = web.TCPSite.start
+
+    async def busy(self):
+        raise OSError(98, "Address already in use")
+    monkeypatch.setattr(web.TCPSite, "start", busy)
     server = GuestServer(lambda: None, lambda: None, page_path=page, port=port)
     with pytest.raises(OSError):
         await server.start()
-    blocker.close()
+    monkeypatch.setattr(web.TCPSite, "start", real_start)
     await server.start()                       # works once the port is free
     assert await _listening(port)
     await server.stop()
