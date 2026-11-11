@@ -13,11 +13,11 @@ Kirigami.ApplicationWindow {
 
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.None
     pageStack.columnView.columnResizeMode: Kirigami.ColumnView.SingleColumn
-    pageStack.initialPage: homeComponent
+    pageStack.initialPage: nowPlayingComponent
 
     Component {
-        id: homeComponent
-        HomePage { u: root.u; onOpenSetup: root.showSetup() }
+        id: nowPlayingComponent
+        NowPlayingPage { u: root.u; onOpenSetup: root.showSetup() }
     }
     Component {
         id: setupComponent
@@ -30,6 +30,8 @@ Kirigami.ApplicationWindow {
     function goBack() {
         if (pairing.visible) { pairing.dismissedCode = app.pairingCode; return }
         if (exitDialog.opened) { exitDialog.close(); return }
+        var page = pageStack.currentItem
+        if (page && page.handleBack && page.handleBack()) return
         if (pageStack.depth > 1) {
             pageStack.pop()
             pageStack.currentItem.focusDefault()
@@ -55,6 +57,14 @@ Kirigami.ApplicationWindow {
     Shortcut { sequences: ["Media Play", "Media Pause", "Toggle Media Play/Pause"]; onActivated: app.playPause() }
     Shortcut { sequence: "Media Next"; onActivated: app.next() }
     Shortcut { sequence: "Media Previous"; onActivated: app.previous() }
+    Shortcut { sequence: "Volume Up"; onActivated: root.volumeStep(5) }
+    Shortcut { sequence: "Volume Down"; onActivated: root.volumeStep(-5) }
+    function volumeStep(delta) {
+        var page = pageStack.currentItem
+        if (page && page.adjustVolume) page.adjustVolume(delta)
+        else if (delta > 0) app.volumeUp()
+        else app.volumeDown()
+    }
 
     PairingOverlay {
         id: pairing

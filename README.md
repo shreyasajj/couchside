@@ -4,8 +4,9 @@ A TV-first [Music Assistant](https://music-assistant.io) app for **KDE Plasma Bi
 It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
-Status: **Phase 1 (foundation)**: connect, bundled speaker, play/pause/next/previous.
-Now Playing, search, lyrics, guest mode and admin access follow in later phases
+Status: **Phase 2 (Now Playing)**: connect, bundled speaker, and the Now Playing screen
+(blurred artwork, progress, shuffle, repeat, volume). Search, lyrics, guest mode and
+admin access follow in later phases
 (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
 ## Install (on the Bigscreen TV)
@@ -53,8 +54,15 @@ Settings live in the Flatpak's sandbox:
 
 From the Couchside tile, or `flatpak run io.github.shreyasajj.Couchside`.
 
-Remote: arrows move focus, OK activates, Back goes back (on the home screen it asks
-before exiting). Media keys (play/pause, next, previous) work anywhere.
+Remote: Left/Right move along the control bar (shuffle, previous, play/pause, next,
+repeat, volume, settings), OK activates, Back goes back (on Now Playing it asks before
+exiting). On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
+Back closes it. Media keys (play/pause, next, previous) work anywhere.
+
+Volume keys: Plasma uses the remote's volume keys for the system volume, so they
+don't reach Couchside. Use the on-screen volume bar (it sets this TV's volume in Music
+Assistant), or unbind Plasma's "Increase/Decrease Volume" shortcuts in System Settings →
+Shortcuts to let Couchside handle them.
 
 ## Update
 
@@ -66,7 +74,8 @@ Settings, the token and Sendspin's identity are kept. (Phase 7 adds an in-app up
 
 ## Develop
 
-- **Unit tests** (any machine, no Qt needed):
+- **Unit tests** (any machine; PySide6-Essentials comes with the `test` extra for the
+  controller tests):
   `python3 -m venv .venv && .venv/bin/pip install -e '.[test]' && .venv/bin/pytest`
 - **On the TV:** `scripts/dev-deploy.sh --run` syncs this checkout to the TV over
   SSH (`COUCHSIDE_TV`, default `mediac@192.168.30.153`), rebuilds the Flatpak
@@ -106,5 +115,13 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
   Sendspin install on the same machine.
 - **MPRIS bus name** is `org.mpris.MediaPlayer2.Sendspin.instance<pid>`, hence the
   `--own-name=org.mpris.MediaPlayer2.Sendspin.*` Flatpak permission.
+- **Image proxy sizes.** MA 2.10.9's `/imageproxy/…?size=N` only accepts 256, 512 and
+  1024 and answers `400 Bad Request` for anything else; Couchside rounds up.
+- **Album palette.** `player.current_media.palette` carries colours extracted from the
+  artwork (`background_dark`, `accent`, …); Now Playing tints its background with it.
+- **Position.** The queue's `elapsed_time` (+ `elapsed_time_last_updated`, server
+  epoch seconds) is more current than the player's; Couchside uses the queue's and
+  falls back to `current_media` for sources without an MA queue. Progress ticks locally
+  between updates, so the TV and server clocks should both use NTP.
 - **Flatpak instead of `uv` + systemd** (owner's decision, see design doc):
   Sendspin is bundled and autostarted through the Background portal.

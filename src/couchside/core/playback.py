@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Literal
 
 from couchside.core.connection import ConnState
 
 log = logging.getLogger(__name__)
+
+
+Repeat = Literal["off", "all", "one"]
+_REPEAT_CYCLE: dict[str, str] = {"off": "all", "all": "one", "one": "off"}
 
 
 @dataclass(frozen=True)
@@ -18,6 +23,32 @@ class NowPlaying:
     album: str
     image_url: str | None
     state: Literal["playing", "paused", "idle"]
+    duration: float | None = None
+    elapsed: float = 0.0
+    elapsed_at: float = 0.0  # server epoch seconds when `elapsed` was measured
+    shuffle: bool = False
+    repeat: Repeat = "off"
+    volume: int | None = None  # None: the player has no volume control
+    palette_dark: tuple[int, int, int] | None = None
+    queue_id: str | None = None
+
+
+def position_at(np: NowPlaying, now: float) -> float:
+    """Playback position at epoch `now`: ticks only while playing, clamped to the track."""
+    pos = np.elapsed + (now - np.elapsed_at if np.state == "playing" else 0.0)
+    pos = max(0.0, pos)
+    if np.duration:
+        pos = min(float(np.duration), pos)
+    return pos
+
+
+def _repeat_str(value: Any) -> Repeat:
+    s = str(getattr(value, "value", value) or "off").lower()
+    return s if s in ("all", "one") else "off"  # type: ignore[return-value]
+
+
+def _num(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 def player_matches(player: Any, client_id: str) -> bool:
@@ -50,6 +81,7 @@ class Playback:
         self.active_player_id: str | None = None
         self.local_player_found = False
         self.now_playing: NowPlaying | None = None
+        self._local_stamp: tuple[float, float] | None = None  # (elapsed, local time)
         self._cbs: list[Callable[[], None]] = []
         conn.on_state(lambda _state: self.refresh())
         conn.on_event(lambda _event: self.refresh())
@@ -72,13 +104,7 @@ class Playback:
         now = None
         media = getattr(active, "current_media", None) if active is not None else None
         if media is not None and (media.title or media.artist):
-            now = NowPlaying(
-                title=media.title or "",
-                artist=media.artist or "",
-                album=media.album or "",
-                image_url=media.image_url,
-                state=_state_str(active.playback_state),
-            )
+            now = self._snapshot(client, active, media)
 
         new = (active.player_id if active is not None else None, local is not None, now)
         old = (self.active_player_id, self.local_player_found, self.now_playing)
@@ -89,6 +115,96 @@ class Playback:
                     cb()
                 except Exception:
                     log.exception("playback listener failed")
+
+    def _stamp(self, elapsed: float) -> float:
+        """Local time for a position report that came without a timestamp; kept while
+        the reported position is unchanged so progress does not jump back on refresh."""
+        if self._local_stamp is None or self._local_stamp[0] != elapsed:
+            self._local_stamp = (elapsed, time.time())
+        return self._local_stamp[1]
+
+    def _snapshot(self, client: Any, active: Any, media: Any) -> NowPlaying:
+        queue = None
+        queues = getattr(client, "player_queues", None)
+        if queues is not None:
+            qid = getattr(active, "active_source", None) or active.player_id
+            try:
+                queue = queues.get(qid)
+            except Exception:
+                queue = None
+
+        # MA's own queue keeps the accurate position; other sources only report via the player.
+        src = queue if queue is not None else media
+        elapsed = _num(getattr(src, "elapsed_time", None)) or 0.0
+        elapsed_at = _num(getattr(src, "elapsed_time_last_updated", None))
+        if not elapsed_at or elapsed_at <= 0:
+            elapsed_at = self._stamp(elapsed)
+        duration = _num(getattr(media, "duration", None))
+        if not duration and queue is not None:
+            duration = _num(getattr(getattr(queue, "current_item", None), "duration", None))
+
+        volume = None
+        if getattr(active, "volume_control", "none") not in (None, "none"):
+            level = _num(getattr(active, "volume_level", None))
+            volume = int(level) if level is not None else None
+
+        dark = getattr(getattr(media, "palette", None), "background_dark", None)
+        palette = tuple(dark) if isinstance(dark, (tuple, list)) and len(dark) == 3 else None
+
+        return NowPlaying(
+            title=media.title or "",
+            artist=media.artist or "",
+            album=media.album or "",
+            image_url=media.image_url,
+            state=_state_str(active.playback_state),
+            duration=duration or None,
+            elapsed=elapsed,
+            elapsed_at=elapsed_at,
+            shuffle=bool(getattr(queue, "shuffle_enabled", False)),
+            repeat=_repeat_str(getattr(queue, "repeat_mode", None)),
+            volume=volume,
+            palette_dark=palette,  # type: ignore[arg-type]
+            queue_id=getattr(queue, "queue_id", None),
+        )
+
+    def _ready(self) -> bool:
+        return (self._conn.client is not None and self.active_player_id is not None
+                and self._conn.state is ConnState.CONNECTED)
+
+    async def _queue_command(self, name: str, *args: Any) -> None:
+        np = self.now_playing
+        if not self._ready() or np is None or np.queue_id is None:
+            return
+        try:
+            await getattr(self._conn.client.player_queues, name)(np.queue_id, *args)
+        except Exception as e:
+            log.warning("%s on queue %s failed: %s", name, np.queue_id, e)
+
+    async def toggle_shuffle(self) -> None:
+        np = self.now_playing
+        if np is not None:
+            await self._queue_command("shuffle", not np.shuffle)
+
+    async def cycle_repeat(self) -> None:
+        from music_assistant_models.enums import RepeatMode
+
+        np = self.now_playing
+        if np is not None:
+            await self._queue_command("repeat", RepeatMode(_REPEAT_CYCLE[np.repeat]))
+
+    async def set_volume(self, level: int) -> None:
+        if not self._ready():
+            return
+        level = max(0, min(100, int(level)))
+        try:
+            await self._conn.client.players.volume_set(self.active_player_id, level)
+        except Exception as e:
+            log.warning("volume_set on %s failed: %s", self.active_player_id, e)
+
+    async def step_volume(self, delta: int) -> None:
+        np = self.now_playing
+        if np is not None and np.volume is not None:
+            await self.set_volume(np.volume + delta)
 
     async def _command(self, name: str) -> None:
         client = self._conn.client
