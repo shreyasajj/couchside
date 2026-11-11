@@ -45,7 +45,7 @@ Kirigami.Page {
                                                        p.x + volumeButton.width / 2 - volumePopup.width / 2))
         volumePopup.y = p.y - volumePopup.height - 32 * page.u
     }
-    Component.onCompleted: focusDefault()
+    Component.onCompleted: { focusDefault(); updateLyricsLayout() }
 
     // --- progress, ticked locally between server updates -------------------------
     property real position: 0
@@ -56,7 +56,20 @@ Kirigami.Page {
         if (app.hasDuration) p = Math.min(app.duration, p)
         position = p
     }
-    readonly property bool showLyrics: app.hasLyrics && app.lyricsEnabled && page.hasMedia
+    // Lyrics layout with a short hold: while the next song's lookup runs (cache hits take
+    // one event-loop turn, LRCLIB a second or two) keep the lyrics layout instead of
+    // flashing the artwork; give up after 1.5 s without lyrics.
+    property bool lyricsLayoutOn: false
+    readonly property bool showLyrics: lyricsLayoutOn && app.lyricsEnabled && page.hasMedia
+    function updateLyricsLayout() {
+        if (!app.lyricsEnabled) { lyricsLayoutOn = false; lyricsHold.stop() }
+        else if (app.hasLyrics) { lyricsLayoutOn = true; lyricsHold.stop() }
+        else if (app.lyricsPending) { if (lyricsLayoutOn && !lyricsHold.running) lyricsHold.start() }
+        else { lyricsLayoutOn = false; lyricsHold.stop() }
+    }
+    Timer { id: lyricsHold; interval: 1500; onTriggered: if (!app.hasLyrics) page.lyricsLayoutOn = false }
+    Connections { target: app; function onLyricsChanged() { page.updateLyricsLayout() } }
+
     Timer {
         interval: page.showLyrics ? 250 : 500  // lyrics need a finer tick than the bar
         repeat: true

@@ -55,6 +55,8 @@ def parse_lrc(text: str | None) -> list[LyricLine]:
             seconds = hours * 3600 + int(t.group(2)) * 60 + float(t.group(3).replace(":", "."))
             lines.append(LyricLine(round(max(0.0, seconds - offset), 3), lyric))
     lines.sort(key=lambda line: line.time)
+    if not any(line.text for line in lines):
+        return []  # only timestamps / blank lines: nothing to sing along to
     return lines
 
 
@@ -71,57 +73,88 @@ HttpGet = Callable[[str, dict], Awaitable[tuple[int, Any]]]
 MaLookup = Callable[[str], Awaitable[str | None]]
 
 
-class LyricsFetcher:
-    """MA's own LRC first, then LRCLIB get, then LRCLIB search. Hits and misses are cached."""
+_UNKNOWN = object()  # a step could not answer (network error, 429, 5xx): retry later
 
-    def __init__(self, http_get: HttpGet, ma_lookup: MaLookup | None = None, timeout: float = 8.0):
+
+class LyricsFetcher:
+    """MA's own LRC first, then LRCLIB get, then LRCLIB search.
+
+    One overall time budget for the chain (`timeout`), a short one for the MA step.
+    Only definite answers are cached (found, 404, no synced lyrics, instrumental, no
+    match); a blip means "try again next time this song plays". Songs without a length
+    (radio, live streams) are not looked up: nothing to match on and no usable position.
+    """
+
+    def __init__(self, http_get: HttpGet, ma_lookup: MaLookup | None = None,
+                 timeout: float = 10.0, ma_timeout: float = 2.0):
         self._http = http_get
         self._ma = ma_lookup
         self._timeout = timeout
+        self._ma_timeout = ma_timeout
         self._cache: dict[str, list[LyricLine] | None] = {}
 
     async def get(self, info: TrackInfo) -> list[LyricLine] | None:
+        if not info.duration:
+            return None
         if info.key in self._cache:
             return self._cache[info.key]
-        lines = None
-        for step in (self._from_ma, self._from_lrclib_get, self._from_lrclib_search):
-            try:
-                lines = await asyncio.wait_for(step(info), self._timeout)
-            except Exception as e:  # timeouts, network, bad data: just no lyrics from this step
-                log.info("lyrics %s for %r: %s", step.__name__, info.title, e or type(e).__name__)
-                lines = None
-            if lines:
-                break
-        self._cache[info.key] = lines or None
+        try:
+            lines, definite = await asyncio.wait_for(self._chain(info), self._timeout)
+        except Exception as e:
+            log.info("lyrics for %r gave up: %s", info.title, e or type(e).__name__)
+            lines, definite = None, False
+        if lines or definite:
+            self._cache[info.key] = lines or None
         return lines or None
 
-    async def _from_ma(self, info: TrackInfo) -> list[LyricLine] | None:
+    async def _chain(self, info: TrackInfo) -> tuple[list[LyricLine] | None, bool]:
+        definite = True
+        steps = ((self._from_ma, self._ma_timeout), (self._from_lrclib_get, None),
+                 (self._from_lrclib_search, None))
+        for step, limit in steps:
+            try:
+                result = await (asyncio.wait_for(step(info), limit) if limit else step(info))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # timeouts, network, bad data
+                log.info("lyrics %s for %r: %s", step.__name__, info.title, e or type(e).__name__)
+                result = _UNKNOWN
+            if result is _UNKNOWN:
+                definite = False
+            elif result:
+                return result, True
+        return None, definite
+
+    async def _from_ma(self, info: TrackInfo):
         if self._ma is None or not info.uri:
             return None
         return parse_lrc(await self._ma(info.uri)) or None
 
-    async def _from_lrclib_get(self, info: TrackInfo) -> list[LyricLine] | None:
-        params = {"track_name": info.title, "artist_name": first_artist(info.artist)}
+    async def _from_lrclib_get(self, info: TrackInfo):
+        params = {"track_name": info.title, "artist_name": first_artist(info.artist),
+                  "duration": round(info.duration or 0)}
         if info.album:
             params["album_name"] = info.album
-        if info.duration:
-            params["duration"] = round(info.duration)
         status, data = await self._http(f"{LRCLIB}/get", params)
-        if status != 200 or not isinstance(data, dict) or data.get("instrumental"):
+        if status == 404:
+            return None
+        if status != 200 or not isinstance(data, dict):
+            return _UNKNOWN
+        if data.get("instrumental"):
             return None
         return parse_lrc(data.get("syncedLyrics")) or None
 
-    async def _from_lrclib_search(self, info: TrackInfo) -> list[LyricLine] | None:
+    async def _from_lrclib_search(self, info: TrackInfo):
         # Title only: the first-artist guess fails for duos ("Simon & Garfunkel"); the
-        # duration check keeps covers and remixes out.
+        # length check keeps covers, remixes and same-name songs out.
         status, data = await self._http(f"{LRCLIB}/search", {"track_name": info.title})
         if status != 200 or not isinstance(data, list):
-            return None
+            return _UNKNOWN
         for hit in data:
             if not isinstance(hit, dict) or not hit.get("syncedLyrics"):
                 continue
             d = hit.get("duration")
-            if info.duration and isinstance(d, (int, float)) and abs(d - info.duration) > SEARCH_DURATION_SLACK:
+            if not isinstance(d, (int, float)) or abs(d - (info.duration or 0)) > SEARCH_DURATION_SLACK:
                 continue
             lines = parse_lrc(hit["syncedLyrics"])
             if lines:

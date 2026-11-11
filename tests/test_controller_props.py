@@ -256,7 +256,7 @@ async def test_lyrics_fetched_on_track_change(ctl):
     await settle()
     assert ctl.hasLyrics and ctl.lyricLines == [{"t": 1.0, "text": "hello"}]
     info = ctl._lyrics_fetcher.asked[0]
-    assert (info.key, info.title, info.artist, info.album, info.duration) == ("x://1", "T", "A", "B", 261)
+    assert (info.title, info.artist, info.album, info.duration, info.uri) == ("T", "A", "B", 261, "x://1")
 
 
 async def test_stale_lyrics_dropped(ctl):
@@ -291,3 +291,24 @@ async def test_same_track_does_not_refetch(ctl):
     song(ctl, "x://1")
     await settle()
     assert len(f.asked) == 1
+
+
+async def test_lyrics_pending_while_looking(ctl):
+    gate = asyncio.Event()
+    ctl._lyrics_fetcher = FakeLyrics([LyricLine(1.0, "x")], gate=gate)
+    song(ctl, "x://1")
+    await settle()
+    assert ctl.lyricsPending and not ctl.hasLyrics
+    gate.set()
+    await settle()
+    assert not ctl.lyricsPending and ctl.hasLyrics
+
+
+async def test_metadata_change_on_same_uri_refetches(ctl):
+    # A radio-style stream keeps its uri while the title changes.
+    f = FakeLyrics(None)
+    ctl._lyrics_fetcher = f
+    song(ctl, "x://station", title="Song A")
+    song(ctl, "x://station", title="Song B")
+    await settle()
+    assert [i.title for i in f.asked] == ["Song A", "Song B"]

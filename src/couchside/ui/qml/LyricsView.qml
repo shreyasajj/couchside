@@ -65,9 +65,22 @@ ListView {
         color: "#ffffff"
         wrapMode: Text.WordWrap
         font.weight: current ? Font.Bold : Font.DemiBold
-        font.pixelSize: current ? view.refWidth * 0.06
+        // Long lines (rap, Punjabi) shrink so the current line never needs more than two
+        // rows; the 0.85 leaves room for word-wrap waste. Short lines keep the full size.
+        readonly property real fullSize: view.refWidth * 0.06
+        readonly property real fit: Math.min(1, (2 * width * 0.85) / Math.max(1, metrics.advanceWidth))
+        font.pixelSize: current ? fullSize * fit
                         : distance === 1 ? view.refWidth * 0.034
                         : view.refWidth * 0.026
+        maximumLineCount: current ? 2 : 3
+        elide: Text.ElideRight
+        TextMetrics {
+            id: metrics
+            font.family: line.font.family
+            font.weight: Font.Bold
+            font.pixelSize: line.fullSize
+            text: line.text
+        }
         opacity: current ? 1.0 : distance === 1 ? 0.85 : distance > 1 ? 0.45 : 0.35
         Behavior on font.pixelSize { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: 300 } }

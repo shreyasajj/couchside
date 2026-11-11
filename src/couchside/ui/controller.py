@@ -79,6 +79,7 @@ class AppController(QObject):
         self._lyrics_fetcher = LyricsFetcher(aiohttp_get, ma_lookup=self._ma_lrc)
         self._lyrics_key: str | None = None
         self._lyric_lines: list[dict] = []
+        self._lyrics_pending = False
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
@@ -110,7 +111,7 @@ class AppController(QObject):
     async def _ma_lrc(self, uri: str) -> str | None:
         """LRC stored on the track in MA (MA < schema 101 has no lyrics lookup command)."""
         client = self.conn.client
-        if client is None:
+        if client is None or self.conn.state is not ConnState.CONNECTED:
             return None
         item = await client.music.get_item_by_uri(uri)
         meta = getattr(item, "metadata", None)
@@ -120,18 +121,19 @@ class AppController(QObject):
         np = self.playback.now_playing
         if np is None:
             return None
-        return np.uri or f"{np.title}|{np.artist}"
+        # uri + title: a stream keeps its uri while the song (metadata) changes
+        return f"{np.uri or ''}|{np.title}|{np.artist}"
 
     def _check_lyrics(self) -> None:
         key = self._track_key()
         if key == self._lyrics_key:
             return
         self._lyrics_key = key
-        if self._lyric_lines:
-            self._lyric_lines = []
-            self.lyricsChanged.emit()
+        self._lyric_lines = []
         np = self.playback.now_playing
-        if key is None or np is None or not self._settings.lyrics_enabled:
+        self._lyrics_pending = bool(key and np and self._settings.lyrics_enabled)
+        self.lyricsChanged.emit()
+        if not self._lyrics_pending:
             return
         info = TrackInfo(key=key, title=np.title, artist=np.artist, album=np.album,
                          duration=np.duration, uri=np.uri)
@@ -141,8 +143,14 @@ class AppController(QObject):
             if key != self._lyrics_key:
                 return  # the song changed while looking: drop it
             self._lyric_lines = [{"t": line.time, "text": line.text} for line in (lines or [])]
+            self._lyrics_pending = False
             self.lyricsChanged.emit()
         self._spawn(fetch())
+
+    @Property(bool, notify=lyricsChanged)
+    def lyricsPending(self) -> bool:
+        """A lookup for the current song is running (QML holds the layout meanwhile)."""
+        return self._lyrics_pending
 
     @Property(bool, notify=lyricsChanged)
     def hasLyrics(self) -> bool:

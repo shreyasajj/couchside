@@ -129,3 +129,53 @@ async def test_results_cached_including_misses():
     assert await f.get(INFO) is None
     assert await f.get(INFO) is None
     assert len(http.calls) == 2  # get + search once, then the cached miss
+
+
+# --- review fixes ----------------------------------------------------------------
+
+async def test_transient_failure_not_cached():
+    # A blip (error / 429 / 5xx) must not stick: the next try may find lyrics.
+    flaky = Http({"get": RuntimeError("wifi"), "search": (429, None)})
+    f = LyricsFetcher(flaky)
+    assert await f.get(INFO) is None
+    flaky.routes = {"get": (200, {"syncedLyrics": LRC})}
+    assert (await f.get(INFO))[0].text == "I will shelter you"
+
+
+async def test_server_error_not_cached():
+    http = Http({"get": (503, None), "search": (500, None)})
+    f = LyricsFetcher(http)
+    assert await f.get(INFO) is None
+    http.routes = {"get": (200, {"syncedLyrics": LRC})}
+    assert await f.get(INFO) is not None
+
+
+async def test_no_duration_means_no_lookup():
+    # Radio / live streams: no length to match and no meaningful position.
+    http = Http({"get": (200, {"syncedLyrics": LRC}), "search": (200, [{"syncedLyrics": LRC}])})
+    from dataclasses import replace
+    assert await LyricsFetcher(http).get(replace(INFO, duration=None)) is None
+    assert await LyricsFetcher(http).get(replace(INFO, duration=0)) is None
+    assert http.calls == []
+
+
+async def test_slow_ma_step_does_not_block_lrclib():
+    async def ma_hangs(uri):
+        await asyncio.sleep(5)
+    http = Http({"get": (200, {"syncedLyrics": LRC})})
+    f = LyricsFetcher(http, ma_lookup=ma_hangs, ma_timeout=0.05, timeout=1.0)
+    assert (await f.get(INFO))[0].text == "I will shelter you"
+
+
+async def test_total_wait_is_bounded():
+    async def slow(url, params):
+        await asyncio.sleep(0.3)
+        return 404, None
+    import time
+    start = time.monotonic()
+    assert await LyricsFetcher(slow, timeout=0.4).get(INFO) is None  # get + search would be 0.6 s
+    assert time.monotonic() - start < 0.55
+
+
+def test_parse_lrc_with_no_words_is_empty():
+    assert parse_lrc("[00:00.00]\n[00:05.00]  ") == []
