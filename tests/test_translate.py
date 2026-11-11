@@ -25,7 +25,7 @@ async def test_google_one_request_split_back_into_lines():
     http = Http((200, [[["Hey, it's not like old school\n", "x"], ["red things", "y"]], None, "pa"]))
     assert await GoogleTranslator(http).translate(LINES) == ["Hey, it's not like old school", "red things"]
     method, url, params, _ = http.calls[0]
-    assert method == "GET" and "translate.googleapis.com" in url
+    assert method == "GET" and url == "https://translate.googleapis.com/translate_a/single"
     assert params["q"] == "\n".join(LINES) and params["tl"] == "en" and params["sl"] == "auto"
 
 
