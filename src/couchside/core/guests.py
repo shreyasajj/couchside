@@ -28,6 +28,10 @@ class GuestError(Exception):
     """A rule said no; the message is shown to the guest as is."""
 
 
+class NotAdmin(GuestError):
+    """An admin-only action from a guest who isn't (or is no longer) an admin."""
+
+
 @dataclass
 class GuestRules:
     skips: int = 3

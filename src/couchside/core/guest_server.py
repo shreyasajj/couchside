@@ -21,8 +21,9 @@ from typing import Any, Callable
 
 from aiohttp import WSMsgType, web
 
-from couchside.core import guest_actions
-from couchside.core.guests import GuestError, GuestSession
+from couchside.core import admin_actions, guest_actions
+from couchside.core.admin_actions import AdminHost
+from couchside.core.guests import GuestError, GuestSession, NotAdmin
 
 log = logging.getLogger(__name__)
 
@@ -90,8 +91,13 @@ class GuestServer:
     def __init__(self, get_session: Callable[[], GuestSession | None], get_context: Context,
                  page_path: Path, port: int = PORT, clock: Callable[[], float] = time.time,
                  on_change: Callable[[], None] | None = None,
-                 limit_per_address: Callable[[], bool] = lambda: True):
+                 limit_per_address: Callable[[], bool] = lambda: True,
+                 get_admin_host: Callable[[], AdminHost | None] = lambda: None,
+                 on_admin_event: Callable[[str, str], None] | None = None):
         self._limit_per_address = limit_per_address
+        self._admin_host = get_admin_host
+        # ("admin", name) when a code is used; ("code_cancelled", "") after too many wrong tries
+        self._on_admin_event = on_admin_event or (lambda kind, name: None)
         self._limits = RateLimiter()
         self._addresses: dict[tuple[str, str], set[str]] = {}  # (token, ip) -> device ids
         self._lifecycle = asyncio.Lock()
@@ -117,6 +123,12 @@ class GuestServer:
         r.add_post("/g/{token}/api/boost", self._boost)
         r.add_get("/g/{token}/api/ws", self._ws)
         r.add_get("/g/{token}/api/img", self._img)
+        r.add_post("/g/{token}/api/code", self._code)
+        r.add_post("/g/{token}/api/admin/queue", self._admin_queue)
+        r.add_post("/g/{token}/api/admin/shuffle", self._admin_shuffle)
+        r.add_post("/g/{token}/api/admin/volume", self._admin_volume)
+        r.add_post("/g/{token}/api/admin/speaker", self._admin_speaker)
+        r.add_post("/g/{token}/api/admin/guest", self._admin_guest)
 
     # --- lifecycle --------------------------------------------------------------------
     async def start(self) -> None:
@@ -197,6 +209,8 @@ class GuestServer:
         session = self._check_token(request)
         try:
             return await action(session)
+        except NotAdmin as e:
+            return self._error(403, str(e))
         except GuestError as e:
             return self._error(400, str(e))
         except web.HTTPException:
@@ -243,7 +257,12 @@ class GuestServer:
         async def act(session):
             guest = session.guest(request.query.get("deviceId", ""))
             client, queue_id, _ = self._ctx()
-            return web.json_response(await guest_actions.guest_state(client, queue_id, session, guest))
+            st = await guest_actions.guest_state(client, queue_id, session, guest)
+            st["admin"] = guest.admin
+            host = self._admin_host() if guest.admin else None
+            if host is not None:
+                st["adminInfo"] = admin_actions.admin_info(session, host, guest)
+            return web.json_response(st)
         return await self._run(request, act)
 
     async def _search(self, request: web.Request) -> web.Response:
@@ -298,6 +317,100 @@ class GuestServer:
             self._on_change()
             return web.json_response({"ok": True})
         return await self._run(request, act)
+
+    # --- admin ------------------------------------------------------------------------
+    async def _code(self, request: web.Request) -> web.Response:
+        async def act(session):
+            data = await self._body(request)
+            guest = session.guest(data.get("deviceId"))
+            self._rate(request, "code", guest.device_id, burst=3, per=10)
+            self._rate(request, "code-ip", request.remote or "?", burst=6, per=10)
+            code = data.get("code")
+            if not isinstance(code, str) or len(code) > 12:
+                raise GuestError("That code isn't right")
+            try:
+                session.redeem_code(guest, code, now=self._clock())
+            except GuestError:
+                if session.code_cancelled and session.admin_code is None:
+                    session.code_cancelled = False  # tell the TV once
+                    self._on_admin_event("code_cancelled", "")
+                raise
+            self._on_admin_event("admin", guest.name)
+            self._on_change()
+            self.notify_changed()
+            return web.json_response({"admin": True})
+        return await self._run(request, act)
+
+    @staticmethod
+    def _text(data: dict, key: str, limit: int = 100) -> str:
+        v = data.get(key)
+        if not isinstance(v, str) or not v or len(v) > limit:
+            raise GuestError("Bad request")
+        return v
+
+    async def _admin(self, request: web.Request, action) -> web.Response:
+        """Admin endpoint: joined guest, admin flag checked here and again in the action."""
+        async def act(session):
+            data = await self._body(request)
+            guest = session.guest(data.get("deviceId"))
+            if not guest.admin:
+                raise NotAdmin("Only an admin can do that")
+            self._rate(request, "admin", guest.device_id, burst=10, per=1)
+            await action(session, guest, data)
+            self._on_change()
+            self.notify_changed()
+            return web.json_response({"ok": True})
+        return await self._run(request, act)
+
+    def _host(self) -> AdminHost:
+        host = self._admin_host()
+        if host is None:
+            raise web.HTTPServiceUnavailable(text=json.dumps({"error": NOT_CONNECTED}),
+                                             content_type="application/json")
+        return host
+
+    async def _admin_queue(self, request: web.Request) -> web.Response:
+        async def act(session, guest, data):
+            client, queue_id, _ = self._ctx()
+            await admin_actions.admin_queue(client, queue_id, session, guest,
+                                            self._text(data, "itemId"), self._text(data, "action", 20))
+        return await self._admin(request, act)
+
+    async def _admin_shuffle(self, request: web.Request) -> web.Response:
+        async def act(session, guest, data):
+            on = data.get("on")
+            if not isinstance(on, bool):
+                raise GuestError("Bad request")
+            await admin_actions.admin_shuffle(self._host(), guest, on)
+        return await self._admin(request, act)
+
+    async def _admin_volume(self, request: web.Request) -> web.Response:
+        async def act(session, guest, data):
+            def number(key):
+                v = data.get(key)
+                if v is None:
+                    return None
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or not -1000 <= v <= 1000:
+                    raise GuestError("Bad request")
+                return int(v)
+            level, step = number("level"), number("step")
+            if level is None and step is None:
+                raise GuestError("Bad request")
+            await admin_actions.admin_volume(self._host(), guest, level=level, step=step)
+        return await self._admin(request, act)
+
+    async def _admin_speaker(self, request: web.Request) -> web.Response:
+        async def act(session, guest, data):
+            await admin_actions.admin_speaker(self._host(), guest, self._text(data, "playerId", 200),
+                                              self._text(data, "action", 20))
+        return await self._admin(request, act)
+
+    async def _admin_guest(self, request: web.Request) -> web.Response:
+        async def act(session, guest, data):
+            async with session.lock:
+                await admin_actions.admin_guest(session, guest, self._text(data, "guestId", 40),
+                                                self._text(data, "action", 20))
+        return await self._admin(request, act)
 
     async def _ws(self, request: web.Request) -> web.StreamResponse:
         self._check_token(request)

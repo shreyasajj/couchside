@@ -10,7 +10,7 @@ from typing import Any, Awaitable, Callable
 
 from couchside.core import queue as queue_mod
 from couchside.core.guest_actions import _queue, _upcoming
-from couchside.core.guests import Guest, GuestError, GuestSession
+from couchside.core.guests import Guest, GuestError, GuestSession, NotAdmin
 
 QUEUE_ACTIONS = ("play", "next", "up", "down", "remove")
 SPEAKER_ACTIONS = ("control", "transfer")
@@ -29,7 +29,7 @@ class AdminHost:
 
 def require_admin(guest: Guest) -> None:
     if not guest.admin:
-        raise GuestError("Only an admin can do that")
+        raise NotAdmin("Only an admin can do that")
 
 
 async def admin_queue(client: Any, queue_id: str, session: GuestSession, guest: Guest,
