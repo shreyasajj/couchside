@@ -210,8 +210,9 @@ class GuestServer:
         return web.Response(text="Scan the QR code on the TV to add songs.", content_type="text/plain")
 
     async def _slash(self, request: web.Request) -> web.Response:
-        self._check_token(request)
-        raise web.HTTPFound(f"{request.match_info['token']}/")
+        session = self._check_token(request)
+        # the session's own token (equal to the one given), never the request's text
+        raise web.HTTPFound(f"{session.token}/")
 
     async def _page_handler(self, request: web.Request) -> web.Response:
         self._check_token(request)

@@ -192,7 +192,7 @@ async def test_start_after_a_failed_bind(tmp_path):
     port = _free_port()
     blocker = socket.socket()
     blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    blocker.bind(("0.0.0.0", port))
+    blocker.bind(("0.0.0.0", port))  # lgtm[py/bind-socket-all-network-interfaces] same address the server binds, to make it fail
     blocker.listen()
     server = GuestServer(lambda: None, lambda: None, page_path=page, port=port)
     with pytest.raises(OSError):
