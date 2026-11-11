@@ -97,7 +97,8 @@ async def skip(client: Any, queue_id: str, player_id: str, session: GuestSession
         try:
             await client.players.next_track(player_id)
         except Exception as e:
-            guest.skips_used -= 1  # not the guest's fault: give it back
+            if not guest.admin:
+                guest.skips_used -= 1  # not the guest's fault: give it back
             log.warning("guest skip failed: %s", e)
             raise GuestError("Couldn't skip — try again") from e
 
@@ -113,7 +114,8 @@ async def _boost_locked(client, queue_id, session, guest, item_id) -> None:
     try:
         await client.player_queues.move_next(queue_id, item_id)
     except Exception as e:
-        guest.boosts_used -= 1
+        if not guest.admin:
+            guest.boosts_used -= 1
         log.warning("guest boost failed: %s", e)
         raise GuestError("Couldn't boost — try again") from e
 
