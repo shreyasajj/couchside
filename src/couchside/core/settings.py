@@ -25,6 +25,10 @@ class AppSettings:
     lyrics_translate: bool = False  # English translation under each line
     translate_service: str = "google"  # google | deepl | libretranslate
     libretranslate_url: str | None = None
+    guest_skips: int = 3
+    guest_boosts: int = 2
+    guest_max_waiting: int = 3
+    guest_cooldown: int = 0  # seconds between a guest's adds
     guest_public_url: str | None = None
     autostart_requested: bool = False
     # Not Sendspin's default (8927/8928) so it can't clash with another Sendspin on the host.

@@ -157,7 +157,7 @@ async def test_queue_rows_shape(ctl, monkeypatch):
     ctl.loadQueue()
     await settle()
     assert ctl.queueRows == [{"itemId": "a", "title": "Song", "subtitle": "Artist", "imageUrl": "",
-                              "duration": 200, "current": True}]
+                              "duration": 200, "current": True, "addedBy": ""}]
 
 
 def test_speaker_rows_shape(ctl):
@@ -425,3 +425,107 @@ def test_deepl_key_saved_privately(ctl):
     assert not ctl.hasDeeplKey
     ctl.saveDeeplKey("abc:fx")
     assert ctl.hasDeeplKey and load_secret("deepl_key") == "abc:fx"
+
+
+# --- Phase 5: guest mode ---------------------------------------------------------------
+
+class FakeGuestServer:
+    def __init__(self, *a, **k):
+        self.started = self.stopped = 0
+        self.notified = 0
+
+    async def start(self):
+        self.started += 1
+
+    async def stop(self):
+        self.stopped += 1
+
+    def notify_changed(self):
+        self.notified += 1
+
+
+@pytest.fixture
+def guest_ctl(ctl, monkeypatch):
+    fake = FakeGuestServer()
+    monkeypatch.setattr(ctl, "_make_guest_server", lambda: fake)
+    monkeypatch.setattr("couchside.ui.controller.lan_ip", lambda probe="": "192.168.30.153")
+    ctl._fake_server = fake
+    return ctl
+
+
+async def test_guest_mode_starts_server_and_rotates_link(guest_ctl):
+    ctl = guest_ctl
+    assert not ctl.guestMode and ctl.guestUrl == ""
+    ctl.toggleGuestMode()
+    await settle()
+    assert ctl.guestMode and ctl._fake_server.started == 1
+    first = ctl.guestUrl
+    assert first.startswith("http://192.168.30.153:8765/g/") and first.endswith("/")
+    ctl.toggleGuestMode()
+    await settle()
+    assert not ctl.guestMode and ctl._fake_server.stopped == 1 and ctl.guestUrl == ""
+    ctl.toggleGuestMode()
+    await settle()
+    assert ctl.guestUrl != first  # new link every time
+
+
+async def test_guest_url_uses_public_url(guest_ctl):
+    ctl = guest_ctl
+    ctl.setGuestPublicUrl(" https://party.example.com/ ")
+    ctl.toggleGuestMode()
+    await settle()
+    assert ctl.guestUrl.startswith("https://party.example.com/g/")
+
+
+async def test_qr_rows_encode_the_link(guest_ctl):
+    ctl = guest_ctl
+    ctl.toggleGuestMode()
+    await settle()
+    rows = ctl.qrRows
+    assert len(rows) >= 21 and all(len(r) == len(rows) for r in rows)
+    assert rows[0].startswith("1111111")  # finder pattern
+    assert set("".join(rows)) <= {"0", "1"}
+
+
+async def test_guest_rules_cycle_save_and_apply_live(guest_ctl):
+    from couchside.core.settings import load_settings
+    ctl = guest_ctl
+    ctl.toggleGuestMode()
+    await settle()
+    before = ctl.guestSkips
+    ctl.cycleGuestSkips()
+    assert ctl.guestSkips != before
+    assert load_settings().guest_skips == ctl.guestSkips
+    assert ctl._guest_session.rules.skips == ctl.guestSkips
+    for slot, prop in (("cycleGuestBoosts", "guestBoosts"), ("cycleGuestMaxWaiting", "guestMaxWaiting"),
+                       ("cycleGuestCooldown", "guestCooldown")):
+        old = getattr(ctl, prop)
+        getattr(ctl, slot)()
+        assert getattr(ctl, prop) != old
+
+
+async def test_credits_on_queue_rows_and_now_playing(guest_ctl, monkeypatch):
+    ctl = guest_ctl
+    wire(ctl)
+    ctl.toggleGuestMode()
+    await settle()
+    g = ctl._guest_session.join("device-abcdef12", "Sam")
+    ctl._guest_session.note_added(g, "a", now=0)
+
+    async def fake_load(client, queue_id, current):
+        return [QueueRow("a", "Song", "Artist", None, 200, True), QueueRow("b", "Other", "X", None, 100, False)]
+    monkeypatch.setattr("couchside.ui.controller.queue.load_queue", fake_load)
+    monkeypatch.setattr(ctl, "_current_item_id", lambda qid: "a")
+    ctl.loadQueue()
+    await settle()
+    assert [r["addedBy"] for r in ctl.queueRows] == ["Sam", ""]
+    assert ctl.nowPlayingCredit == "Sam"
+
+
+async def test_guests_notified_on_queue_changes(guest_ctl, monkeypatch):
+    ctl = guest_ctl
+    wire(ctl)
+    ctl.toggleGuestMode()
+    await settle()
+    ctl._on_event(NS(event=NS(value="queue_items_updated"), object_id="tv"))
+    assert ctl._fake_server.notified >= 1

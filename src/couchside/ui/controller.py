@@ -13,6 +13,9 @@ from couchside.core.paths import sendspin_settings_dir
 from couchside.core import library, queue, speakers
 from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
+from couchside.core.guest_server import PORT as GUEST_PORT
+from couchside.core.guest_server import GuestServer, lan_ip
+from couchside.core.guests import GuestRules, GuestSession
 from couchside.core.lyrics_text import is_english, romanize
 from couchside.core.translate import DeepLTranslator, GoogleTranslator, LibreTranslator
 from couchside.core.playback import Playback, find_local_player
@@ -56,6 +59,7 @@ class AppController(QObject):
     speakersChanged = Signal()
     toastChanged = Signal()
     lyricsChanged = Signal()
+    guestChanged = Signal()
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -85,6 +89,9 @@ class AppController(QObject):
         self._lyrics_key: str | None = None
         self._lyric_lines: list[dict] = []
         self._lyrics_pending = False
+        self._guest_session: GuestSession | None = None
+        self._guest_server = None
+        self._guest_last_current: str | None = None
         self._raw_lyrics: list = []          # LyricLine list as found, current song
         self._raw_english = False
         self._translation: list[str] | None = None
@@ -118,6 +125,8 @@ class AppController(QObject):
 
     async def close(self) -> None:
         """Release network resources on shutdown."""
+        if self._guest_server is not None:
+            await self._guest_server.stop()
         await self._http.close()
 
     # --- lyrics --------------------------------------------------------------------
@@ -332,6 +341,7 @@ class AppController(QObject):
 
     def _on_event(self, event) -> None:
         kind = str(getattr(getattr(event, "event", None), "value", "") or "")
+        self._notify_guests(kind, getattr(event, "object_id", None))
         if kind in _PLAYER_EVENTS:
             self._emit_speakers_if_changed()
         if self._queue_visible and kind in _QUEUE_EVENTS:
@@ -343,6 +353,18 @@ class AppController(QObject):
             if kind == "queue_items_updated" or current != self._last_current_item:
                 self._last_current_item = current
                 self.loadQueue()
+
+    def _notify_guests(self, kind: str, object_id) -> None:
+        """Phones refresh when the controlled queue's items or current song change."""
+        if self._guest_server is None or self._guest_session is None:
+            return
+        if kind not in _QUEUE_EVENTS or object_id not in (None, self._queue_id()):
+            return
+        current = self._current_item_id(self._queue_id())
+        if kind == "queue_items_updated" or current != self._guest_last_current:
+            self._guest_last_current = current
+            self._guest_server.notify_changed()
+            self.guestChanged.emit()
 
     def _emit_speakers_if_changed(self) -> None:
         rows = self._speaker_rows()
@@ -614,7 +636,8 @@ class AppController(QObject):
             rows = await queue.load_queue(client, qid, self._current_item_id(qid)) if client else []
             self._queue_rows = [{"itemId": r.item_id, "title": r.title, "subtitle": r.subtitle,
                                  "imageUrl": art_url(r.image_url, 256), "duration": r.duration or 0,
-                                 "current": r.current} for r in rows]
+                                 "current": r.current, "addedBy": self._added_by(r.item_id)}
+                                for r in rows]
             self.queueChanged.emit()
         self._spawn(run())
 
@@ -669,6 +692,148 @@ class AppController(QObject):
     @Slot(str, "QVariantList")
     def editGroup(self, group_id: str, member_ids: list) -> None:
         self._speaker(group_id, "edit_group", [str(m) for m in member_ids])
+
+    # --- guest mode --------------------------------------------------------------
+    def _added_by(self, item_id: str | None) -> str:
+        return (self._guest_session.added_by(item_id) if self._guest_session else None) or ""
+
+    def _guest_rules(self) -> GuestRules:
+        st = self._settings
+        return GuestRules(skips=st.guest_skips, boosts=st.guest_boosts,
+                          max_waiting=st.guest_max_waiting, cooldown=float(st.guest_cooldown))
+
+    def _guest_context(self):
+        client, pid = self.conn.client, self.playback.active_player_id
+        if client is None or pid is None or self.conn.state is not ConnState.CONNECTED:
+            return None
+        return client, self._queue_id() or pid, pid
+
+    def _make_guest_server(self):
+        from pathlib import Path
+
+        import couchside
+        page = Path(couchside.__file__).parent / "web" / "guest.html"
+        return GuestServer(lambda: self._guest_session, self._guest_context, page,
+                           on_change=self.guestChanged.emit)
+
+    @Property(bool, notify=guestChanged)
+    def guestMode(self) -> bool:
+        return self._guest_session is not None
+
+    @Slot()
+    def toggleGuestMode(self) -> None:
+        if self._guest_session is None:
+            self._guest_session = GuestSession(self._guest_rules())  # fresh token = new QR
+            if self._guest_server is None:
+                self._guest_server = self._make_guest_server()
+            server = self._guest_server
+
+            async def start():
+                try:
+                    await server.start()
+                except OSError as e:
+                    log.warning("guest server failed to start: %s", e)
+                    self._guest_session = None
+                    self._set_toast(f"Couldn't start guest mode (port {GUEST_PORT} busy?)")
+                    self.guestChanged.emit()
+            self._spawn(start())
+        else:
+            self._guest_session = None
+            if self._guest_server is not None:
+                self._spawn(self._guest_server.stop())
+        self.guestChanged.emit()
+        self.queueChanged.emit()
+
+    @Property(str, notify=guestChanged)
+    def guestUrl(self) -> str:
+        if self._guest_session is None:
+            return ""
+        base = (self._settings.guest_public_url or "").strip().rstrip("/")
+        if not base:
+            host = None
+            url = self._settings.server_url
+            if url:
+                from urllib.parse import urlsplit
+                host = urlsplit(url).hostname
+            base = f"http://{lan_ip(host or '192.168.0.1')}:{GUEST_PORT}"
+        return f"{base}/g/{self._guest_session.token}/"
+
+    @Property("QVariantList", notify=guestChanged)
+    def qrRows(self) -> list:
+        url = self.guestUrl
+        if not url:
+            return []
+        import segno
+        return ["".join("1" if m else "0" for m in row) for row in segno.make(url, error="m").matrix]
+
+    @Property(str, notify=guestChanged)
+    def nowPlayingCredit(self) -> str:
+        return self._added_by(self._current_item_id(self._queue_id()))
+
+    @Property(int, notify=guestChanged)
+    def guestCount(self) -> int:
+        return len(self._guest_session.guests) if self._guest_session else 0
+
+    @Property(str, notify=guestChanged)
+    def qrCaption(self) -> str:
+        return self._settings.qr_caption
+
+    @Slot(str)
+    def setQrCaption(self, text: str) -> None:
+        self._settings.qr_caption = text.strip()[:60] or "Scan to add songs"
+        save_settings(self._settings)
+        self.guestChanged.emit()
+
+    @Property(str, notify=guestChanged)
+    def guestPublicUrl(self) -> str:
+        return self._settings.guest_public_url or ""
+
+    @Slot(str)
+    def setGuestPublicUrl(self, url: str) -> None:
+        self._settings.guest_public_url = url.strip().rstrip("/") or None
+        save_settings(self._settings)
+        self.guestChanged.emit()
+
+    def _cycle_rule(self, field: str, choices: tuple[int, ...]) -> None:
+        value = getattr(self._settings, field)
+        later = [c for c in choices if c > value]
+        setattr(self._settings, field, later[0] if later else choices[0])
+        save_settings(self._settings)
+        if self._guest_session is not None:
+            self._guest_session.rules = self._guest_rules()  # applies straight away
+        self.guestChanged.emit()
+
+    @Property(int, notify=guestChanged)
+    def guestSkips(self) -> int:
+        return self._settings.guest_skips
+
+    @Slot()
+    def cycleGuestSkips(self) -> None:
+        self._cycle_rule("guest_skips", (0, 1, 2, 3, 5, 10))
+
+    @Property(int, notify=guestChanged)
+    def guestBoosts(self) -> int:
+        return self._settings.guest_boosts
+
+    @Slot()
+    def cycleGuestBoosts(self) -> None:
+        self._cycle_rule("guest_boosts", (0, 1, 2, 3, 5))
+
+    @Property(int, notify=guestChanged)
+    def guestMaxWaiting(self) -> int:
+        return self._settings.guest_max_waiting
+
+    @Slot()
+    def cycleGuestMaxWaiting(self) -> None:
+        self._cycle_rule("guest_max_waiting", (1, 2, 3, 5, 10))
+
+    @Property(int, notify=guestChanged)
+    def guestCooldown(self) -> int:
+        return self._settings.guest_cooldown
+
+    @Slot()
+    def cycleGuestCooldown(self) -> None:
+        self._cycle_rule("guest_cooldown", (0, 30, 60, 120, 300))
 
     # --- toast -----------------------------------------------------------------
     @Property(str, notify=toastChanged)
