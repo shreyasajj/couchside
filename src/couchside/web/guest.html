@@ -40,6 +40,13 @@
   .hidden { display: none !important; }
   form.inline { display: flex; gap: 8px; }
   form.inline input { flex: 1; }
+  .badge { background: var(--warn); color: #241a00; border-radius: 999px; padding: 2px 10px; font-size: 14px;
+           font-weight: 700; vertical-align: middle; margin-left: 6px; }
+  .tools { display: flex; gap: 6px; flex: none; }
+  .tools button { min-width: 44px; padding: 10px 12px; }
+  .link { background: none; color: var(--accent); padding: 8px 0; min-height: 0; font-weight: 600; }
+  .vol { display: flex; align-items: center; gap: 12px; }
+  .vol b { min-width: 3ch; text-align: center; font-size: 20px; }
 </style>
 </head>
 <body>
@@ -54,7 +61,7 @@
   </section>
 
   <section id="app" class="hidden">
-    <h1 id="hello">Hi</h1>
+    <h1><span id="hello">Hi</span><span id="adminBadge" class="badge hidden">Admin</span></h1>
 
     <div class="card">
       <div class="row" id="now"></div>
@@ -71,6 +78,33 @@
 
     <h2>Up next</h2>
     <div id="upcoming" class="card"></div>
+
+    <section id="adminPanel" class="hidden">
+      <h2>Admin</h2>
+      <div class="card">
+        <div class="row">
+          <div class="meta"><div class="t">Volume</div></div>
+          <div class="vol"><button id="volDown" class="ghost" aria-label="Volume down">−</button>
+            <b id="volLevel">–</b><button id="volUp" class="ghost" aria-label="Volume up">+</button></div>
+        </div>
+        <div class="row">
+          <div class="meta"><div class="t">Shuffle</div></div>
+          <button id="shuffle" class="ghost">Off</button>
+        </div>
+      </div>
+      <h2>Speakers</h2>
+      <div id="speakers" class="card"></div>
+      <h2>Guests</h2>
+      <div id="guests" class="card"></div>
+    </section>
+
+    <div id="codeBox" style="margin-top:24px">
+      <button id="codeLink" class="link" type="button">Have an admin code from the host?</button>
+      <form id="codeForm" class="inline hidden">
+        <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code">
+        <button type="submit">Use code</button>
+      </form>
+    </div>
   </section>
 </main>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -187,26 +221,100 @@
     } else {
       now.append(el("div", "empty", "Nothing playing right now"));
     }
-    const rem = st.remaining;
-    $("stats").replaceChildren(
-      el("span", "pill", `Your songs waiting: ${rem.waiting}/${rem.maxWaiting}`),
-      el("span", "pill", `Skips left: ${rem.skips}`),
-      el("span", "pill", `Boosts left: ${rem.boosts}`));
-    $("skip").disabled = rem.skips <= 0 || !st.nowPlaying;
-    $("skip").textContent = rem.skips > 0 ? `Skip this song (${rem.skips} left)` : "No skips left";
+    const rem = st.remaining, admin = !!st.admin;
+    $("adminBadge").classList.toggle("hidden", !admin);
+    $("codeBox").classList.toggle("hidden", admin);
+    if (admin) {
+      $("stats").replaceChildren(el("span", "pill", "Admin: no limits"));
+      $("skip").disabled = !st.nowPlaying;
+      $("skip").textContent = "Skip this song";
+    } else {
+      $("stats").replaceChildren(
+        el("span", "pill", `Your songs waiting: ${rem.waiting}/${rem.maxWaiting}`),
+        el("span", "pill", `Skips left: ${rem.skips}`),
+        el("span", "pill", `Boosts left: ${rem.boosts}`));
+      $("skip").disabled = rem.skips <= 0 || !st.nowPlaying;
+      $("skip").textContent = rem.skips > 0 ? `Skip this song (${rem.skips} left)` : "No skips left";
+    }
+    renderAdmin(admin ? st.adminInfo : null);
 
     const up = $("upcoming");
     up.replaceChildren();
     if (!st.upcoming.length) up.append(el("div", "empty", "Nothing queued yet — add a song!"));
     for (const song of st.upcoming) {
       let btn = null;
-      if (song.mine) {
+      if (admin) {
+        btn = el("div", "tools");
+        for (const [label, action, name] of [["↑", "up", "Move up"], ["↓", "down", "Move down"],
+                                             ["Next", "next", "Play next"], ["✕", "remove", "Remove"]]) {
+          const b = el("button", "ghost", label);
+          b.setAttribute("aria-label", name);
+          b.onclick = () => act(b, "admin/queue", { itemId: song.itemId, action });
+          btn.append(b);
+        }
+      } else if (song.mine) {
         btn = el("button", rem.boosts > 0 ? "" : "ghost", "Boost");
         btn.title = "Play this one next";
         btn.disabled = rem.boosts <= 0;
         btn.onclick = () => act(btn, "boost", { itemId: song.itemId }, "Boosted — it plays next");
       }
       up.append(songRow(song, btn));
+    }
+  }
+
+  function renderAdmin(info) {
+    $("adminPanel").classList.toggle("hidden", !info);
+    if (!info) return;
+    $("volLevel").textContent = info.volume == null ? "–" : String(info.volume);
+    $("volDown").disabled = $("volUp").disabled = info.volume == null;
+    $("shuffle").textContent = info.shuffle ? "On" : "Off";
+    $("shuffle").className = info.shuffle ? "" : "ghost";
+    $("shuffle").dataset.on = info.shuffle ? "1" : "";
+
+    const sp = $("speakers");
+    sp.replaceChildren();
+    for (const s of info.speakers) {
+      const row = el("div", "row");
+      const meta = el("div", "meta");
+      meta.append(el("div", "t", s.name),
+                  el("div", "s", s.controlled ? "Playing here now" : !s.available ? "Not available" : s.playing || "Idle"));
+      row.append(meta);
+      if (!s.controlled && s.available) {
+        const tools = el("div", "tools");
+        const ctl = el("button", "ghost", "Control");
+        ctl.title = "Control this speaker instead";
+        ctl.onclick = () => act(ctl, "admin/speaker", { playerId: s.playerId, action: "control" }, `Now controlling ${s.name}`);
+        const mv = el("button", "", "Move music");
+        mv.title = "Move the music to this speaker";
+        mv.onclick = () => act(mv, "admin/speaker", { playerId: s.playerId, action: "transfer" }, `Moved to ${s.name}`);
+        tools.append(ctl, mv);
+        row.append(tools);
+      }
+      sp.append(row);
+    }
+
+    const gl = $("guests");
+    gl.replaceChildren();
+    for (const g of info.guests) {
+      const row = el("div", "row");
+      const meta = el("div", "meta");
+      meta.append(el("div", "t", g.name + (g.you ? " (you)" : "")),
+                  el("div", "s", g.admin ? "Admin" : `Skips left ${g.skipsLeft} · Boosts left ${g.boostsLeft}`));
+      row.append(meta);
+      if (!g.admin) {
+        const tools = el("div", "tools");
+        const reset = el("button", "ghost", "Reset");
+        reset.title = "Give back their skips and boosts";
+        reset.onclick = () => act(reset, "admin/guest", { guestId: g.id, action: "reset" }, `Reset ${g.name}`);
+        const rm = el("button", "ghost", "Remove");
+        rm.onclick = () => {
+          if (confirm(`Remove ${g.name} from the party? They can't rejoin until guest mode restarts.`))
+            act(rm, "admin/guest", { guestId: g.id, action: "remove" }, `Removed ${g.name}`);
+        };
+        tools.append(reset, rm);
+        row.append(tools);
+      }
+      gl.append(row);
     }
   }
 
@@ -274,10 +382,30 @@
     if (q) search(q);
     $("q").blur();
   };
+  $("codeLink").onclick = () => {
+    $("codeLink").classList.add("hidden");
+    $("codeForm").classList.remove("hidden");
+    $("code").focus();
+  };
+  $("codeForm").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const code = $("code").value.replace(/\s/g, "");
+    if (!/^\d{6}$/.test(code)) { toast("The code is 6 digits"); return; }
+    try {
+      await call("POST", "code", { deviceId, code });
+      $("code").value = "";
+      toast("You're an admin now", true);
+      await refresh();
+    } catch (e) { toast(e.message); }
+  };
+  $("volDown").onclick = () => act($("volDown"), "admin/volume", { step: -5 });
+  $("volUp").onclick = () => act($("volUp"), "admin/volume", { step: 5 });
+  $("shuffle").onclick = () => act($("shuffle"), "admin/shuffle", { on: !$("shuffle").dataset.on });
   $("skip").onclick = () => {
     if (!last || !last.nowPlaying) return;
     // name the song: if someone else skipped it a moment ago, this one isn't used up
-    if (confirm("Skip the song that's playing now? It uses one of your skips."))
+    if (confirm(last.admin ? "Skip the song that's playing now?"
+                           : "Skip the song that's playing now? It uses one of your skips."))
       act($("skip"), "skip", { currentItemId: last.nowPlaying.itemId }, "Skipped");
   };
 
