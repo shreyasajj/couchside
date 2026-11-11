@@ -75,13 +75,24 @@ async def test_code_makes_an_admin_once(env):
     assert DEV not in repr(st) and OTHER not in repr(st)
 
 
-async def test_wrong_codes_cancel_and_tell_the_tv(env):
+async def test_wrong_codes_cancel_and_tell_the_tv(env, monkeypatch):
+    import couchside.core.guests as g
+    monkeypatch.setattr(g, "CODE_TRIES", 3)
     code = env.session.new_admin_code(now=1000.0)
     wrong = "000000" if code != "000000" else "111111"
-    for dev in (DEV, OTHER, DEV, OTHER, DEV):
+    r = await env.tc.post(env.base + "api/join", json={"deviceId": "device-extra0xx", "name": "X0"})
+    assert r.status == 200  # third phone on this address
+    for dev in (DEV, OTHER, "device-extra0xx"):
         await post(env, "code", dev=dev, code=wrong)
     assert env.session.admin_code is None
     assert ("code_cancelled", "") in env.events
+
+
+async def test_removed_guest_cannot_rejoin_from_a_new_browser_on_the_lan(env):
+    other = env.session.guests[OTHER]
+    env.session.remove(other.public_id)
+    r = await env.tc.post(env.base + "api/join", json={"deviceId": "device-private1", "name": "New me"})
+    assert r.status == 403 and "removed" in (await r.json())["error"]
 
 
 async def test_code_tries_are_rate_limited(env):
@@ -102,7 +113,7 @@ async def test_admin_routes_work_for_admins(env):
     assert env.host.calls == [("shuffle", True), ("volume", 45), ("transfer", "kitchen")]
     assert OTHER not in env.session.guests
     status, data = await post(env, "join", dev=OTHER, name="Olly again")
-    assert status == 400 and "removed" in data["error"]
+    assert status in (400, 403) and "removed" in data["error"]
 
 
 async def test_admin_inputs_are_checked(env):

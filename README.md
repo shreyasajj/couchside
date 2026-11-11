@@ -94,7 +94,7 @@ the guests who joined. Make someone an admin either way:
 
 - **Admin code:** "Show an admin code" puts a 6-digit code on the TV. On their phone the
   guest taps "Have an admin code from the host?" and enters it. It works once, for 10
-  minutes; Back cancels it, and five wrong tries cancel it too.
+  minutes; Back cancels it. Each phone gets 3 tries, and 20 wrong tries in all cancel it.
 - **Promote:** OK on a guest → Make admin.
 
 Admins see an Admin panel on the guest page: skip without limits, add without limits,
@@ -103,8 +103,10 @@ plays ("Control" switches the speaker the TV controls; "Move music" moves the qu
 there). They can give a guest their skips and boosts back, or remove a guest from the
 party, but can't change other admins. From the TV you can do all of that to anyone and
 remove admin at any time. Admin belongs to the phone (it survives reloads) until you
-remove it or guest mode ends. A removed guest can't rejoin until guest mode restarts;
-their songs stay in the queue.
+remove it or guest mode ends. A removed guest can't rejoin from that phone until guest mode
+restarts (on your network, not from a private tab either); their songs stay in the queue.
+Behind a reverse proxy every phone shares the proxy's address, so a determined guest can
+rejoin from a new browser there.
 
 The guest page is served by Couchside on port **8765** of this TV (plain HTTP on your
 network). For HTTPS or access from outside, put a reverse proxy in front of it and set

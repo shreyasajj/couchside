@@ -1,6 +1,6 @@
 import pytest
 
-from couchside.core.guests import CODE_TRIES, CODE_TTL, GuestError, GuestRules, GuestSession
+from couchside.core.guests import CODE_TRIES, CODE_TRIES_PER_PHONE, CODE_TTL, GuestError, GuestRules, GuestSession
 
 A, B = "device-aaaaaaaa", "device-bbbbbbbb"
 
@@ -47,15 +47,41 @@ def test_no_code_means_no_admin():
 
 
 def test_wrong_tries_cancel_the_code():
-    s, a, b = setup()
+    s = GuestSession(GuestRules())
+    phones = [s.join(f"device-{n:08d}", f"G{n}") for n in range(CODE_TRIES)]
     code = s.new_admin_code(now=0)
     wrong = "000000" if code != "000000" else "111111"
     for i in range(CODE_TRIES):
         with pytest.raises(GuestError):
-            s.redeem_code(a if i % 2 else b, wrong, now=1)
+            s.redeem_code(phones[i], wrong, now=1)
     assert s.admin_code is None and s.code_cancelled
     with pytest.raises(GuestError):
-        s.redeem_code(a, code, now=2)  # the right code no longer works
+        s.redeem_code(phones[0], code, now=2)  # the right code no longer works
+
+
+def test_one_phone_cannot_burn_the_code():
+    s, a, b = setup()
+    code = s.new_admin_code(now=0)
+    wrong = "000000" if code != "000000" else "111111"
+    for _ in range(CODE_TRIES):
+        with pytest.raises(GuestError):
+            s.redeem_code(a, wrong, now=1)
+    assert s.admin_code == code  # still live for the right person
+    with pytest.raises(GuestError):
+        s.redeem_code(a, code, now=1)  # a phone out of tries can't use it
+    s.redeem_code(b, code, now=1)
+    assert b.admin and not a.admin
+    assert CODE_TRIES_PER_PHONE == 3
+
+
+def test_errors_dont_reveal_whether_a_code_is_live():
+    s, a, b = setup()
+    with pytest.raises(GuestError) as none:
+        s.redeem_code(a, "123456", now=0)
+    code = s.new_admin_code(now=0)
+    with pytest.raises(GuestError) as live:
+        s.redeem_code(b, "000000" if code != "000000" else "111111", now=0)
+    assert str(none.value) == str(live.value)
 
 
 def test_cancel_code():

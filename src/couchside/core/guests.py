@@ -21,7 +21,9 @@ _DEVICE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 MAX_NAME = 24
 MAX_GUESTS = 50
 CODE_TTL = 600.0   # seconds an admin code stays valid
-CODE_TRIES = 5     # wrong tries (all phones together) before the code is cancelled
+CODE_TRIES = 20            # wrong tries (all phones together) before the code is cancelled
+CODE_TRIES_PER_PHONE = 3   # wrong tries one phone gets per code (so one guest can't burn it)
+_WRONG_CODE = "That code isn't right — ask the host for a new one"
 
 
 class GuestError(Exception):
@@ -70,6 +72,7 @@ class GuestSession:
     code_expires: float = 0.0
     code_cancelled: bool = False   # the last code was cancelled by wrong tries
     _code_misses: int = 0
+    _phone_misses: dict[str, int] = field(default_factory=dict)
     _banned: set[str] = field(default_factory=set)
     _former: dict[str, str] = field(default_factory=dict)  # removed guests' names (credits)
 
@@ -130,24 +133,31 @@ class GuestSession:
         self.code_expires = now + CODE_TTL
         self.code_cancelled = False
         self._code_misses = 0
+        self._phone_misses = {}
         return self.admin_code
 
     def cancel_admin_code(self) -> None:
         self.admin_code = None
         self._code_misses = 0
+        self._phone_misses = {}
+
+    def is_banned(self, device_id: str) -> bool:
+        return device_id in self._banned
 
     def redeem_code(self, guest: Guest, code, now: float) -> None:
+        """One error text whether or not a code is showing, so guests can't tell."""
         if self.admin_code is not None and now > self.code_expires:
             self.cancel_admin_code()
-        if self.admin_code is None:
-            raise GuestError("That code isn't valid — ask the host for a new one")
+        if self.admin_code is None or self._phone_misses.get(guest.device_id, 0) >= CODE_TRIES_PER_PHONE:
+            raise GuestError(_WRONG_CODE)
         if not isinstance(code, str) or not secrets.compare_digest(code.strip().encode(),
                                                                    self.admin_code.encode()):
+            self._phone_misses[guest.device_id] = self._phone_misses.get(guest.device_id, 0) + 1
             self._code_misses += 1
             if self._code_misses >= CODE_TRIES:
                 self.cancel_admin_code()
                 self.code_cancelled = True
-            raise GuestError("That code isn't right")
+            raise GuestError(_WRONG_CODE)
         guest.admin = True
         self.cancel_admin_code()
 

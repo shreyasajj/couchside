@@ -242,6 +242,12 @@ class GuestServer:
             device = data.get("deviceId")
             if self._limit_per_address() and device not in session.guests:
                 seen = self._addresses.setdefault((session.token, ip), set())
+                # a removed guest on a fresh browser (private tab, cleared data) is still
+                # on the same address
+                if any(session.is_banned(d) for d in seen):
+                    raise web.HTTPForbidden(
+                        text=json.dumps({"error": "The host removed you from this party"}),
+                        content_type="application/json")
                 if device not in seen and len(seen) >= DEVICES_PER_ADDRESS:
                     raise web.HTTPTooManyRequests(
                         text=json.dumps({"error": "Too many guests from this phone"}),
