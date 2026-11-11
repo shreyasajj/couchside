@@ -4,9 +4,9 @@ A TV-first [Music Assistant](https://music-assistant.io) app for **KDE Plasma Bi
 It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
-Status: **Phase 3**: connect, bundled speaker, Now Playing (blurred artwork, progress,
-shuffle, repeat, volume), search with recently played/added, the queue, and the speaker
-and group picker. Lyrics, guest mode and admin access follow in later phases
+Status: **Phase 4**: connect, bundled speaker, Now Playing (blurred artwork, progress,
+shuffle, repeat, volume, synced lyrics), search with recently played/added, the queue,
+and the speaker and group picker. Guest mode and admin access follow in later phases
 (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
 ## Install (on the Bigscreen TV)
@@ -58,6 +58,13 @@ Remote: Left/Right move along the control bar (shuffle, previous, play/pause, ne
 repeat, volume, settings), OK activates, Back goes back (on Now Playing it asks before
 exiting). On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
 Back closes it. Media keys (play/pause, next, previous) work anywhere.
+
+**Lyrics.** When a song has time-synced lyrics, Now Playing switches to the lyrics
+layout: the line being sung is very large, the next one medium, and they scroll with the
+music. Songs without synced lyrics keep the big-artwork layout. Lyrics come from the
+track's own metadata in Music Assistant when present, otherwise from
+[LRCLIB](https://lrclib.net) (Couchside sends the song's title, first artist, album and
+length — nothing else). Turn them off under Settings → Display → Show lyrics.
 
 The buttons at the right of the bar open:
 
@@ -148,5 +155,9 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
 - **Bigscreen keyboard.** It opens on any focused text field and takes the arrow keys,
   and it swallows the first key press after it hides; Couchside only starts editing on
   OK. Run with `--debug-focus` to log focus changes when tracing remote navigation.
+- **Lyrics.** `metadata/get_track_lyrics` needs schema 101; on 2.10.9 Couchside reads
+  `metadata.lrc_lyrics` of the track (`music/item_by_uri`) and otherwise asks LRCLIB
+  (`/api/get` with the first artist — MA joins artists with `/` — then `/api/search` by
+  title, matched on length within 3 s). Plain (unsynced) lyrics are not shown.
 - **Flatpak instead of `uv` + systemd** (owner's decision, see design doc):
   Sendspin is bundled and autostarted through the Background portal.

@@ -12,6 +12,7 @@ from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
 from couchside.core import library, queue, speakers
 from couchside.core.format import art_url, format_time, palette_colour
+from couchside.core.lyrics import LyricsFetcher, TrackInfo, aiohttp_get
 from couchside.core.playback import Playback, find_local_player
 from couchside.core.settings import (
     AppSettings,
@@ -50,6 +51,7 @@ class AppController(QObject):
     queueChanged = Signal()
     speakersChanged = Signal()
     toastChanged = Signal()
+    lyricsChanged = Signal()
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -74,6 +76,10 @@ class AppController(QObject):
         self._last_speaker_rows: list[dict] = []
         self._last_current_item: str | None = None
         self._last_queue_id: str | None = None
+        self._lyrics_fetcher = LyricsFetcher(aiohttp_get, ma_lookup=self._ma_lrc)
+        self._lyrics_key: str | None = None
+        self._lyric_lines: list[dict] = []
+        self._lyrics_pending = False
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
@@ -101,7 +107,74 @@ class AppController(QObject):
             self.playback.refresh()
         self.changed.emit()
 
+    # --- lyrics --------------------------------------------------------------------
+    async def _ma_lrc(self, uri: str) -> str | None:
+        """LRC stored on the track in MA (MA < schema 101 has no lyrics lookup command)."""
+        client = self.conn.client
+        if client is None or self.conn.state is not ConnState.CONNECTED:
+            return None
+        item = await client.music.get_item_by_uri(uri)
+        meta = getattr(item, "metadata", None)
+        return getattr(meta, "lrc_lyrics", None)
+
+    def _track_key(self) -> str | None:
+        np = self.playback.now_playing
+        if np is None:
+            return None
+        # uri + title: a stream keeps its uri while the song (metadata) changes
+        return f"{np.uri or ''}|{np.title}|{np.artist}"
+
+    def _check_lyrics(self) -> None:
+        key = self._track_key()
+        if key == self._lyrics_key:
+            return
+        self._lyrics_key = key
+        self._lyric_lines = []
+        np = self.playback.now_playing
+        self._lyrics_pending = bool(key and np and self._settings.lyrics_enabled)
+        self.lyricsChanged.emit()
+        if not self._lyrics_pending:
+            return
+        info = TrackInfo(key=key, title=np.title, artist=np.artist, album=np.album,
+                         duration=np.duration, uri=np.uri)
+
+        async def fetch():
+            lines = await self._lyrics_fetcher.get(info)
+            if key != self._lyrics_key:
+                return  # the song changed while looking: drop it
+            self._lyric_lines = [{"t": line.time, "text": line.text} for line in (lines or [])]
+            self._lyrics_pending = False
+            self.lyricsChanged.emit()
+        self._spawn(fetch())
+
+    @Property(bool, notify=lyricsChanged)
+    def lyricsPending(self) -> bool:
+        """A lookup for the current song is running (QML holds the layout meanwhile)."""
+        return self._lyrics_pending
+
+    @Property(bool, notify=lyricsChanged)
+    def hasLyrics(self) -> bool:
+        return bool(self._lyric_lines)
+
+    @Property("QVariantList", notify=lyricsChanged)
+    def lyricLines(self) -> list:
+        return self._lyric_lines
+
+    @Property(bool, notify=lyricsChanged)
+    def lyricsEnabled(self) -> bool:
+        return self._settings.lyrics_enabled
+
+    @lyricsEnabled.setter
+    def lyricsEnabled(self, enabled: bool) -> None:
+        self._settings.lyrics_enabled = bool(enabled)
+        save_settings(self._settings)
+        self._lyrics_key = None  # look again for the current song (or clear when off)
+        self._lyric_lines = []
+        self.lyricsChanged.emit()
+        self._check_lyrics()
+
     def _on_update(self) -> None:
+        self._check_lyrics()
         self._emit_speakers_if_changed()  # controlled speaker may have changed
         qid = self._queue_id()
         if qid != self._last_queue_id:

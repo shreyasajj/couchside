@@ -75,7 +75,7 @@ Kirigami.Page {
             echoMode: TextInput.Password
             inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
             KeyNavigation.up: urlField
-            KeyNavigation.down: saveButton
+            KeyNavigation.down: saveButton.enabled ? saveButton : lyricsRow
         }
 
         QQC2.Button {
@@ -85,6 +85,7 @@ Kirigami.Page {
             font.pixelSize: 32 * page.u
             padding: 24 * page.u
             KeyNavigation.up: tokenField
+            KeyNavigation.down: lyricsRow
             Keys.onReturnPressed: clicked()
             Keys.onEnterPressed: clicked()
             enabled: tokenField.text.trim() !== "" || app.hasToken
@@ -105,6 +106,47 @@ Kirigami.Page {
                 tokenField.text = ""
                 page.done()
             }
+        }
+
+        QQC2.Label {
+            Layout.topMargin: 24 * page.u
+            text: "Display"
+            color: "#ffffff"
+            font.pixelSize: 40 * page.u
+            font.weight: Font.Bold
+        }
+        // OK toggles; takes effect on Now Playing straight away.
+        Rectangle {
+            id: lyricsRow
+            Layout.fillWidth: true
+            implicitHeight: 96 * page.u
+            radius: 12 * page.u
+            activeFocusOnTab: true
+            color: activeFocus ? "#33ffffff" : "#1affffff"
+            border.width: activeFocus ? 5 * page.u : 0
+            border.color: "#4fc3f7"
+            KeyNavigation.up: saveButton.enabled ? saveButton : tokenField
+            Keys.onReturnPressed: app.lyricsEnabled = !app.lyricsEnabled
+            Keys.onEnterPressed: app.lyricsEnabled = !app.lyricsEnabled
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_Select) { app.lyricsEnabled = !app.lyricsEnabled; event.accepted = true }
+            }
+            RowLayout {
+                anchors { fill: parent; leftMargin: 28 * page.u; rightMargin: 28 * page.u }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: "Show lyrics"
+                    color: "#ffffff"
+                    font.pixelSize: 32 * page.u
+                }
+                QQC2.Label {
+                    text: app.lyricsEnabled ? "On" : "Off"
+                    color: app.lyricsEnabled ? "#4fc3f7" : "#99ffffff"
+                    font.pixelSize: 32 * page.u
+                    font.weight: Font.Bold
+                }
+            }
+            MouseArea { anchors.fill: parent; onClicked: app.lyricsEnabled = !app.lyricsEnabled }
         }
     }
 }

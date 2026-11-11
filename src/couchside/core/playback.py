@@ -31,6 +31,7 @@ class NowPlaying:
     volume: int | None = None  # None: the player has no volume control
     palette_dark: tuple[int, int, int] | None = None
     queue_id: str | None = None
+    uri: str | None = None  # identifies the track (lyrics lookup, change detection)
 
 
 def position_at(np: NowPlaying, now: float) -> float:
@@ -170,6 +171,7 @@ class Playback:
             volume=volume,
             palette_dark=palette,  # type: ignore[arg-type]
             queue_id=getattr(queue, "queue_id", None),
+            uri=getattr(media, "uri", None) or None,
         )
 
     def _ready(self) -> bool:
