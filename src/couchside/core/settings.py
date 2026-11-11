@@ -19,6 +19,7 @@ class AppSettings:
     server_url: str | None = None
     player_name: str = "Living Room TV"
     qr_caption: str = "Scan to add songs"
+    lyrics_enabled: bool = True
     guest_public_url: str | None = None
     autostart_requested: bool = False
     # Not Sendspin's default (8927/8928) so it can't clash with another Sendspin on the host.

@@ -101,3 +101,11 @@ def test_normalize_server_url():
     assert normalize_server_url("http://mass.local/") == "http://mass.local:8095"
     assert normalize_server_url("http://h:9000") == "http://h:9000"
     assert normalize_server_url("https://ma.example.com") == "https://ma.example.com"
+
+
+def test_lyrics_enabled_round_trip(tmp_path):
+    from couchside.core.settings import AppSettings, load_settings, save_settings
+    p = tmp_path / "settings.json"
+    assert load_settings(p).lyrics_enabled is True
+    save_settings(AppSettings(lyrics_enabled=False), p)
+    assert load_settings(p).lyrics_enabled is False
