@@ -10,6 +10,7 @@ from PySide6.QtCore import Property, QObject, Signal, Slot
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
+from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.playback import Playback
 from couchside.core.settings import (
     AppSettings,
@@ -109,7 +110,48 @@ class AppController(QObject):
 
     @Property(str, notify=changed)
     def artUrl(self) -> str:
-        return self._np("image_url") or ""
+        return art_url(self._np("image_url", None), 600)
+
+    @Property(str, notify=changed)
+    def artUrlLarge(self) -> str:
+        return art_url(self._np("image_url", None), 1024)
+
+    @Property(float, notify=changed)
+    def duration(self) -> float:
+        return float(self._np("duration", None) or 0)
+
+    @Property(bool, notify=changed)
+    def hasDuration(self) -> bool:
+        return bool(self._np("duration", None))
+
+    @Property(float, notify=changed)
+    def positionBase(self) -> float:
+        return float(self._np("elapsed", 0.0))
+
+    @Property(float, notify=changed)
+    def positionAt(self) -> float:
+        return float(self._np("elapsed_at", 0.0))
+
+    @Property(bool, notify=changed)
+    def shuffle(self) -> bool:
+        return bool(self._np("shuffle", False))
+
+    @Property(str, notify=changed)
+    def repeatMode(self) -> str:
+        return self._np("repeat", "off")
+
+    @Property(int, notify=changed)
+    def volume(self) -> int:
+        v = self._np("volume", None)
+        return -1 if v is None else int(v)
+
+    @Property(bool, notify=changed)
+    def hasVolume(self) -> bool:
+        return self._np("volume", None) is not None
+
+    @Property(str, notify=changed)
+    def backgroundColour(self) -> str:
+        return palette_colour(self._np("palette_dark", None))
 
     @Property(bool, notify=changed)
     def isPlaying(self) -> bool:
@@ -147,6 +189,30 @@ class AppController(QObject):
     @Slot()
     def previous(self) -> None:
         self._spawn(self.playback.previous())
+
+    @Slot()
+    def toggleShuffle(self) -> None:
+        self._spawn(self.playback.toggle_shuffle())
+
+    @Slot()
+    def cycleRepeat(self) -> None:
+        self._spawn(self.playback.cycle_repeat())
+
+    @Slot(int)
+    def setVolume(self, level: int) -> None:
+        self._spawn(self.playback.set_volume(level))
+
+    @Slot()
+    def volumeUp(self) -> None:
+        self._spawn(self.playback.step_volume(5))
+
+    @Slot()
+    def volumeDown(self) -> None:
+        self._spawn(self.playback.step_volume(-5))
+
+    @Slot(float, result=str)
+    def formatTime(self, seconds: float) -> str:
+        return format_time(seconds)
 
     @Slot(str, str)
     def saveConnection(self, url: str, token: str) -> None:
