@@ -6,6 +6,7 @@ import asyncio
 import bisect
 import logging
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -113,18 +114,30 @@ class LyricsFetcher:
     """
 
     def __init__(self, http_get: HttpGet, ma_lookup: MaLookup | None = None,
-                 timeout: float = 10.0, ma_timeout: float = 2.0):
+                 timeout: float = 10.0, ma_timeout: float = 2.0, max_entries: int = 300):
         self._http = http_get
         self._ma = ma_lookup
         self._timeout = timeout
         self._ma_timeout = ma_timeout
-        self._cache: dict[str, list[LyricLine] | None] = {}
+        self._max = max_entries
+        self._cache: OrderedDict[str, list[LyricLine] | None] = OrderedDict()  # LRU
+        self._inflight: dict[str, asyncio.Future] = {}
 
     async def get(self, info: TrackInfo) -> list[LyricLine] | None:
         if not info.duration:
             return None
         if info.key in self._cache:
+            self._cache.move_to_end(info.key)
             return self._cache[info.key]
+        # The same song asked for again while a lookup runs (A -> B -> A): share it.
+        fut = self._inflight.get(info.key)
+        if fut is None:
+            fut = asyncio.ensure_future(self._lookup(info))
+            self._inflight[info.key] = fut
+            fut.add_done_callback(lambda _f: self._inflight.pop(info.key, None))
+        return await asyncio.shield(fut)
+
+    async def _lookup(self, info: TrackInfo) -> list[LyricLine] | None:
         try:
             lines, definite = await asyncio.wait_for(self._chain(info), self._timeout)
         except Exception as e:
@@ -132,6 +145,8 @@ class LyricsFetcher:
             lines, definite = None, False
         if lines or definite:
             self._cache[info.key] = lines or None
+            while len(self._cache) > self._max:
+                self._cache.popitem(last=False)
         return lines or None
 
     async def _chain(self, info: TrackInfo) -> tuple[list[LyricLine] | None, bool]:
@@ -189,16 +204,30 @@ class LyricsFetcher:
         return None
 
 
-async def aiohttp_get(url: str, params: dict) -> tuple[int, Any]:
-    """The real HTTP getter: JSON or None, with Couchside's User-Agent."""
-    import aiohttp
+class HttpClient:
+    """GET -> (status, JSON or None) over one shared aiohttp session (created on first
+    use, so it binds to the running loop), with Couchside's User-Agent."""
 
-    timeout = aiohttp.ClientTimeout(total=8)
-    async with aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": USER_AGENT}) as s:
-        async with s.get(url, params=params) as r:
+    def __init__(self, timeout: float = 8.0):
+        self._timeout = timeout
+        self._session = None
+
+    async def get(self, url: str, params: dict) -> tuple[int, Any]:
+        import aiohttp
+
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self._timeout),
+                headers={"User-Agent": USER_AGENT})
+        async with self._session.get(url, params=params) as r:
             if r.status != 200:
                 return r.status, None
             try:
                 return r.status, await r.json(content_type=None)
             except Exception:
                 return r.status, None
+
+    async def close(self) -> None:
+        if self._session is not None:
+            await self._session.close()
+            self._session = None

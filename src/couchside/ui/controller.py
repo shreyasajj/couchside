@@ -12,7 +12,7 @@ from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
 from couchside.core import library, queue, speakers
 from couchside.core.format import art_url, format_time, palette_colour
-from couchside.core.lyrics import LyricsFetcher, TrackInfo, aiohttp_get
+from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
 from couchside.core.playback import Playback, find_local_player
 from couchside.core.settings import (
     AppSettings,
@@ -76,7 +76,8 @@ class AppController(QObject):
         self._last_speaker_rows: list[dict] = []
         self._last_current_item: str | None = None
         self._last_queue_id: str | None = None
-        self._lyrics_fetcher = LyricsFetcher(aiohttp_get, ma_lookup=self._ma_lrc)
+        self._http = HttpClient()
+        self._lyrics_fetcher = LyricsFetcher(self._http.get, ma_lookup=self._ma_lrc)
         self._lyrics_key: str | None = None
         self._lyric_lines: list[dict] = []
         self._lyrics_pending = False
@@ -106,6 +107,10 @@ class AppController(QObject):
             self._client_id = value
             self.playback.refresh()
         self.changed.emit()
+
+    async def close(self) -> None:
+        """Release network resources on shutdown."""
+        await self._http.close()
 
     # --- lyrics --------------------------------------------------------------------
     async def _ma_lrc(self, uri: str) -> str | None:

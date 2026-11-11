@@ -201,3 +201,65 @@ def test_parse_strips_word_timestamps():
 def test_parse_leading_tags_share_text():
     assert parse_lrc("[00:01.00][00:09.00] chorus line") == [
         LyricLine(1.0, "chorus line"), LyricLine(9.0, "chorus line")]
+
+
+# --- lookup efficiency -------------------------------------------------------------
+
+async def test_concurrent_lookups_share_one_request():
+    gate = asyncio.Event()
+
+    async def http(url, params):
+        calls.append(url)
+        await gate.wait()
+        return 200, {"syncedLyrics": LRC}
+    calls = []
+    f = LyricsFetcher(http)
+    a = asyncio.ensure_future(f.get(INFO))
+    b = asyncio.ensure_future(f.get(INFO))   # A -> B -> A quickly: same song again
+    await asyncio.sleep(0.01)
+    gate.set()
+    ra, rb = await a, await b
+    assert ra == rb and ra[0].text == "I will shelter you"
+    assert len(calls) == 1
+
+
+async def test_cache_is_bounded():
+    from dataclasses import replace
+    http = Http({"get": (404, None), "search": (200, [])})
+    f = LyricsFetcher(http, max_entries=2)
+    for k in ("a", "b", "c"):
+        await f.get(replace(INFO, key=k))
+    before = len(http.calls)
+    await f.get(replace(INFO, key="a"))      # evicted: asked again
+    await f.get(replace(INFO, key="c"))      # still cached
+    assert len(http.calls) == before + 2
+
+
+async def test_http_client_reuses_one_session(monkeypatch):
+    import couchside.core.lyrics as lyr
+    made = []
+
+    class FakeResp:
+        status = 200
+        async def json(self, content_type=None):
+            return {"ok": True}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    class FakeSession:
+        def __init__(self, **kw):
+            made.append(kw)
+            self.closed = False
+        def get(self, url, params=None):
+            return FakeResp()
+        async def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("aiohttp.ClientSession", FakeSession)
+    client = lyr.HttpClient()
+    assert await client.get("u", {}) == (200, {"ok": True})
+    assert await client.get("u", {}) == (200, {"ok": True})
+    assert len(made) == 1 and made[0]["headers"]["User-Agent"].startswith("Couchside/")
+    await client.close()

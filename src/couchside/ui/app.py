@@ -71,6 +71,7 @@ def main() -> int:
         ]
         await closing.wait()
         await controller.conn.stop()
+        await controller.close()
         for t in tasks:
             t.cancel()
 
