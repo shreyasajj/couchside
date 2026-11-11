@@ -56,8 +56,9 @@ Kirigami.Page {
         if (app.hasDuration) p = Math.min(app.duration, p)
         position = p
     }
+    readonly property bool showLyrics: app.hasLyrics && app.lyricsEnabled && page.hasMedia
     Timer {
-        interval: 500
+        interval: page.showLyrics ? 250 : 500  // lyrics need a finer tick than the bar
         repeat: true
         running: app.isPlaying && page.visible && Qt.application.state === Qt.ApplicationActive
         triggeredOnStart: true
@@ -79,6 +80,9 @@ Kirigami.Page {
     // --- artwork + metadata (no-lyrics layout) -------------------------------------
     Item {
         id: content
+        opacity: page.showLyrics ? 0 : 1
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 300 } }
         anchors {
             left: parent.left; right: parent.right; top: parent.top; bottom: bar.top
             leftMargin: page.margin; rightMargin: page.margin
@@ -176,6 +180,66 @@ Kirigami.Page {
                     elide: Text.ElideRight
                 }
             }
+        }
+    }
+
+    // --- lyrics-forward layout (layout B) -------------------------------------------
+    Item {
+        id: lyricsLayout
+        opacity: page.showLyrics ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 300 } }
+        anchors {
+            left: parent.left; right: parent.right; top: parent.top; bottom: bar.top
+            leftMargin: page.margin; rightMargin: page.margin
+            topMargin: page.margin; bottomMargin: 24 * page.u
+        }
+
+        RowLayout {  // small sharp artwork, title, artist · album
+            id: lyricsHeader
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            spacing: 32 * page.u
+            Rectangle {
+                Layout.preferredWidth: page.width * 0.1
+                Layout.preferredHeight: page.width * 0.1
+                radius: 12 * page.u
+                color: "#2b2163"
+                clip: true
+                CrossfadeImage {
+                    anchors.fill: parent
+                    source: app.artUrl
+                    sourceSize: Qt.size(page.width * 0.1, page.width * 0.1)
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6 * page.u
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: app.title
+                    color: "#ffffff"
+                    font.pixelSize: 48 * page.u
+                    font.weight: Font.Bold
+                    elide: Text.ElideRight
+                }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: [app.artist, app.album].filter(s => s !== "").join(" · ")
+                    color: "#ffffff"
+                    opacity: 0.8
+                    font.pixelSize: 30 * page.u
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        LyricsView {
+            anchors { left: parent.left; right: parent.right; top: lyricsHeader.bottom; bottom: parent.bottom
+                      topMargin: 24 * page.u }
+            u: page.u
+            refWidth: page.width
+            lines: app.lyricLines
+            position: page.position
         }
     }
 
