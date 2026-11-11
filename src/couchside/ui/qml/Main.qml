@@ -87,8 +87,12 @@ Kirigami.ApplicationWindow {
         else app.volumeDown()
     }
 
-    ActionSheet { id: actionSheet; u: root.u; parent: root.overlay }
-    GroupEditor { id: groupEditorOverlay; u: root.u; parent: root.overlay }
+    function focusCurrentPage() {
+        var page = pageStack.currentItem
+        if (page && page.focusDefault) page.focusDefault()
+    }
+    ActionSheet { id: actionSheet; u: root.u; parent: root.overlay; onFocusLost: root.focusCurrentPage() }
+    GroupEditor { id: groupEditorOverlay; u: root.u; parent: root.overlay; onFocusLost: root.focusCurrentPage() }
     Toast { u: root.u; parent: root.overlay }
 
     PairingOverlay {

@@ -73,6 +73,7 @@ class AppController(QObject):
         self._toast = ""
         self._last_speaker_rows: list[dict] = []
         self._last_current_item: str | None = None
+        self._last_queue_id: str | None = None
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
@@ -102,6 +103,12 @@ class AppController(QObject):
 
     def _on_update(self) -> None:
         self._emit_speakers_if_changed()  # controlled speaker may have changed
+        qid = self._queue_id()
+        if qid != self._last_queue_id:
+            self._last_queue_id = qid
+            self._last_current_item = None
+            if self._queue_visible:
+                self.loadQueue()  # the Queue page follows the controlled speaker
         if self.conn.state is ConnState.CONNECTED and self._pending_server_id:
             self._preferred_server_id = self._pending_server_id
         if self.playback.local_player_found and self._pairing_code:

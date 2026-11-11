@@ -10,6 +10,7 @@ Rectangle {
     property string groupId: ""
     property var chosen: []
     property Item opener: null
+    signal focusLost()  // opener destroyed while open (see ActionSheet)
 
     anchors.fill: parent
     color: "#b3000000"
@@ -29,6 +30,7 @@ Rectangle {
         if (!visible) return
         visible = false
         if (opener) opener.forceActiveFocus()
+        else focusLost()
     }
     function toggle(id) {
         var c = chosen.slice()

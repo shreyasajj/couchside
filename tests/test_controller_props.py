@@ -211,3 +211,17 @@ def test_queue_reload_only_on_item_or_current_change(ctl, monkeypatch):
     ctl._on_event(upd)           # track changed
     ctl._on_event(NS(event=NS(value="queue_items_updated"), object_id="tv"))
     assert len(loads) == 3
+
+
+def test_queue_reloads_when_controlled_speaker_changes(ctl, monkeypatch):
+    wire(ctl)
+    loads = []
+    monkeypatch.setattr(ctl, "loadQueue", lambda: loads.append(1))
+    ctl._queue_visible = True
+    ctl._on_update()                     # remembers the current queue (tv)
+    loads.clear()
+    ctl._on_update()                     # nothing changed
+    assert loads == []
+    ctl.playback.active_player_id = "mac"   # e.g. fell back / switched speaker
+    ctl._on_update()
+    assert loads == [1]

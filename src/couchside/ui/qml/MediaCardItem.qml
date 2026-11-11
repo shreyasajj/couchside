@@ -16,9 +16,9 @@ FocusScope {
     width: 240 * u
     height: 240 * u + 100 * u
 
-    Keys.onReturnPressed: activated()
-    Keys.onEnterPressed: activated()
-    Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { activated(); event.accepted = true } }
+    Keys.onReturnPressed: (event) => { if (!event.isAutoRepeat) activated() }
+    Keys.onEnterPressed: (event) => { if (!event.isAutoRepeat) activated() }
+    Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { if (!event.isAutoRepeat) activated(); event.accepted = true } }
 
     readonly property string icon: ({ track: "media-optical-audio", album: "media-optical",
                                        artist: "view-media-artist", playlist: "view-media-playlist",

@@ -3,7 +3,10 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 
 // Modal list of big actions. open(title, [{id, label}], opener, callback(id)).
-// Up/Down move, OK runs one action and closes (once), Back closes; focus goes back to the opener.
+// Up/Down move, OK runs one action and closes (once), Back closes; focus goes back to the
+// opener, or focusLost() is emitted when the opener was destroyed meanwhile (list rows are
+// rebuilt whenever their data changes). OK within 300 ms of opening, or held-down OK
+// (auto-repeat), is ignored so a double press on the opener can't run the first action.
 Rectangle {
     id: sheet
     property real u: 1
@@ -11,6 +14,8 @@ Rectangle {
     property var actions: []
     property Item opener: null
     property var callback: null
+    property double openedAt: 0
+    signal focusLost()
 
     anchors.fill: parent
     color: "#b3000000"
@@ -22,6 +27,7 @@ Rectangle {
         actions = acts
         opener = from
         callback = cb
+        openedAt = Date.now()
         visible = true
         Qt.callLater(function() { if (list.count > 0) { list.currentIndex = 0; list.forceActiveFocus() } })
     }
@@ -29,9 +35,11 @@ Rectangle {
         if (!visible) return
         visible = false
         if (opener) opener.forceActiveFocus()
+        else focusLost()
     }
     function run(index) {
         if (!visible || index < 0 || index >= actions.length) return  // ignore a second OK
+        if (Date.now() - openedAt < 300) return                       // double press on the opener
         var id = actions[index].id
         var cb = callback
         close()
@@ -88,10 +96,10 @@ Rectangle {
                     }
                     MouseArea { anchors.fill: parent; onClicked: sheet.run(actionItem.index) }
                 }
-                Keys.onReturnPressed: sheet.run(currentIndex)
-                Keys.onEnterPressed: sheet.run(currentIndex)
+                Keys.onReturnPressed: (event) => { if (!event.isAutoRepeat) sheet.run(currentIndex) }
+                Keys.onEnterPressed: (event) => { if (!event.isAutoRepeat) sheet.run(currentIndex) }
                 Keys.onPressed: (event) => {
-                    if (event.key === Qt.Key_Select) { sheet.run(currentIndex); event.accepted = true }
+                    if (event.key === Qt.Key_Select) { if (!event.isAutoRepeat) sheet.run(currentIndex); event.accepted = true }
                     else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) event.accepted = true
                 }
             }

@@ -21,9 +21,9 @@ FocusScope {
     implicitHeight: 128 * u
     activeFocusOnTab: true
 
-    Keys.onReturnPressed: activated()
-    Keys.onEnterPressed: activated()
-    Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { activated(); event.accepted = true } }
+    Keys.onReturnPressed: (event) => { if (!event.isAutoRepeat) activated() }
+    Keys.onEnterPressed: (event) => { if (!event.isAutoRepeat) activated() }
+    Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { if (!event.isAutoRepeat) activated(); event.accepted = true } }
 
     Rectangle {
         anchors.fill: parent
