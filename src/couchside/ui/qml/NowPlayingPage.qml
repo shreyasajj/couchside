@@ -251,6 +251,7 @@ Kirigami.Page {
                       topMargin: 24 * page.u }
             u: page.u
             refWidth: page.width
+            size: app.lyricsSize
             lines: app.lyricLines
             position: page.position
         }

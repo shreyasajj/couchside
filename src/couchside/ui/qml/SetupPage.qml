@@ -147,6 +147,39 @@ Kirigami.Page {
                 }
             }
             MouseArea { anchors.fill: parent; onClicked: app.lyricsEnabled = !app.lyricsEnabled }
+            KeyNavigation.down: sizeRow
+        }
+        Rectangle {
+            id: sizeRow
+            Layout.fillWidth: true
+            implicitHeight: 96 * page.u
+            radius: 12 * page.u
+            activeFocusOnTab: true
+            color: activeFocus ? "#33ffffff" : "#1affffff"
+            border.width: activeFocus ? 5 * page.u : 0
+            border.color: "#4fc3f7"
+            KeyNavigation.up: lyricsRow
+            Keys.onReturnPressed: app.cycleLyricsSize()
+            Keys.onEnterPressed: app.cycleLyricsSize()
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_Select) { app.cycleLyricsSize(); event.accepted = true }
+            }
+            RowLayout {
+                anchors { fill: parent; leftMargin: 28 * page.u; rightMargin: 28 * page.u }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: "Lyrics size"
+                    color: "#ffffff"
+                    font.pixelSize: 32 * page.u
+                }
+                QQC2.Label {
+                    text: ({ small: "Small", medium: "Medium", large: "Large" })[app.lyricsSize]
+                    color: "#4fc3f7"
+                    font.pixelSize: 32 * page.u
+                    font.weight: Font.Bold
+                }
+            }
+            MouseArea { anchors.fill: parent; onClicked: app.cycleLyricsSize() }
         }
     }
 }

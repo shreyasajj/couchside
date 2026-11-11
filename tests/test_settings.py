@@ -109,3 +109,11 @@ def test_lyrics_enabled_round_trip(tmp_path):
     assert load_settings(p).lyrics_enabled is True
     save_settings(AppSettings(lyrics_enabled=False), p)
     assert load_settings(p).lyrics_enabled is False
+
+
+def test_lyrics_size_round_trip(tmp_path):
+    from couchside.core.settings import AppSettings, load_settings, save_settings
+    p = tmp_path / "settings.json"
+    assert load_settings(p).lyrics_size == "medium"
+    save_settings(AppSettings(lyrics_size="small"), p)
+    assert load_settings(p).lyrics_size == "small"

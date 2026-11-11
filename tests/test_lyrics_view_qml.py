@@ -54,8 +54,28 @@ def test_long_current_line_fits_two_rows(view):
 def test_short_line_keeps_full_size(view):
     root = view.rootObject()
     root.setProperty("refWidth", 1920)
+    root.setProperty("size", "large")
     root.setProperty("lines", [{"t": 0.0, "text": "I will shelter you"}])
     root.setProperty("position", 1.0)
     pump(0.6)
     item = first_line(root)
     assert abs(item.property("font").pixelSize() - 1920 * 0.06) < 2
+
+
+def test_sizes_and_centering(view):
+    root = view.rootObject()
+    root.setProperty("refWidth", 1920)
+    root.setProperty("lines", [{"t": 0.0, "text": "short"}])
+    root.setProperty("position", 1.0)
+    sizes = {}
+    for size in ("small", "medium", "large"):
+        root.setProperty("size", size)
+        pump(0.5)
+        sizes[size] = first_line(root).property("font").pixelSize()
+    assert sizes["small"] < sizes["medium"] < sizes["large"]
+    assert abs(sizes["medium"] - 1920 * 0.045) < 2
+    from PySide6.QtQml import QQmlEngine, QQmlExpression
+    line = first_line(root)
+    expr = QQmlExpression(QQmlEngine.contextForObject(line), line,
+                          "horizontalAlignment === Text.AlignHCenter")
+    assert expr.evaluate()[0] is True

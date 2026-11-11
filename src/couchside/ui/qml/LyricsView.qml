@@ -10,6 +10,11 @@ ListView {
     property var lines: []
     property real u: 1
     property real refWidth: width  // sizes are fractions of the screen width (design)
+    property string size: "medium"  // small | medium | large (Settings)
+    // [current, next, other] line sizes as fractions of the screen width
+    readonly property var scale: ({ large: [0.060, 0.034, 0.026],
+                                    medium: [0.045, 0.029, 0.023],
+                                    small: [0.035, 0.025, 0.020] })[size] || [0.045, 0.029, 0.023]
     // line being sung (-1 before the first line), same rule as core.lyrics.line_index_at
     readonly property int activeIndex: {
         var lo = 0, hi = lines.length
@@ -63,15 +68,16 @@ ListView {
         width: ListView.view.width
         text: modelData.text !== "" ? modelData.text : "♪"
         color: "#ffffff"
+        horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
         font.weight: current ? Font.Bold : Font.DemiBold
         // Long lines (rap, Punjabi) shrink so the current line never needs more than two
         // rows; the 0.85 leaves room for word-wrap waste. Short lines keep the full size.
-        readonly property real fullSize: view.refWidth * 0.06
+        readonly property real fullSize: view.refWidth * view.scale[0]
         readonly property real fit: Math.min(1, (2 * width * 0.85) / Math.max(1, metrics.advanceWidth))
         font.pixelSize: current ? fullSize * fit
-                        : distance === 1 ? view.refWidth * 0.034
-                        : view.refWidth * 0.026
+                        : distance === 1 ? view.refWidth * view.scale[1]
+                        : view.refWidth * view.scale[2]
         maximumLineCount: current ? 2 : 3
         elide: Text.ElideRight
         TextMetrics {

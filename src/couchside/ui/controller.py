@@ -169,6 +169,20 @@ class AppController(QObject):
     def lyricsEnabled(self) -> bool:
         return self._settings.lyrics_enabled
 
+    _LYRICS_SIZES = ("small", "medium", "large")
+
+    @Property(str, notify=lyricsChanged)
+    def lyricsSize(self) -> str:
+        size = self._settings.lyrics_size
+        return size if size in self._LYRICS_SIZES else "medium"
+
+    @Slot()
+    def cycleLyricsSize(self) -> None:
+        sizes = self._LYRICS_SIZES
+        self._settings.lyrics_size = sizes[(sizes.index(self.lyricsSize) + 1) % len(sizes)]
+        save_settings(self._settings)
+        self.lyricsChanged.emit()
+
     @lyricsEnabled.setter
     def lyricsEnabled(self, enabled: bool) -> None:
         self._settings.lyrics_enabled = bool(enabled)

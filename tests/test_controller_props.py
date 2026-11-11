@@ -312,3 +312,18 @@ async def test_metadata_change_on_same_uri_refetches(ctl):
     song(ctl, "x://station", title="Song B")
     await settle()
     assert [i.title for i in f.asked] == ["Song A", "Song B"]
+
+
+def test_lyrics_size_cycles_and_saves(ctl, tmp_path):
+    from couchside.core.settings import load_settings
+    assert ctl.lyricsSize == "medium"
+    ctl.cycleLyricsSize()
+    assert ctl.lyricsSize == "large"
+    ctl.cycleLyricsSize()
+    assert ctl.lyricsSize == "small"
+    assert load_settings().lyrics_size == "small"
+
+
+def test_unknown_lyrics_size_reads_as_medium(ctl):
+    ctl._settings.lyrics_size = "huge"
+    assert ctl.lyricsSize == "medium"
