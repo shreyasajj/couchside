@@ -17,7 +17,9 @@ LRCLIB = "https://lrclib.net/api"
 USER_AGENT = f"Couchside/{__version__} (https://github.com/shreyasajj/couchside)"
 SEARCH_DURATION_SLACK = 3.0  # seconds
 
-_TIME_TAG = re.compile(r"\[(?:(\d+):)?(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]")
+# [mm:ss], [mm:ss.xx], [mm:ss:xx] (colon hundredths), [h:mm:ss.xx]
+_TIME_TAG = re.compile(r"\[(\d{1,3}):(\d{1,2})(?::(\d{1,2}))?(?:\.(\d{1,3}))?\]")
+_WORD_STAMP = re.compile(r"<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>")
 _OFFSET = re.compile(r"^\s*\[offset:\s*([+-]?\d+)\s*\]", re.IGNORECASE | re.MULTILINE)
 _ARTIST_SPLIT = re.compile(r"\s*(?:/|,|&|\bfeat\.?\b|\bft\.?\b|\s+x\s+)\s*", re.IGNORECASE)
 
@@ -38,22 +40,47 @@ class TrackInfo:
     uri: str | None
 
 
+def _tag_seconds(m: re.Match) -> float:
+    a, b, c, frac = m.group(1), m.group(2), m.group(3), m.group(4)
+    if c is not None and frac is not None:   # [h:mm:ss.xx]
+        return int(a) * 3600 + int(b) * 60 + int(c) + float("0." + frac)
+    if c is not None:                        # [mm:ss:xx] colon hundredths
+        return int(a) * 60 + int(b) + float("0." + c)
+    return int(a) * 60 + int(b) + (float("0." + frac) if frac else 0.0)
+
+
 def parse_lrc(text: str | None) -> list[LyricLine]:
-    """Timed lines from LRC text; tags without a time and untimed lines are ignored."""
+    """Timed lines from LRC text.
+
+    Tags at the start of a line share the text after them; a tag in the middle of a
+    line starts a new line (text before it belongs to the earlier tags). Per-word
+    `<mm:ss.xx>` stamps (enhanced LRC) are removed. Tags without a time and lines that
+    do not start with a time are ignored.
+    """
     if not text:
         return []
     m = _OFFSET.search(text)
     offset = int(m.group(1)) / 1000 if m else 0.0
     lines: list[LyricLine] = []
+
+    def emit(times: list[float], words: str) -> None:
+        words = " ".join(_WORD_STAMP.sub("", words).split())
+        lines.extend(LyricLine(round(max(0.0, t - offset), 3), words) for t in times)
+
     for raw in text.splitlines():
         tags = list(_TIME_TAG.finditer(raw))
-        if not tags or tags[0].start() != raw.find("["):
+        if not tags or raw[:tags[0].start()].strip("\ufeff \t"):
             continue
-        lyric = raw[tags[-1].end():].strip()
-        for t in tags:
-            hours = int(t.group(1) or 0)
-            seconds = hours * 3600 + int(t.group(2)) * 60 + float(t.group(3).replace(":", "."))
-            lines.append(LyricLine(round(max(0.0, seconds - offset), 3), lyric))
+        pending: list[float] = []
+        pos = tags[0].start()
+        for tag in tags:
+            between = raw[pos:tag.start()]
+            if between.strip() and pending:
+                emit(pending, between)
+                pending = []
+            pending.append(_tag_seconds(tag))
+            pos = tag.end()
+        emit(pending, raw[pos:])
     lines.sort(key=lambda line: line.time)
     if not any(line.text for line in lines):
         return []  # only timestamps / blank lines: nothing to sing along to

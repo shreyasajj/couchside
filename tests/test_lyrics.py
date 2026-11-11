@@ -179,3 +179,25 @@ async def test_total_wait_is_bounded():
 
 def test_parse_lrc_with_no_words_is_empty():
     assert parse_lrc("[00:00.00]\n[00:05.00]  ") == []
+
+
+# --- unusual LRC files -------------------------------------------------------------
+
+def test_parse_colon_centiseconds():
+    # some files write [mm:ss:cc] instead of [mm:ss.cc]
+    assert parse_lrc("[00:01:50]a\n[01:02:05]b") == [LyricLine(1.5, "a"), LyricLine(62.05, "b")]
+
+
+def test_parse_text_between_mid_line_tags():
+    assert parse_lrc("[00:01.00]hello [00:02.00]world") == [LyricLine(1.0, "hello"), LyricLine(2.0, "world")]
+
+
+def test_parse_strips_word_timestamps():
+    # enhanced LRC: per-word <mm:ss.xx> stamps
+    assert parse_lrc("[00:01.00]<00:01.00>I <00:01.40>will <00:01.90>shelter") == [
+        LyricLine(1.0, "I will shelter")]
+
+
+def test_parse_leading_tags_share_text():
+    assert parse_lrc("[00:01.00][00:09.00] chorus line") == [
+        LyricLine(1.0, "chorus line"), LyricLine(9.0, "chorus line")]
