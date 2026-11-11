@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e '.[test]'
+      - name: Unit tests
+        run: python -m pytest -q
+
+  flatpak:
+    name: flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Build the Flatpak
+        run: |
+          flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse \
+            --force-clean --repo=repo build-dir flatpak/io.github.shreyasajj.Couchside.yml
+      - name: Check the app imports inside the sandbox
+        run: |
+          flatpak build build-dir python3 -c "import couchside.ui.app, couchside.sendspin.runner, sendspin.cli, music_assistant_client; print('imports ok')"

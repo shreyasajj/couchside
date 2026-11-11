@@ -1,0 +1,51 @@
+app-id: io.github.shreyasajj.Couchside
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: couchside
+finish-args:
+  - --share=network          # Music Assistant, mDNS discovery, guest web server
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio      # Sendspin audio output (PipeWire-pulse)
+  - --own-name=org.mpris.MediaPlayer2.Sendspin.*  # Sendspin MPRIS: ...Sendspin.instance<pid>
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+  - name: portaudio
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --without-jack
+      - --without-oss
+    sources:
+      - type: archive
+        url: https://files.portaudio.com/archives/pa_stable_v190700_20210406.tgz
+        sha256: 47efbf42c77c19a05d22e627d42873e991ec0c1357219c0d74ce6a2948cb2def
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.la'
+
+  - python-deps.json
+
+  - name: couchside
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-index --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 flatpak/${FLATPAK_ID}.desktop -t ${FLATPAK_DEST}/share/applications
+      - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - install -Dm644 flatpak/${FLATPAK_ID}.svg -t ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - .venv
+          - .superpowers
+          - build-dir
+          - .flatpak-builder

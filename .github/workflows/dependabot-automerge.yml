@@ -1,0 +1,20 @@
+name: Dependabot auto-merge
+
+# Every Dependabot PR is queued for auto-merge; GitHub merges it once the
+# required checks (tests, flatpak) pass. A failing check leaves it open.
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Enable auto-merge
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

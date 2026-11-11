@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Couchside
+GenericName=Music Player
+Comment=Music Assistant for your TV
+Exec=couchside
+Icon=io.github.shreyasajj.Couchside
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;assistant;sendspin;tv;jukebox;party;
+StartupNotify=true
