@@ -71,7 +71,7 @@ async def test_add_skip_boost(env):
     await join(env)
     r = await env.tc.post(env.base + "api/add", json={"deviceId": DEV, "uri": "x://t/9"})
     assert r.status == 200
-    new = env.client.player_queues.items[-1].queue_item_id
+    new = next(i.queue_item_id for i in env.client.player_queues.items if env.session.added_by(i.queue_item_id))
     assert env.session.added_by(new) == "Sam"
     r = await env.tc.post(env.base + "api/boost", json={"deviceId": DEV, "itemId": new})
     assert r.status == 200

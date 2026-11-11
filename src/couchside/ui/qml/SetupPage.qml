@@ -20,12 +20,15 @@ Kirigami.Page {
     Component.onCompleted: {
         urlField.text = app.serverUrl
         libreField.text = app.libretranslateUrl
+        captionField.text = app.qrCaption
+        publicUrlField.text = app.guestPublicUrl
         focusDefault()
     }
-    // Back while a field is being edited: stop editing, stay on the page.
+    // Back while a field is being edited: stop editing and keep what was typed (the same as
+    // the keyboard's Enter, which is awkward to reach on Bigscreen's keyboard); stay on the page.
     function handleBack() {
-        for (const f of [urlField, tokenField, deeplField, libreField])
-            if (f.editing) { f.stopEditing(); return true }
+        for (const f of [urlField, tokenField, deeplField, libreField, captionField, publicUrlField])
+            if (f.editing) { f.stopEditing(); f.accepted(); return true }
         return false
     }
     // Up/Down: next focusable row in that direction (skips hidden rows, no wrap-around).
@@ -226,6 +229,50 @@ Kirigami.Page {
                     tokenField.text = ""
                     page.done()
                 }
+            }
+
+            Heading { text: "Guest mode" }
+            SettingRow {
+                label: "Guest mode"
+                value: app.guestMode ? "On" : "Off"
+                hint: app.guestMode ? (app.guestCount === 1 ? "1 guest joined" : app.guestCount + " guests joined")
+                                      + " · turning it off and on makes a new QR code"
+                                    : "Shows a QR code so guests can add songs from their phones"
+                onActivated: app.toggleGuestMode()
+            }
+            SettingRow {
+                label: "Skips per guest"
+                value: app.guestSkips
+                onActivated: app.cycleGuestSkips()
+            }
+            SettingRow {
+                label: "Boosts per guest"
+                value: app.guestBoosts
+                hint: "A boost plays one of their own songs next"
+                onActivated: app.cycleGuestBoosts()
+            }
+            SettingRow {
+                label: "Songs waiting per guest"
+                value: app.guestMaxWaiting
+                onActivated: app.cycleGuestMaxWaiting()
+            }
+            SettingRow {
+                label: "Wait between adds"
+                value: app.guestCooldown === 0 ? "Off" : (app.guestCooldown < 60 ? app.guestCooldown + " s" : (app.guestCooldown / 60) + " min")
+                onActivated: app.cycleGuestCooldown()
+            }
+            Note { text: "Text under the QR code" }
+            TvField {
+                id: captionField
+                placeholderText: "Scan to add songs"
+                onAccepted: app.setQrCaption(text)
+            }
+            Note { text: "Guest page public URL — only if you put a reverse proxy (HTTPS) in front of this TV; leave empty for the local network" }
+            TvField {
+                id: publicUrlField
+                placeholderText: "e.g. https://party.example.com"
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
+                onAccepted: app.setGuestPublicUrl(text)
             }
 
             Heading { text: "Lyrics" }

@@ -47,9 +47,14 @@ async def add_track(client: Any, queue_id: str, player_id: str, session: GuestSe
             or any(seg in uri for seg in _NOT_TRACKS)):
         raise GuestError("Only songs can be added")
     current, items = await _queue(client, queue_id)
-    session.check_add(guest, [i.queue_item_id for i in _upcoming(current, items)], now)
+    upcoming_ids = [i.queue_item_id for i in _upcoming(current, items)]
+    session.check_add(guest, upcoming_ids, now)
+    # Guests' songs form a first-come, first-served block right after the current song,
+    # ahead of everything else (MA's autoplay can fill the queue with dozens of songs, and
+    # it doesn't mark them): insert as "next", then move below the guest songs waiting.
+    ahead = sum(1 for i in upcoming_ids if session.added_by(i) is not None)
     before = {i.queue_item_id for i in items}
-    if not await library.play(client, queue_id, uri, "add"):
+    if not await library.play(client, queue_id, uri, "next"):
         raise GuestError("Couldn't add that song — try again")
     try:
         _, after = await _queue(client, queue_id)
@@ -57,7 +62,13 @@ async def add_track(client: Any, queue_id: str, player_id: str, session: GuestSe
         after = []
     new = [i for i in after if i.queue_item_id not in before]
     match = [i for i in new if getattr(getattr(i, "media_item", None), "uri", None) == uri] or new
-    session.note_added(guest, match[-1].queue_item_id if match else None, now)
+    new_id = match[-1].queue_item_id if match else None
+    session.note_added(guest, new_id, now)
+    if new_id and ahead:
+        try:
+            await client.player_queues.move_item(queue_id, new_id, pos_shift=ahead)
+        except Exception as e:  # the song is in; only its place is off
+            log.warning("placing guest song failed: %s", e)
 
 
 async def skip(client: Any, player_id: str, session: GuestSession, guest: Guest) -> None:

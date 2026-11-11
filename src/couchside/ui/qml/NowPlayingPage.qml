@@ -20,6 +20,8 @@ Kirigami.Page {
     }
 
     readonly property real margin: 72 * u
+    // guest-mode QR (top-right): layouts keep clear of it
+    readonly property real qrSpace: app.guestMode ? guestQr.width + 48 * u : 0
     readonly property bool hasMedia: app.title !== ""
 
     // Focus returns to the control that opened something (Settings) or to play/pause.
@@ -98,7 +100,7 @@ Kirigami.Page {
         Behavior on opacity { NumberAnimation { duration: 300 } }
         anchors {
             left: parent.left; right: parent.right; top: parent.top; bottom: bar.top
-            leftMargin: page.margin; rightMargin: page.margin
+            leftMargin: page.margin; rightMargin: page.margin + page.qrSpace
             topMargin: 140 * page.u; bottomMargin: 48 * page.u
         }
 
@@ -192,6 +194,7 @@ Kirigami.Page {
                     font.pixelSize: 36 * page.u
                     elide: Text.ElideRight
                 }
+                CreditPill { visible: page.hasMedia && app.nowPlayingCredit !== "" }
             }
         }
     }
@@ -210,7 +213,7 @@ Kirigami.Page {
 
         RowLayout {  // small sharp artwork, title, artist · album
             id: lyricsHeader
-            anchors { left: parent.left; right: parent.right; top: parent.top }
+            anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: page.qrSpace }
             spacing: 32 * page.u
             Rectangle {
                 Layout.preferredWidth: page.width * 0.1
@@ -243,17 +246,59 @@ Kirigami.Page {
                     font.pixelSize: 30 * page.u
                     elide: Text.ElideRight
                 }
+                CreditPill { visible: app.nowPlayingCredit !== "" }
             }
         }
 
         LyricsView {
             anchors { left: parent.left; right: parent.right; top: lyricsHeader.bottom; bottom: parent.bottom
-                      topMargin: 24 * page.u }
+                      topMargin: 24 * page.u; rightMargin: page.qrSpace }
             u: page.u
             refWidth: page.width
             size: app.lyricsSize
             lines: app.lyricLines
             position: page.position
+        }
+    }
+
+    // --- guest mode QR (top-right) --------------------------------------------------
+    Column {
+        id: guestBox
+        visible: app.guestMode
+        anchors { right: parent.right; top: parent.top; margins: page.margin }
+        spacing: 12 * page.u
+        QrCode {
+            id: guestQr
+            rows: app.qrRows
+            size: 220 * page.u
+            anchors.horizontalCenter: parent.horizontalCenter
+        }
+        QQC2.Label {
+            width: guestQr.width + 40 * page.u
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: app.qrCaption
+            color: "#ffffff"
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            font.pixelSize: 28 * page.u
+            font.weight: Font.DemiBold
+        }
+    }
+
+    component CreditPill: Rectangle {
+        Layout.topMargin: 6 * page.u
+        implicitWidth: creditText.implicitWidth + 32 * page.u
+        implicitHeight: creditText.implicitHeight + 12 * page.u
+        radius: height / 2
+        color: "#334fc3f7"
+        QQC2.Label {
+            id: creditText
+            anchors.centerIn: parent
+            text: "Added by " + app.nowPlayingCredit
+            color: "#bfeaff"
+            font.pixelSize: 28 * page.u
         }
     }
 

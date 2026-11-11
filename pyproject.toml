@@ -16,6 +16,7 @@ dependencies = [
     "qasync>=0.27",
     "aiosendspin>=10.2",
     "anyascii>=0.3",
+    "segno>=1.6",
 ]
 
 [project.optional-dependencies]

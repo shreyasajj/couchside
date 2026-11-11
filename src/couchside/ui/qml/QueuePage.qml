@@ -84,7 +84,8 @@ Kirigami.Page {
                 title: modelData.title
                 subtitle: modelData.subtitle
                 marked: modelData.current
-                badges: modelData.current ? ["Now playing"] : []
+                badges: (modelData.current ? ["Now playing"] : [])
+                        .concat(modelData.addedBy ? ["Added by " + modelData.addedBy] : [])
                 trailing: modelData.duration > 0 ? app.formatTime(modelData.duration) : ""
                 onActivated: page.openRow(modelData, rowItem, index)
             }

@@ -4,3 +4,4 @@ zeroconf
 qasync
 sendspin==9.1.0
 anyascii
+segno

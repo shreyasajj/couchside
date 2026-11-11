@@ -26,10 +26,23 @@ class FakeQueues:
         return list(self.items)
 
     async def play_media(self, qid, media, option=None):
-        self.calls.append(("play_media", media, str(getattr(option, "value", option))))
+        opt = str(getattr(option, "value", option))
+        self.calls.append(("play_media", media, opt))
         if "add" in self.fail:
             raise RuntimeError("nope")
-        self.items.append(item(f"new{len(self.items)}", "Added", uri=media))
+        new = item(f"new{len(self.items)}", "Added", uri=media)
+        if opt == "next":
+            ids = [i.queue_item_id for i in self.items]
+            self.items.insert(ids.index(self.current) + 1 if self.current in ids else 0, new)
+        else:
+            self.items.append(new)
+
+    async def move_item(self, qid, iid, pos_shift=1):
+        self.calls.append(("move_item", iid, pos_shift))
+        ids = [i.queue_item_id for i in self.items]
+        i = ids.index(iid)
+        it = self.items.pop(i)
+        self.items.insert(i + pos_shift, it)
 
     async def move_next(self, qid, iid):
         self.calls.append(("move_next", iid))
@@ -72,9 +85,9 @@ def setup(items=None, **rules):
 async def test_add_track_credits_the_new_item():
     client, s, g = setup()
     await add_track(client, Q, "tv", s, g, "x://t/9", now=1)
-    new = client.player_queues.items[-1].queue_item_id
-    assert s.added_by(new) == "Sam"
-    assert client.player_queues.calls == [("play_media", "x://t/9", "add")]
+    new = [i.queue_item_id for i in client.player_queues.items if s.added_by(i.queue_item_id)]
+    assert len(new) == 1
+    assert client.player_queues.calls == [("play_media", "x://t/9", "next")]
 
 
 async def test_add_respects_waiting_limit():
@@ -142,3 +155,16 @@ async def test_guest_search_is_tracks_only():
     assert client.music.calls == [("love", ["track"], 20)]
     assert results == [{"uri": "x://t/1", "title": "Song", "subtitle": "Band", "imageUrl": ""}]
     assert await guest_search(client, "  ") == []
+
+
+async def test_guest_songs_play_first_come_first_served_before_the_rest():
+    # autoplay / other queued songs stay behind the guests' songs
+    client, s, g = setup([item("cur", "Now"), item("auto1", "Auto 1"), item("auto2", "Auto 2")])
+    ana = s.join("device-ana-12345", "Ana")
+    await add_track(client, Q, "tv", s, g, "x://t/1", now=1)    # Sam first
+    await add_track(client, Q, "tv", s, ana, "x://t/2", now=2)  # then Ana
+    await add_track(client, Q, "tv", s, g, "x://t/3", now=3)    # then Sam again
+    order = [(s.added_by(i.queue_item_id) or i.media_item.name) for i in client.player_queues.items]
+    assert order == ["Now", "Sam", "Ana", "Sam", "Auto 1", "Auto 2"]
+    uris = [i.media_item.uri for i in client.player_queues.items[1:4]]
+    assert uris == ["x://t/1", "x://t/2", "x://t/3"]
