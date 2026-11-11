@@ -10,6 +10,7 @@ QQC2.AbstractButton {
     property bool active: false  // on/off controls (shuffle, repeat): accent dot when on
     property real u: 1
     property real size: (primary ? 132 : 104) * u
+    property real iconScale: 0.45  // some icons (edit-find) draw small inside their box
 
     implicitWidth: size
     implicitHeight: size
@@ -56,7 +57,7 @@ QQC2.AbstractButton {
         color: control.primary ? "#000000" : "#ffffff"
         isMask: true
         anchors.centerIn: parent
-        width: control.size * 0.45
+        width: control.size * control.iconScale
         height: width
     }
 }

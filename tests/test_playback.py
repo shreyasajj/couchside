@@ -305,3 +305,16 @@ def test_stamped_time_kept_across_refreshes(monkeypatch):
     media.elapsed_time = 12.0  # a new position report (seek / new track) gets a new stamp
     conn.fire_event()
     assert pb.now_playing.elapsed_at == 5010.0
+
+
+def test_controlled_speaker_falls_back_when_gone():
+    conn, pb, _ = make([player(CID), player("mac")])
+    pb.user_player_id = "mac"
+    pb.refresh()
+    assert pb.active_player_id == "mac"
+    conn.client.players.items["mac"].available = False   # goes offline
+    conn.fire_event()
+    assert pb.active_player_id == CID and pb.user_player_id is None
+    pb.user_player_id = "deleted-group"                    # removed while selected
+    conn.fire_event()
+    assert pb.active_player_id == CID and pb.user_player_id is None

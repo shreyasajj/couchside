@@ -77,7 +77,7 @@ class Playback:
     def __init__(self, conn: Any, get_client_id: Callable[[], str | None]) -> None:
         self._conn = conn
         self._get_client_id = get_client_id
-        self.user_player_id: str | None = None  # Phase 3: speaker picker
+        self.user_player_id: str | None = None  # speaker picked on the Speakers page
         self.active_player_id: str | None = None
         self.local_player_found = False
         self.now_playing: NowPlaying | None = None
@@ -97,7 +97,12 @@ class Playback:
 
         active = None
         if self.user_player_id and client is not None:
-            active = client.players.get(self.user_player_id)
+            chosen = client.players.get(self.user_player_id)
+            if chosen is not None and getattr(chosen, "available", True):
+                active = chosen
+            else:  # chosen speaker went offline or was deleted: back to this TV
+                log.info("controlled speaker %s gone; back to this TV", self.user_player_id)
+                self.user_player_id = None
         if active is None:
             active = local
 

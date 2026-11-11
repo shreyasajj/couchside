@@ -70,3 +70,158 @@ async def test_slots_schedule_playback_commands(ctl, monkeypatch):
     await asyncio.sleep(0)
     assert calls == [("cycle_repeat",), ("toggle_shuffle",), ("set_volume", 55),
                      ("step_volume", 5), ("step_volume", -5)]
+
+
+# --- Phase 3: library, queue, speakers -------------------------------------------
+
+from types import SimpleNamespace as NS  # noqa: E402
+
+from couchside.core.connection import ConnState  # noqa: E402
+from couchside.core.library import MediaCard, SearchOutcome  # noqa: E402
+from couchside.core.queue import QueueRow  # noqa: E402
+
+CARD = MediaCard("x://t/1", "track", "Song", "Artist", PROXY, "x://t/1")
+
+
+def wire(ctl, players=()):
+    by_id = {p.player_id: p for p in players}
+    ctl.conn.client = NS(players=NS(get=by_id.get, __iter__=None), player_queues=NS(get=lambda q: None))
+    ctl.conn.client.players = type("P", (), {"get": staticmethod(by_id.get),
+                                             "__iter__": lambda self: iter(by_id.values())})()
+    ctl.conn.state = ConnState.CONNECTED
+    ctl.playback.active_player_id = "tv"
+
+
+async def settle():
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+async def test_search_rows_shape(ctl, monkeypatch):
+    wire(ctl)
+
+    async def fake_search(client, q, limit=12):
+        return SearchOutcome(rows=[("Tracks", [CARD])])
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    assert ctl.libraryRows == [{"title": "Tracks", "items": [
+        {"key": "x://t/1", "kind": "track", "title": "Song", "subtitle": "Artist",
+         "imageUrl": PROXY.replace("size=512", "size=256"), "uri": "x://t/1"}]}]
+    assert ctl.libraryError == "" and not ctl.libraryBusy
+
+
+async def test_search_error_text(ctl, monkeypatch):
+    wire(ctl)
+
+    async def fake_search(client, q, limit=12):
+        return SearchOutcome(error="Search failed — check the connection")
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    assert ctl.libraryRows == [] and ctl.libraryError.startswith("Search failed")
+
+
+async def test_play_uri_uses_controlled_player(ctl, monkeypatch):
+    wire(ctl)
+    calls = []
+
+    async def fake_play(client, queue_id, uri, mode):
+        calls.append((queue_id, uri, mode))
+        return True
+    monkeypatch.setattr("couchside.ui.controller.library.play", fake_play)
+    ctl.playUri("x://t/1", "next")
+    await settle()
+    assert calls == [("tv", "x://t/1", "next")]
+
+
+async def test_failed_action_sets_toast(ctl, monkeypatch):
+    wire(ctl)
+
+    async def fake_play(client, queue_id, uri, mode):
+        return False
+    monkeypatch.setattr("couchside.ui.controller.library.play", fake_play)
+    ctl.playUri("x://t/1", "add")
+    await settle()
+    assert ctl.toast == "Couldn't add to the queue"
+    ctl.clearToast()
+    assert ctl.toast == ""
+
+
+async def test_queue_rows_shape(ctl, monkeypatch):
+    wire(ctl)
+
+    async def fake_load(client, queue_id, current):
+        return [QueueRow("a", "Song", "Artist", None, 200, True)]
+    monkeypatch.setattr("couchside.ui.controller.queue.load_queue", fake_load)
+    ctl.loadQueue()
+    await settle()
+    assert ctl.queueRows == [{"itemId": "a", "title": "Song", "subtitle": "Artist", "imageUrl": "",
+                              "duration": 200, "current": True}]
+
+
+def test_speaker_rows_shape(ctl):
+    tv = NS(player_id="tv", name="Living Room TV", available=True, enabled=True, type=NS(value="player"),
+            group_members=[], can_group_with=["mac"], synced_to=None, current_media=None)
+    mac = NS(player_id="mac", name="Mac mini", available=True, enabled=True, type=NS(value="player"),
+             group_members=[], can_group_with=["tv"], synced_to=None, current_media=None)
+    wire(ctl, [tv, mac])
+    ctl.playback.local_player_found = True
+    ctl._local_id = lambda: "tv"
+    rows = ctl.speakerRows
+    assert rows[0] == {"playerId": "tv", "name": "Living Room TV", "isGroup": False, "available": True,
+                       "controlled": True, "local": True, "syncedTo": "", "members": [],
+                       "canSync": False, "playing": ""}
+    assert rows[1]["canSync"]
+
+
+async def test_control_speaker_switches_playback(ctl):
+    wire(ctl)
+    refreshed = []
+    ctl.playback.refresh = lambda: refreshed.append(1)
+    ctl.controlSpeaker("mac")
+    assert ctl.playback.user_player_id == "mac" and refreshed
+
+
+def test_speakers_signal_only_when_rows_change(ctl):
+    tv = NS(player_id="tv", name="TV", available=True, enabled=True, type=NS(value="player"),
+            group_members=[], can_group_with=[], synced_to=None, current_media=None)
+    wire(ctl, [tv])
+    fired = []
+    ctl.speakersChanged.connect(lambda: fired.append(1))
+    evt = NS(event=NS(value="player_updated"), object_id="tv")
+    ctl._on_event(evt)
+    ctl._on_event(evt)           # nothing changed: no second signal
+    tv.name = "Den TV"
+    ctl._on_event(evt)
+    assert len(fired) == 2
+
+
+def test_queue_reload_only_on_item_or_current_change(ctl, monkeypatch):
+    wire(ctl)
+    loads = []
+    monkeypatch.setattr(ctl, "loadQueue", lambda: loads.append(1))
+    ctl._queue_visible = True
+    current = ["a"]
+    monkeypatch.setattr(ctl, "_current_item_id", lambda qid: current[0])
+    upd = NS(event=NS(value="queue_updated"), object_id="tv")
+    ctl._on_event(upd)
+    ctl._on_event(upd)           # same current item: no reload
+    current[0] = "b"
+    ctl._on_event(upd)           # track changed
+    ctl._on_event(NS(event=NS(value="queue_items_updated"), object_id="tv"))
+    assert len(loads) == 3
+
+
+def test_queue_reloads_when_controlled_speaker_changes(ctl, monkeypatch):
+    wire(ctl)
+    loads = []
+    monkeypatch.setattr(ctl, "loadQueue", lambda: loads.append(1))
+    ctl._queue_visible = True
+    ctl._on_update()                     # remembers the current queue (tv)
+    loads.clear()
+    ctl._on_update()                     # nothing changed
+    assert loads == []
+    ctl.playback.active_player_id = "mac"   # e.g. fell back / switched speaker
+    ctl._on_update()
+    assert loads == [1]

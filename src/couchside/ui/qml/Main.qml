@@ -11,25 +11,46 @@ Kirigami.ApplicationWindow {
     // 1.0 at 1080p; every size in the UI is multiplied by this.
     readonly property real u: Math.max(0.5, height / 1080)
 
+    // `flatpak run io.github.shreyasajj.Couchside --debug-focus` logs every focus change.
+    readonly property bool debugFocus: Qt.application.arguments.indexOf("--debug-focus") >= 0
+    onActiveFocusItemChanged: if (debugFocus) console.log("focus ->", activeFocusItem,
+                                                          activeFocusItem ? activeFocusItem.objectName : "")
+
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.None
     pageStack.columnView.columnResizeMode: Kirigami.ColumnView.SingleColumn
     pageStack.initialPage: nowPlayingComponent
 
     Component {
         id: nowPlayingComponent
-        NowPlayingPage { u: root.u; onOpenSetup: root.showSetup() }
+        NowPlayingPage {
+            u: root.u
+            onOpenSetup: root.showSetup()
+            onOpenPage: (name) => root.openPage(name)
+        }
     }
     Component {
         id: setupComponent
-        SetupPage { u: root.u; onDone: root.goBack() }
+        SetupPage { objectName: "setup"; u: root.u; onDone: root.goBack() }
+    }
+    Component { id: libraryComponent; LibraryPage { u: root.u; sheet: actionSheet } }
+    Component { id: queueComponent; QueuePage { u: root.u; sheet: actionSheet } }
+    Component {
+        id: speakersComponent
+        SpeakersPage { u: root.u; sheet: actionSheet; groupEditor: groupEditorOverlay }
     }
 
     function showSetup() {
-        if (pageStack.depth < 2) pageStack.push(setupComponent)
+        if (!pageStack.currentItem || pageStack.currentItem.objectName !== "setup") pageStack.push(setupComponent)
+    }
+    function openPage(name) {
+        var comp = { search: libraryComponent, queue: queueComponent, speakers: speakersComponent }[name]
+        if (comp && pageStack.depth === 1) pageStack.push(comp)
     }
     function goBack() {
         if (pairing.visible) { pairing.dismissedCode = app.pairingCode; return }
         if (exitDialog.opened) { exitDialog.close(); return }
+        if (actionSheet.visible) { actionSheet.close(); return }
+        if (groupEditorOverlay.visible) { groupEditorOverlay.close(); return }
         var page = pageStack.currentItem
         if (page && page.handleBack && page.handleBack()) return
         if (pageStack.depth > 1) {
@@ -65,6 +86,14 @@ Kirigami.ApplicationWindow {
         else if (delta > 0) app.volumeUp()
         else app.volumeDown()
     }
+
+    function focusCurrentPage() {
+        var page = pageStack.currentItem
+        if (page && page.focusDefault) page.focusDefault()
+    }
+    ActionSheet { id: actionSheet; u: root.u; parent: root.overlay; onFocusLost: root.focusCurrentPage() }
+    GroupEditor { id: groupEditorOverlay; u: root.u; parent: root.overlay; onFocusLost: root.focusCurrentPage() }
+    Toast { u: root.u; parent: root.overlay }
 
     PairingOverlay {
         id: pairing
