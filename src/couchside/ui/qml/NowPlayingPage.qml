@@ -10,6 +10,7 @@ Kirigami.Page {
     id: page
     property real u: 1
     signal openSetup()
+    signal openPage(string name)
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
@@ -244,7 +245,7 @@ Kirigami.Page {
                     text: app.repeatMode === "one" ? "Repeat one" : (app.repeatMode === "all" ? "Repeat all" : "Repeat off")
                     active: app.repeatMode !== "off"
                     KeyNavigation.left: nextButton
-                    KeyNavigation.right: volumeButton.visible ? volumeButton : settingsButton
+                    KeyNavigation.right: volumeButton.visible ? volumeButton : searchButton
                     onClicked: app.cycleRepeat()
                 }
                 FocusButton {
@@ -256,23 +257,51 @@ Kirigami.Page {
                               : app.volume < 67 ? "audio-volume-medium" : "audio-volume-high"
                     text: "Volume " + app.volume
                     KeyNavigation.left: repeatButton
-                    KeyNavigation.right: settingsButton
+                    KeyNavigation.right: searchButton
                     onClicked: { page.placeVolumePopup(); volumePopup.open(true) }
                 }
             }
 
-            FocusButton {
-                id: settingsButton
+            Row {
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                u: page.u
-                size: 84 * page.u
-                iconName: "configure"
-                text: "Settings"
-                KeyNavigation.left: volumeButton.visible ? volumeButton : repeatButton
-                onClicked: { page.returnFocus = settingsButton; page.openSetup() }
+                spacing: 20 * page.u
+                NavButton {
+                    id: searchButton
+                    iconName: "edit-find"
+                    iconScale: 0.8
+                    text: "Search"
+                    KeyNavigation.left: volumeButton.visible ? volumeButton : repeatButton
+                    KeyNavigation.right: queueButton
+                    onClicked: { page.returnFocus = searchButton; page.openPage("search") }
+                }
+                NavButton {
+                    id: queueButton
+                    iconName: "view-media-playlist"
+                    text: "Queue"
+                    KeyNavigation.left: searchButton
+                    KeyNavigation.right: speakersButton
+                    onClicked: { page.returnFocus = queueButton; page.openPage("queue") }
+                }
+                NavButton {
+                    id: speakersButton
+                    iconName: "speaker"
+                    text: "Speakers"
+                    KeyNavigation.left: queueButton
+                    KeyNavigation.right: settingsButton
+                    onClicked: { page.returnFocus = speakersButton; page.openPage("speakers") }
+                }
+                NavButton {
+                    id: settingsButton
+                    iconName: "configure"
+                    text: "Settings"
+                    KeyNavigation.left: speakersButton
+                    onClicked: { page.returnFocus = settingsButton; page.openSetup() }
+                }
             }
         }
     }
+
+    component NavButton: FocusButton { u: page.u; size: 76 * page.u }
 
     // If the volume button disappears while focused, keep focus on the bar.
     Connections {
