@@ -11,12 +11,17 @@ Kirigami.Page {
     id: page
     property real u: 1
     signal done()
+    signal openGuests()
+    property Item returnTo: null  // the row to focus when coming back from a page opened here
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
     background: Rectangle { color: "#0d0b1a" }
 
-    function focusDefault() { (app.hasToken ? saveButton : tokenField).forceActiveFocus() }
+    function focusDefault() {
+        if (returnTo && returnTo.visible) { returnTo.forceActiveFocus(); returnTo = null; return }
+        (app.hasToken ? saveButton : tokenField).forceActiveFocus()
+    }
     Component.onCompleted: {
         urlField.text = app.serverUrl
         libreField.text = app.libretranslateUrl
@@ -245,6 +250,14 @@ Kirigami.Page {
                                       + " · turning it off and on makes a new QR code"
                                     : "Shows a QR code so guests can add songs from their phones"
                 onActivated: app.toggleGuestMode()
+            }
+            SettingRow {
+                id: guestsRow
+                visible: app.guestMode
+                label: "Guests and admins"
+                value: app.guestCount
+                hint: "Make a guest an admin, show an admin code, reset limits or remove someone"
+                onActivated: { page.returnTo = guestsRow; page.openGuests() }
             }
             SettingRow {
                 label: "Skips per guest"

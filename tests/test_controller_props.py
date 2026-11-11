@@ -555,3 +555,92 @@ async def test_qr_link_worked_out_once_per_session(guest_ctl):
     ctl.toggleGuestMode()                # new session: worked out again
     await settle_long()
     assert len(ctl._lan_calls) == 2
+
+
+# --- Phase 6: admin access ---------------------------------------------------------------
+
+async def guests_on(ctl):
+    ctl.toggleGuestMode()
+    await settle_long()
+    s = ctl._guest_session
+    return s, s.join("device-aaaaaaaa", "Ana"), s.join("device-bbbbbbbb", "Ben")
+
+
+async def test_guest_rows_for_the_tv(guest_ctl):
+    ctl = guest_ctl
+    assert ctl.guestRows == []
+    s, ana, ben = await guests_on(ctl)
+    ben.skips_used = 1
+    rows = ctl.guestRows
+    assert [(r["id"], r["name"], r["admin"]) for r in rows] == [(ana.public_id, "Ana", False), (ben.public_id, "Ben", False)]
+    assert rows[1]["skipsLeft"] == s.rules.skips - 1
+    assert "device" not in repr(rows)
+
+
+async def test_guest_actions_from_the_tv(guest_ctl):
+    ctl = guest_ctl
+    s, ana, ben = await guests_on(ctl)
+    seen = []
+    ctl.guestChanged.connect(lambda: seen.append(1))
+    ctl.guestAction(ana.public_id, "promote")
+    assert ana.admin and "Ana" in ctl.toast
+    ctl.guestAction(ana.public_id, "revoke")
+    assert not ana.admin
+    ben.skips_used = 2
+    ctl.guestAction(ben.public_id, "reset")
+    assert ben.skips_used == 0
+    ctl.guestAction(ben.public_id, "remove")
+    assert "device-bbbbbbbb" not in s.guests
+    ctl.guestAction("gone", "promote")  # a guest who left: no crash
+    assert seen and ctl._fake_server.notified >= 4
+
+
+async def test_admin_code_shown_and_cancelled(guest_ctl):
+    ctl = guest_ctl
+    assert ctl.adminCode == ""
+    ctl.showAdminCode()  # guest mode off: nothing
+    assert ctl.adminCode == ""
+    s, ana, _ = await guests_on(ctl)
+    ctl.showAdminCode()
+    code = ctl.adminCode
+    assert len(code) == 6 and s.admin_code == code
+    ctl.closeAdminCode()
+    assert ctl.adminCode == "" and s.admin_code is None
+
+
+async def test_admin_code_used_closes_it_with_a_toast(guest_ctl):
+    ctl = guest_ctl
+    s, ana, _ = await guests_on(ctl)
+    ctl.showAdminCode()
+    s.redeem_code(ana, ctl.adminCode, now=__import__("time").time())
+    ctl._on_admin_event("admin", "Ana")
+    assert ctl.adminCode == "" and "Ana is now an admin" in ctl.toast
+    ctl.showAdminCode()
+    ctl._on_admin_event("code_cancelled", "")
+    assert "cancelled" in ctl.toast
+
+
+async def test_admin_code_expires(guest_ctl, monkeypatch):
+    ctl = guest_ctl
+    await guests_on(ctl)
+    ctl.showAdminCode()
+    s = ctl._guest_session
+    s.code_expires = 0  # long gone
+    assert ctl.adminCode == ""
+
+
+async def test_admin_host_reflects_the_tv(guest_ctl, monkeypatch):
+    ctl = guest_ctl
+    wire(ctl)
+    host = ctl._admin_host()
+    assert host.volume() == 40 and host.shuffle() is True
+    calls = []
+
+    async def fake_cmd(name, value):
+        calls.append((name, value))
+    monkeypatch.setattr(ctl.playback, "_queue_command", fake_cmd)
+    await host.set_shuffle(True)   # already on: nothing to do
+    await host.set_shuffle(False)
+    assert calls == [("shuffle", False)]
+    ctl.conn.client = None
+    assert ctl._admin_host() is None

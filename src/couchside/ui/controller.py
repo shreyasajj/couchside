@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
@@ -15,7 +16,8 @@ from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
 from couchside.core.guest_server import PORT as GUEST_PORT
 from couchside.core.guest_server import GuestServer, lan_ip
-from couchside.core.guests import GuestRules, GuestSession
+from couchside.core.guests import CODE_TTL, GuestError, GuestRules, GuestSession
+from couchside.core.admin_actions import AdminHost
 from couchside.core.lyrics_text import is_english, romanize
 from couchside.core.translate import DeepLTranslator, GoogleTranslator, LibreTranslator
 from couchside.core.playback import Playback, find_local_player
@@ -719,7 +721,107 @@ class AppController(QObject):
         return GuestServer(lambda: self._guest_session, self._guest_context, page,
                            on_change=self.guestChanged.emit,
                            # behind a reverse proxy every phone has the proxy's address
-                           limit_per_address=lambda: not self._settings.guest_public_url)
+                           limit_per_address=lambda: not self._settings.guest_public_url,
+                           get_admin_host=self._admin_host,
+                           on_admin_event=self._on_admin_event)
+
+    # --- admins ----------------------------------------------------------------------
+    def _admin_host(self) -> AdminHost | None:
+        """The TV's own controls, lent to admins' phones (None when not connected)."""
+        if self._guest_context() is None:
+            return None
+
+        def np():
+            return self.playback.now_playing
+
+        async def set_shuffle(on: bool) -> None:
+            cur = np()
+            if cur is not None and cur.shuffle != on:
+                await self.playback._queue_command("shuffle", on)
+
+        async def transfer(player_id: str) -> bool:
+            client = self.conn.client
+            if client is None:
+                return False
+            ok = await speakers.speaker_action(client, self.playback.active_player_id, player_id, "transfer")
+            self._emit_speakers_if_changed()
+            return ok
+
+        return AdminHost(volume=lambda: np().volume if np() is not None else None,
+                         set_volume=self.playback.set_volume,
+                         shuffle=lambda: np().shuffle if np() is not None else None,
+                         set_shuffle=set_shuffle, speakers=self._speaker_rows,
+                         control=self.controlSpeaker, transfer=transfer)
+
+    def _on_admin_event(self, kind: str, name: str) -> None:
+        if kind == "admin":
+            self._set_toast(f"{name} is now an admin")
+        elif kind == "code_cancelled":
+            self._set_toast("Too many wrong tries — the admin code was cancelled")
+        self.guestChanged.emit()
+
+    def _guests_changed(self) -> None:
+        self.guestChanged.emit()
+        if self._guest_server is not None:
+            self._guest_server.notify_changed()  # phones refresh: admin panel on/off
+
+    @Property("QVariantList", notify=guestChanged)
+    def guestRows(self) -> list:
+        s = self._guest_session
+        if s is None:
+            return []
+        r = s.rules
+        return [{"id": g.public_id, "name": g.name, "admin": g.admin,
+                 "skipsLeft": max(0, r.skips - g.skips_used), "boostsLeft": max(0, r.boosts - g.boosts_used)}
+                for g in s.guests.values()]
+
+    @Slot(str, str)
+    def guestAction(self, public_id: str, action: str) -> None:
+        """promote / revoke / reset / remove, from the TV (the host can act on anyone)."""
+        s = self._guest_session
+        if s is None:
+            return
+        try:
+            if action == "promote":
+                self._set_toast(f"{s.promote(public_id).name} is now an admin")
+            elif action == "revoke":
+                self._set_toast(f"{s.revoke(public_id).name} is no longer an admin")
+            elif action == "reset":
+                self._set_toast(f"{s.reset(public_id).name} has their skips and boosts back")
+            elif action == "remove":
+                self._set_toast(f"{s.remove(public_id).name} was removed from the party")
+            else:
+                return
+        except GuestError as e:
+            self._set_toast(str(e))
+        self._guests_changed()
+
+    @Property(str, notify=guestChanged)
+    def adminCode(self) -> str:
+        s = self._guest_session
+        if s is None or s.admin_code is None or time.time() > s.code_expires:
+            return ""
+        return s.admin_code
+
+    @Slot()
+    def showAdminCode(self) -> None:
+        s = self._guest_session
+        if s is None:
+            return
+        code = s.new_admin_code(now=time.time())
+
+        def expire():
+            if self._guest_session is s and s.admin_code == code:
+                s.cancel_admin_code()
+                self.guestChanged.emit()
+        QTimer.singleShot(int(CODE_TTL * 1000) + 500, self, expire)
+        self.guestChanged.emit()
+
+    @Slot()
+    def closeAdminCode(self) -> None:
+        if self._guest_session is not None:
+            self._guest_session.cancel_admin_code()
+        self.guestChanged.emit()
 
     @Property(bool, notify=guestChanged)
     def guestMode(self) -> bool:
