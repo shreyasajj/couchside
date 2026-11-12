@@ -791,3 +791,63 @@ async def test_feed_ignored_without_the_portal_or_when_current(ctl, monkeypatch)
     await ctl.start_update_monitor(FakeUpdater(ok=False))
     await ctl.check_app_version()
     assert ctl.updateState == "unavailable"
+
+
+async def test_failed_relaunch_starts_the_speaker_again(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+
+    async def broken(argv, env=None):
+        raise RuntimeError("portal said no")
+    up.spawn_latest = broken
+    await ctl.start_update_monitor(up)
+    up.on_available({})
+    monkeypatch.setattr(c, "request_exit", lambda: None)
+
+    async def freed(timeout):
+        return True
+    monkeypatch.setattr(ctl, "_wait_sendspin_stopped", freed)
+    started, quits = [], []
+    monkeypatch.setattr(ctl, "_start_local_sendspin", lambda: started.append(1))
+    monkeypatch.setattr(ctl, "_quit_app", lambda: quits.append(1))
+    ctl.installUpdate()
+    await settle()
+    up.on_progress(Progress("done", 100, ""))
+    for _ in range(20):
+        await settle()
+    assert started == [1] and quits == [] and "restart Couchside" in ctl.toast
+
+
+async def test_nothing_to_install_does_not_restart(ctl, monkeypatch):
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    ctl._update_state = "available"  # offered by the release feed; the repo isn't there yet
+    restarts = []
+
+    async def restart():
+        restarts.append(1)
+    monkeypatch.setattr(ctl, "_restart_into_update", restart)
+    ctl.installUpdate()
+    await settle()
+    up.on_progress(Progress("empty", 0, ""))
+    await settle()
+    assert restarts == [] and ctl.updateState == "current" and "few minutes" in ctl.toast
+
+
+async def test_already_installed_update_restarts_into_it(ctl, monkeypatch):
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    up.on_available({"running-commit": "old", "local-commit": "new", "remote-commit": "new"})
+    restarts = []
+
+    async def restart():
+        restarts.append(1)
+    monkeypatch.setattr(ctl, "_restart_into_update", restart)
+    ctl.installUpdate()
+    await settle()
+    up.on_progress(Progress("empty", 0, ""))
+    await settle()
+    assert restarts == [1]

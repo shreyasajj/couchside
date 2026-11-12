@@ -84,19 +84,24 @@ def test_sigterm_during_restart_delay_starts_no_new_daemon(tmp_path):
     assert counter.read_text() == "1"  # stopped while waiting; never started again
 
 
+def _delays(log):
+    import re
+    return [float(x) for x in re.findall(r"restarting in ([0-9.]+)s", log.read_text())]
+
+
 def test_restart_delay_backs_off(tmp_path):
-    delays = []
+    slept = []
     rc = supervise([sys.executable, "-c", FAIL_N_TIMES, str(tmp_path / "c"), "3"],
-                   tmp_path / "out.log", restart_delay=3.0, sleep=delays.append)
+                   tmp_path / "out.log", restart_delay=3.0, sleep=slept.append)
     assert rc == 0
-    assert delays == [3.0, 6.0, 12.0]
+    assert _delays(tmp_path / "out.log") == [3.0, 6.0, 12.0]
+    assert sum(slept) == 21.0
 
 
 def test_restart_delay_capped(tmp_path):
-    delays = []
     supervise([sys.executable, "-c", FAIL_N_TIMES, str(tmp_path / "c"), "6"],
-              tmp_path / "out.log", restart_delay=10.0, max_delay=60.0, sleep=delays.append)
-    assert delays == [10.0, 20.0, 40.0, 60.0, 60.0, 60.0]
+              tmp_path / "out.log", restart_delay=10.0, max_delay=60.0, sleep=lambda d: None)
+    assert _delays(tmp_path / "out.log") == [10.0, 20.0, 40.0, 60.0, 60.0, 60.0]
 
 
 def test_log_trimmed_between_restarts(tmp_path):
@@ -191,3 +196,35 @@ To select an audio device:
     assert parse_audio_devices(text) == ["HD-Audio Generic: HISENSE (hw:0,3)",
                                          "HD-Audio Generic: ALC897 Analog (hw:2,0)", "pulse"]
     assert parse_audio_devices("") == []
+
+
+def test_exit_request_honoured_while_the_daemon_keeps_crashing(tmp_path):
+    """e.g. a saved audio device that was unplugged: the daemon dies at once, and an
+    update must still be able to stop this supervisor."""
+    import threading
+    import time
+    control = tmp_path / "control"
+    threading.Timer(0.5, request_exit, [control]).start()
+    started = time.monotonic()
+    rc = supervise([sys.executable, "-c", "import sys; sys.exit(1)"], tmp_path / "out.log",
+                   restart_delay=5.0, poll=0.1, control_file=control)
+    assert rc == 0 and time.monotonic() - started < 3
+    assert not control.exists()
+
+
+def test_settings_change_during_backoff_restarts_at_once(tmp_path):
+    import threading
+    import time
+    seen = tmp_path / "seen"
+    control = tmp_path / "control"
+    which = {"v": "crash"}
+
+    def argv():
+        if which["v"] == "crash":
+            return [sys.executable, "-c", "import sys; sys.exit(1)"]
+        return [sys.executable, "-c", SLEEPER, str(seen), "ok"]
+    threading.Timer(0.5, lambda: which.update(v="ok")).start()
+    threading.Timer(1.5, request_exit, [control]).start()
+    started = time.monotonic()
+    supervise(argv, tmp_path / "out.log", restart_delay=30.0, poll=0.1, control_file=control)
+    assert seen.read_text() == "ok," and time.monotonic() - started < 5

@@ -190,19 +190,32 @@ def supervise(argv: list[str] | Callable[[], list[str]], log_file: Path, restart
             if changed:
                 delay = restart_delay
                 continue
-            if rc == 0 or stopping:
-                return 0 if stopping else rc
+            if rc == 0 or stopping or _exit_requested(control_file):
+                return 0
             if time.monotonic() - started >= healthy_after:
                 delay = restart_delay
             with open(log_file, "a") as out:
                 out.write(f"couchside-sendspin: daemon exited with {rc}, "
                           f"restarting in {delay:g}s\n")
-            sleep(delay)
-            delay = min(delay * 2, max_delay) if delay else 0
-            try:
-                current = make()
-            except Exception:
-                pass
+            # wait out the delay in short steps: an exit request, a signal or new
+            # settings (e.g. an unplugged device switched back to Default) act at once
+            remaining = delay
+            while remaining > 0 and not stopping:
+                step = min(poll, remaining)
+                sleep(step)
+                remaining -= step
+                if _exit_requested(control_file):
+                    return 0
+                try:
+                    wanted = make()
+                except Exception:
+                    wanted = current
+                if wanted != current:
+                    current = wanted
+                    delay = restart_delay
+                    break
+            else:
+                delay = min(delay * 2, max_delay) if delay else 0
         return 0
     finally:
         signal.signal(signal.SIGTERM, old_term)

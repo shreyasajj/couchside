@@ -116,6 +116,7 @@ class AppController(QObject):
         self._updater = None
         self._update_state = "checking"   # checking/current/available/updating/restarting/unavailable
         self._update_percent = 0
+        self._newer_installed = False  # the portal saw a newer build already on disk
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
@@ -1095,6 +1096,8 @@ class AppController(QObject):
         self.updateChanged.emit()
 
     def _on_update_available(self, info: dict) -> None:
+        local, running = info.get("local-commit"), info.get("running-commit")
+        self._newer_installed = bool(local and running and local != running)
         if self._update_state in ("current", "checking", "available"):
             self._update_state = "available"
             self.updateChanged.emit()
@@ -1107,7 +1110,11 @@ class AppController(QObject):
         elif p.status == "failed":
             self._update_state = "available"
             self._set_toast(f"The update didn't install: {p.error or 'unknown error'}")
-        elif p.status in ("done", "empty"):  # empty: already installed, not running yet
+        elif p.status == "empty" and not self._newer_installed:
+            # the release feed is ahead of the repo this TV pulls from (CDN caches)
+            self._update_state = "current"
+            self._set_toast("The update isn't on the server yet — try again in a few minutes")
+        elif p.status in ("done", "empty"):  # empty: a newer build is installed, not running
             self._update_state = "restarting"
             self._spawn(self._restart_into_update())
         self.updateChanged.emit()
@@ -1173,9 +1180,14 @@ class AppController(QObject):
             await self._updater.spawn_latest(["couchside"], env)
         except Exception as e:
             log.warning("restarting into the update failed: %s", e)
+            self._start_local_sendspin()  # never leave the TV without its speaker
             self._set_toast("Updated — restart Couchside to use the new version")
             return
         self._quit_app()
+
+    def _start_local_sendspin(self) -> None:
+        from PySide6.QtCore import QProcess
+        QProcess.startDetached("couchside-sendspin", [])  # single instance via its lock
 
     # --- toast -----------------------------------------------------------------
     @Property(str, notify=toastChanged)
