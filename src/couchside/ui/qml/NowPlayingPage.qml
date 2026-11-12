@@ -139,11 +139,11 @@ Kirigami.Page {
 
                 BeatGlow {  // the visualizer: a pulse behind the artwork
                     anchors.centerIn: parent
-                    width: parent.width * 1.6
+                    width: parent.width * 2.1  // mostly hidden by the cover: the halo is what shows
                     height: width
+                    strength: 1.3
                     visible: app.visualizerEnabled
-                    level: app.audioLevel
-                    beats: app.beatCount
+                    pulse: visible ? app.audioPulse : 0  // hidden: no binding work
                     baseColour: app.backgroundColour
                 }
                 Rectangle {
@@ -250,26 +250,27 @@ Kirigami.Page {
             id: lyricsHeader
             anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: page.qrSpace }
             spacing: 32 * page.u
-            Rectangle {
+            Item {
                 Layout.preferredWidth: page.width * 0.1
                 Layout.preferredHeight: page.width * 0.1
-                radius: 12 * page.u
-                BeatGlow {
+                BeatGlow {  // outside the cover: the cover clips its contents
                     anchors.centerIn: parent
                     width: parent.width * 2.2
                     height: width
-                    z: -1
                     visible: app.visualizerEnabled
-                    level: app.audioLevel
-                    beats: app.beatCount
+                    pulse: visible ? app.audioPulse : 0  // hidden: no binding work
                     baseColour: app.backgroundColour
                 }
-                color: "#2b2163"
-                clip: true
-                CrossfadeImage {
+                Rectangle {
                     anchors.fill: parent
-                    source: app.artUrl
-                    sourceSize: Qt.size(page.width * 0.1, page.width * 0.1)
+                    radius: 12 * page.u
+                    color: "#2b2163"
+                    clip: true
+                    CrossfadeImage {
+                        anchors.fill: parent
+                        source: app.artUrl
+                        sourceSize: Qt.size(page.width * 0.1, page.width * 0.1)
+                    }
                 }
             }
             ColumnLayout {

@@ -71,7 +71,8 @@ class AppController(QObject):
     guestChanged = Signal()
     sendspinChanged = Signal()
     updateChanged = Signal()
-    pulseChanged = Signal()
+    pulseChanged = Signal()       # visualizer on/off, page shown
+    levelChanged = Signal()       # audioPulse (up to 20 a second while listening)
     partyChanged = Signal()
     qrChanged = Signal()
 
@@ -123,9 +124,9 @@ class AppController(QObject):
         self._pulse = AudioPulse()
         self._pulse_visible = False   # Now Playing (or party mode) on screen, app in front
         self._party = False
-        self._shown_level, self._shown_beats = 0.0, 0
+        self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
         self._pulse_timer = QTimer(self)
-        self._pulse_timer.setInterval(33)  # ~30 updates a second while listening
+        self._pulse_timer.setInterval(50)  # 20 updates a second while listening
         self._pulse_timer.timeout.connect(self._poll_pulse)
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
@@ -1234,13 +1235,13 @@ class AppController(QObject):
         self._update_listening()
         self.partyChanged.emit()
 
-    @Property(float, notify=pulseChanged)
-    def audioLevel(self) -> float:
+    @Property(float, notify=levelChanged)
+    def audioPulse(self) -> float:
+        """0..1: the music's level with a swell on each beat. The swell is computed here,
+        in 0.05 steps at most 20 times a second, so QML needs no animations: the screen
+        redraws only when the pulse changes (a 60 fps animation redrew the whole 4K
+        screen all the time)."""
         return self._shown_level
-
-    @Property(int, notify=pulseChanged)
-    def beatCount(self) -> int:
-        return self._shown_beats
 
     def _update_listening(self) -> None:
         """Listen only while something on screen pulses and music plays (no CPU otherwise)."""
@@ -1256,10 +1257,17 @@ class AppController(QObject):
             self._poll_pulse()  # settle at rest
 
     def _poll_pulse(self) -> None:
-        level, beats = round(self._pulse.level, 2), self._pulse.beats
-        if level != self._shown_level or beats != self._shown_beats:
-            self._shown_level, self._shown_beats = level, beats
-            self.pulseChanged.emit()
+        if self._pulse.beats != self._seen_beats:
+            self._seen_beats = self._pulse.beats
+            self._kick = 1.0
+        else:
+            self._kick = self._kick * 0.55 if self._kick > 0.05 else 0.0
+        pulse = max(0.6 * self._pulse.level, self._kick)
+        # in steps of 0.05: every change costs binding work and a redraw
+        pulse = round(pulse * 20) / 20
+        if pulse != self._shown_level:
+            self._shown_level = pulse
+            self.levelChanged.emit()
 
     # --- toast -----------------------------------------------------------------
     @Property(str, notify=toastChanged)

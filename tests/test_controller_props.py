@@ -905,12 +905,22 @@ def test_visualizer_off_stops_listening_but_party_mode_still_listens(pulse_ctl, 
     assert not ctl.partyMode and not ctl._pulse.running
 
 
-def test_level_and_beats_reach_qml(pulse_ctl):
+def test_pulse_swells_on_beats_and_settles(pulse_ctl):
     ctl = pulse_ctl
     ctl.pulseVisible = True
-    seen = []
-    ctl.pulseChanged.connect(lambda: seen.append((ctl.audioLevel, ctl.beatCount)))
-    ctl._pulse.level, ctl._pulse.beats = 0.42, 3
+    seen, other = [], []
+    ctl.levelChanged.connect(lambda: seen.append(ctl.audioPulse))
+    ctl.pulseChanged.connect(lambda: other.append(1))
+    ctl._pulse.level = 0.5
     ctl._poll_pulse()
-    ctl._poll_pulse()  # nothing new: no signal
-    assert seen == [(0.42, 3)]
+    assert ctl.audioPulse == 0.3            # level alone, scaled
+    ctl._pulse.beats = 1
+    ctl._poll_pulse()
+    assert ctl.audioPulse == 1.0            # a beat: full swell
+    for _ in range(8):
+        ctl._poll_pulse()
+    assert ctl.audioPulse == 0.3            # decayed back to the level
+    n = len(seen)
+    ctl._pulse.level = 0.51                 # same 0.05 step: no signal, no redraw
+    ctl._poll_pulse()
+    assert len(seen) == n and other == []

@@ -8,27 +8,18 @@ FocusScope {
     id: party
     property real u: 1
     property real position: 0
-    property real kick: 0
     readonly property bool hasLyrics: app.lyricsEnabled && app.hasLyrics
 
     Keys.onPressed: (event) => { event.accepted = true }
 
-    Connections {
-        target: app
-        function onBeatCountChanged() { bounce.restart() }
-    }
-    SequentialAnimation {
-        id: bounce
-        NumberAnimation { target: party; property: "kick"; to: 1; duration: 70; easing.type: Easing.OutQuad }
-        NumberAnimation { target: party; property: "kick"; to: 0; duration: 330; easing.type: Easing.OutBack }
-    }
+    // the music's pulse (level + a swell on each beat), 0..1; no animations (see BeatGlow)
+    readonly property real kick: visible ? app.audioPulse : 0
 
     BeatGlow {
         anchors.centerIn: parent
         width: parent.width * 0.75
         height: parent.height * 0.9
-        level: app.audioLevel
-        beats: app.beatCount
+        pulse: party.kick
         baseColour: app.backgroundColour
         strength: 1.5
     }
@@ -39,7 +30,7 @@ FocusScope {
         width: parent.width * 0.84
         height: parent.height * 0.72
         visible: party.hasLyrics
-        scale: 1.0 + 0.035 * party.kick + 0.015 * app.audioLevel
+        scale: 1.0 + 0.04 * party.kick
         LyricsView {
             anchors.fill: parent
             u: party.u
@@ -59,7 +50,7 @@ FocusScope {
         color: "#2b2163"
         clip: true
         visible: !party.hasLyrics
-        scale: 1.0 + 0.06 * party.kick + 0.03 * app.audioLevel
+        scale: 1.0 + 0.06 * party.kick
         CrossfadeImage {
             anchors.fill: parent
             source: app.artUrl
