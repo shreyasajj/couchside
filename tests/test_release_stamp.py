@@ -1,0 +1,68 @@
+import importlib.util
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).parents[1]
+spec = importlib.util.spec_from_file_location("stamp_release", ROOT / "flatpak/stamp-release.py")
+stamp_release = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(stamp_release)
+
+
+def tree(tmp_path):
+    (tmp_path / "flatpak").mkdir()
+    (tmp_path / "src/couchside").mkdir(parents=True)
+    shutil.copy(stamp_release.METAINFO, tmp_path / "flatpak" / stamp_release.METAINFO.name)
+    return tmp_path
+
+
+def test_stamp_writes_build_info_and_metainfo(tmp_path):
+    root = tree(tmp_path)
+    stamp_release.stamp("0.7.12", "abcdef1234567890", "2026-11-12", root=root)
+    assert json.loads((root / "src/couchside/build_info.json").read_text()) == {
+        "version": "0.7.12", "commit": "abcdef123456", "feed": "https://shreyasajj.github.io/couchside/latest.json"}
+    assert '<release version="0.7.12" date="2026-11-12"' in (root / "flatpak" / stamp_release.METAINFO.name).read_text()
+
+
+def test_stamp_refuses_bad_input(tmp_path):
+    root = tree(tmp_path)
+    with pytest.raises(SystemExit):
+        stamp_release.stamp("0.7.x", "abc", "2026-11-12", root=root)
+
+
+def test_release_workflow_signs_and_publishes_only_the_app():
+    wf = (ROOT / ".github/workflows/release.yml").read_text()
+    assert "--gpg-sign" in wf and "FLATPAK_GPG_PRIVATE_KEY" in wf
+    assert "build-export" in wf and "Debug" in wf  # refuses a repo with debug refs
+    assert "summary.sig" in wf  # refuses an unsigned repo
+    assert "latest.json" in wf  # the feed the app checks
+
+
+def test_build_info_is_packaged():
+    text = (ROOT / "pyproject.toml").read_text()
+    assert "build_info.json" in text
+
+
+def test_release_checks_refs_by_name_and_ships_no_debug_files():
+    wf = (ROOT / ".github/workflows/release.yml").read_text()
+    assert 'grep -qx "app/$APP_ID/x86_64/master"' in wf    # appstream refs are expected too
+    assert "--exclude=/lib/debug/*" in wf                   # flatpak-builder's own export rule
+    assert "/files/lib/debug" in wf                         # and a check that none slipped in
+
+
+def test_release_also_runs_daily_for_merges_github_doesnt_trigger():
+    wf = (ROOT / ".github/workflows/release.yml").read_text()
+    assert "schedule:" in wf and "cron:" in wf
+    assert "needs.gate.outputs.build" in wf  # skips when main is already published
+
+
+def test_every_bundled_package_is_pinned():
+    """python-deps.json is generated at build time, so the requirements must pin the whole
+    tree: nothing reaches TVs without passing a PR (Dependabot bumps each pin)."""
+    import re
+    lines = [l.split("#")[0].strip() for l in (ROOT / "flatpak/requirements.txt").read_text().splitlines()]
+    lines = [l for l in lines if l]
+    assert len(lines) > 30  # the whole tree, not just the top level
+    assert all(re.fullmatch(r"[A-Za-z0-9._-]+==[0-9][A-Za-z0-9.+-]*", l) for l in lines), lines

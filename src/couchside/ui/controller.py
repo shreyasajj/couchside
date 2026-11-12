@@ -11,7 +11,7 @@ from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
-from couchside.core import library, queue, speakers
+from couchside.core import library, queue, speakers, updates
 from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
 from couchside.core.guest_server import PORT as GUEST_PORT
@@ -33,6 +33,13 @@ from couchside.core.settings import (
 from couchside.core.status import needs_setup, status_text
 from couchside.sendspin.identity import read_client_id
 from couchside.sendspin.pairing import PairingEvent
+from couchside.sendspin.runner import (
+    AUDIO_DEVICES_ARGV,
+    acquire_lock,
+    lock_path,
+    parse_audio_devices,
+    request_exit,
+)
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +69,8 @@ class AppController(QObject):
     toastChanged = Signal()
     lyricsChanged = Signal()
     guestChanged = Signal()
+    sendspinChanged = Signal()
+    updateChanged = Signal()
     qrChanged = Signal()
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
@@ -101,6 +110,13 @@ class AppController(QObject):
         self._raw_english = False
         self._translation: list[str] | None = None
         self._translations: dict[tuple[str, str], list[str]] = {}  # (song, service)
+        self._audio_devices: list[str] = []
+        self._sendspin_latest: str | None = None
+        self._sendspin_checked = False
+        self._updater = None
+        self._update_state = "checking"   # checking/current/available/updating/restarting/unavailable
+        self._update_percent = 0
+        self._newer_installed = False  # the portal saw a newer build already on disk
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
@@ -132,6 +148,8 @@ class AppController(QObject):
         """Release network resources on shutdown."""
         if self._guest_server is not None:
             await self._guest_server.stop()
+        if self._updater is not None and hasattr(self._updater, "close"):
+            await self._updater.close()
         await self._http.close()
 
     # --- lyrics --------------------------------------------------------------------
@@ -965,6 +983,211 @@ class AppController(QObject):
     @Slot()
     def cycleGuestCooldown(self) -> None:
         self._cycle_rule("guest_cooldown", (0, 30, 60, 120, 300))
+
+    # --- Sendspin settings ---------------------------------------------------------
+    @Property(str, notify=sendspinChanged)
+    def playerName(self) -> str:
+        return self._settings.player_name
+
+    @Slot(str)
+    def setPlayerName(self, name: str) -> None:
+        name = " ".join((name or "").split())[:40]
+        if not name or name == self._settings.player_name:
+            return
+        self._settings.player_name = name
+        save_settings(self._settings)  # the Sendspin supervisor restarts the speaker
+        self.sendspinChanged.emit()
+
+    @Property(str, notify=sendspinChanged)
+    def audioDevice(self) -> str:
+        return self._settings.sendspin_audio_device or "Default"
+
+    @Slot()
+    def cycleAudioDevice(self) -> None:
+        choices: list[str | None] = [None] + self._audio_devices
+        cur = self._settings.sendspin_audio_device
+        if cur not in choices:
+            choices.append(cur)  # a saved device that isn't plugged in right now
+        self._settings.sendspin_audio_device = choices[(choices.index(cur) + 1) % len(choices)]
+        save_settings(self._settings)
+        self.sendspinChanged.emit()
+
+    async def _list_audio_devices(self) -> list[str]:
+        proc = await asyncio.create_subprocess_exec(*AUDIO_DEVICES_ARGV, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.DEVNULL)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), 20)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return []
+        return parse_audio_devices(out.decode(errors="replace"))
+
+    @Slot()
+    def loadAudioDevices(self) -> None:
+        async def run():
+            try:
+                self._audio_devices = await self._list_audio_devices()
+            except Exception as e:
+                log.warning("listing audio devices failed: %s", e)
+            self.sendspinChanged.emit()
+        self._spawn(run())
+
+    @Property(int, notify=sendspinChanged)
+    def sendspinDelay(self) -> int:
+        return self._settings.sendspin_delay_ms
+
+    @Slot()
+    def cycleSendspinDelay(self) -> None:
+        steps = (0, 25, 50, 100, 150, 200, 300, 500)
+        cur = self._settings.sendspin_delay_ms
+        nxt = next((s for s in steps if s > cur), 0)
+        self._settings.sendspin_delay_ms = nxt
+        save_settings(self._settings)
+        self.sendspinChanged.emit()
+
+    # --- versions and updates --------------------------------------------------------
+    @Property(str, notify=sendspinChanged)
+    def sendspinVersionText(self) -> str:
+        bundled = updates.bundled_sendspin_version() or "unknown"
+        latest = self._sendspin_latest
+        if not self._sendspin_checked:
+            return f"{bundled} · checking for a newer one…"
+        if latest is None:
+            return f"{bundled} · couldn't check for a newer one"
+        if updates.is_newer(latest, bundled):
+            return f"{bundled} · {latest} available"
+        return f"{bundled} · up to date"
+
+    async def check_sendspin_version(self) -> None:
+        self._sendspin_latest = await updates.latest_sendspin_version(self._http.get)
+        self._sendspin_checked = True
+        self.sendspinChanged.emit()
+
+    async def check_app_version(self) -> None:
+        """A published release newer than this build: offer it now (Flatpak's own monitor
+        only looks every 30 minutes)."""
+        if self._updater is None or self._update_state not in ("current", "checking"):
+            return
+        info = updates.build_info()
+        latest = await updates.latest_app_version(self._http.get, info["feed"])
+        if updates.is_newer(latest, info["version"]) and self._update_state in ("current", "checking"):
+            self._update_state = "available"
+            self.updateChanged.emit()
+
+    async def check_versions_forever(self) -> None:
+        """On launch and then daily."""
+        await asyncio.sleep(3)  # let the update monitor start first
+        while True:
+            await self.check_sendspin_version()
+            await self.check_app_version()
+            await asyncio.sleep(updates.CHECK_EVERY)
+
+    @Property(str, constant=True)
+    def appVersion(self) -> str:
+        return updates.build_info()["version"]
+
+    async def start_update_monitor(self, updater=None) -> None:
+        if updater is None:
+            from couchside.core.flatpak_portal import PortalUpdater, in_flatpak
+            updater = PortalUpdater() if in_flatpak() else None
+        ok = updater is not None and await updater.start(self._on_update_available, self._on_update_progress)
+        self._updater = updater if ok else None
+        self._update_state = "current" if ok else "unavailable"
+        self.updateChanged.emit()
+
+    def _on_update_available(self, info: dict) -> None:
+        local, running = info.get("local-commit"), info.get("running-commit")
+        self._newer_installed = bool(local and running and local != running)
+        if self._update_state in ("current", "checking", "available"):
+            self._update_state = "available"
+            self.updateChanged.emit()
+
+    def _on_update_progress(self, p) -> None:
+        if self._update_state != "updating":
+            return
+        if p.status == "running":
+            self._update_percent = p.percent
+        elif p.status == "failed":
+            self._update_state = "available"
+            self._set_toast(f"The update didn't install: {p.error or 'unknown error'}")
+        elif p.status == "empty" and not self._newer_installed:
+            # the release feed is ahead of the repo this TV pulls from (CDN caches)
+            self._update_state = "current"
+            self._set_toast("The update isn't on the server yet — try again in a few minutes")
+        elif p.status in ("done", "empty"):  # empty: a newer build is installed, not running
+            self._update_state = "restarting"
+            self._spawn(self._restart_into_update())
+        self.updateChanged.emit()
+
+    @Property(str, notify=updateChanged)
+    def updateState(self) -> str:
+        return self._update_state
+
+    @Property(str, notify=updateChanged)
+    def updateText(self) -> str:
+        return {
+            "checking": "Checking…",
+            "current": "Up to date",
+            "available": "Update available — OK to install and restart",
+            "updating": f"Updating… {self._update_percent}%",
+            "restarting": "Restarting…",
+            "unavailable": "Updates come from the published Couchside repo (this install isn't from it)",
+        }.get(self._update_state, "")
+
+    @Slot()
+    def installUpdate(self) -> None:
+        if self._updater is None or self._update_state != "available":
+            return
+        self._update_state, self._update_percent = "updating", 0
+        self.updateChanged.emit()
+
+        async def run():
+            try:
+                await self._updater.update()
+            except Exception as e:
+                log.warning("update failed to start: %s", e)
+                self._update_state = "available"
+                self._set_toast("The update didn't start — try again later")
+                self.updateChanged.emit()
+        self._spawn(run())
+
+    async def _wait_sendspin_stopped(self, timeout: float) -> bool:
+        loop = asyncio.get_running_loop()
+        end = loop.time() + timeout
+        while loop.time() < end:
+            fh = acquire_lock(lock_path())
+            if fh is not None:
+                fh.close()
+                return True
+            await asyncio.sleep(0.3)
+        return False
+
+    def _quit_app(self) -> None:
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.quit()
+
+    async def _restart_into_update(self) -> None:
+        """Stop the old Sendspin, start the new one and the new app, then quit."""
+        import os
+        try:
+            request_exit()
+            if not await self._wait_sendspin_stopped(15):
+                log.warning("old Sendspin supervisor didn't stop in time")
+            await self._updater.spawn_latest(["couchside-sendspin"])
+            env = {k: v for k, v in os.environ.items()
+                   if k in ("WAYLAND_DISPLAY", "DISPLAY", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP")
+                   or k.startswith("QT_")}
+            await self._updater.spawn_latest(["couchside"], env)
+        except Exception as e:
+            log.warning("restarting into the update failed: %s", e)
+            self._start_local_sendspin()  # never leave the TV without its speaker
+            self._set_toast("Updated — restart Couchside to use the new version")
+            return
+        self._quit_app()
+
+    def _start_local_sendspin(self) -> None:
+        from PySide6.QtCore import QProcess
+        QProcess.startDetached("couchside-sendspin", [])  # single instance via its lock
 
     # --- toast -----------------------------------------------------------------
     @Property(str, notify=toastChanged)

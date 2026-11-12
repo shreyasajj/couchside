@@ -28,12 +28,14 @@ Kirigami.Page {
         libreField.text = app.libretranslateUrl
         captionField.text = app.qrCaption
         publicUrlField.text = app.guestPublicUrl
+        playerNameField.text = app.playerName
+        app.loadAudioDevices()
         focusDefault()
     }
     // Back while a field is being edited: stop editing and keep what was typed (the same as
     // the keyboard's Enter, which is awkward to reach on Bigscreen's keyboard); stay on the page.
     function handleBack() {
-        for (const f of [urlField, tokenField, deeplField, libreField, captionField, publicUrlField])
+        for (const f of [urlField, tokenField, deeplField, libreField, captionField, publicUrlField, playerNameField])
             if (f.editing) { f.stopEditing(); f.accepted(); return true }
         return false
     }
@@ -304,6 +306,38 @@ Kirigami.Page {
                 placeholderText: "e.g. https://party.example.com"
                 inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
                 onAccepted: app.setGuestPublicUrl(text)
+            }
+
+            Heading { text: "Sendspin speaker" }
+            Note { text: "Player name — how this TV appears in Music Assistant" }
+            TvField {
+                id: playerNameField
+                placeholderText: "Living Room TV"
+                onAccepted: { app.setPlayerName(text); text = app.playerName }
+            }
+            SettingRow {
+                label: "Audio output"
+                value: app.audioDevice
+                hint: "Changes restart the speaker for a moment"
+                onActivated: app.cycleAudioDevice()
+            }
+            SettingRow {
+                label: "Sync delay"
+                value: app.sendspinDelay === 0 ? "Off" : app.sendspinDelay + " ms"
+                hint: "Delay this TV's sound to line up with other speakers"
+                onActivated: app.cycleSendspinDelay()
+            }
+
+            Heading { text: "Updates" }
+            SettingRow {
+                label: "Couchside " + app.appVersion
+                value: app.updateState === "available" ? "Install" : ""
+                hint: app.updateText
+                onActivated: app.installUpdate()
+            }
+            SettingRow {
+                label: "Sendspin"
+                hint: app.sendspinVersionText + " — new Sendspin versions arrive as Couchside updates"
             }
 
             Heading { text: "Lyrics" }

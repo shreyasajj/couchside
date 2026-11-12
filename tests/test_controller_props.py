@@ -644,3 +644,210 @@ async def test_admin_host_reflects_the_tv(guest_ctl, monkeypatch):
     assert calls == [("shuffle", False)]
     ctl.conn.client = None
     assert ctl._admin_host() is None
+
+
+# --- Phase 7: Sendspin settings, versions and updates ------------------------------------
+
+def test_sendspin_settings_cycle_and_save(ctl, tmp_path):
+    from couchside.core.settings import load_settings
+    assert ctl.sendspinDelay == 0
+    ctl.cycleSendspinDelay()
+    assert ctl.sendspinDelay == 25
+    ctl._audio_devices = ["HD-Audio Generic: HISENSE (hw:0,3)", "pulse"]
+    assert ctl.audioDevice == "Default"
+    ctl.cycleAudioDevice()
+    assert ctl.audioDevice == "HD-Audio Generic: HISENSE (hw:0,3)"
+    ctl.cycleAudioDevice()
+    ctl.cycleAudioDevice()
+    assert ctl.audioDevice == "Default"
+    ctl.setPlayerName("  Den TV  ")
+    ctl.setPlayerName("   ")  # ignored
+    saved = load_settings()
+    assert saved.player_name == "Den TV" and ctl.playerName == "Den TV"
+    assert saved.sendspin_delay_ms == 25 and saved.sendspin_audio_device is None
+
+
+async def test_audio_devices_loaded_from_sendspin(ctl, monkeypatch):
+    async def fake_list():
+        return ["Speaker A", "Speaker B"]
+    monkeypatch.setattr(ctl, "_list_audio_devices", fake_list)
+    ctl.loadAudioDevices()
+    await settle()
+    assert ctl._audio_devices == ["Speaker A", "Speaker B"]
+
+
+async def test_sendspin_version_text(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    monkeypatch.setattr(c.updates, "bundled_sendspin_version", lambda: "9.1.0")
+
+    async def latest(_http):
+        return "9.2.0"
+    monkeypatch.setattr(c.updates, "latest_sendspin_version", latest)
+    assert "9.1.0" in ctl.sendspinVersionText
+    await ctl.check_sendspin_version()
+    assert ctl.sendspinVersionText == "9.1.0 · 9.2.0 available"
+
+    async def none(_http):
+        return None
+    monkeypatch.setattr(c.updates, "latest_sendspin_version", none)
+    await ctl.check_sendspin_version()
+    assert ctl.sendspinVersionText == "9.1.0 · couldn't check for a newer one"
+
+    async def same(_http):
+        return "9.1.0"
+    monkeypatch.setattr(c.updates, "latest_sendspin_version", same)
+    await ctl.check_sendspin_version()
+    assert ctl.sendspinVersionText == "9.1.0 · up to date"
+
+
+class FakeUpdater:
+    def __init__(self, ok=True):
+        self.ok, self.spawned, self.updates = ok, [], 0
+
+    async def start(self, on_available, on_progress):
+        self.on_available, self.on_progress = on_available, on_progress
+        return self.ok
+
+    async def update(self):
+        self.updates += 1
+        return True
+
+    async def spawn_latest(self, argv, env=None):
+        self.spawned.append(argv)
+        return 1
+
+
+async def test_update_unavailable_outside_a_published_install(ctl):
+    up = FakeUpdater(ok=False)
+    await ctl.start_update_monitor(up)
+    assert ctl.updateState == "unavailable" and "published" in ctl.updateText
+    ctl.installUpdate()  # nothing to install: no crash
+    await settle()
+    assert up.updates == 0
+
+
+async def test_update_flow_restarts_sendspin_and_the_app(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    assert ctl.updateState == "current"
+    up.on_available({"remote-commit": "new"})
+    assert ctl.updateState == "available" and "Update available" in ctl.updateText
+    exits, quits = [], []
+    monkeypatch.setattr(c, "request_exit", lambda: exits.append(1))
+
+    async def freed(timeout):
+        return True
+    monkeypatch.setattr(ctl, "_wait_sendspin_stopped", freed)
+    monkeypatch.setattr(ctl, "_quit_app", lambda: quits.append(1))
+    ctl.installUpdate()
+    await settle()
+    assert up.updates == 1 and ctl.updateState == "updating"
+    up.on_progress(Progress("running", 40, ""))
+    assert "40" in ctl.updateText
+    up.on_progress(Progress("done", 100, ""))
+    for _ in range(20):
+        await settle()
+    assert exits == [1]
+    assert up.spawned == [["couchside-sendspin"], ["couchside"]]
+    assert quits == [1] and ctl.updateState == "restarting"
+
+
+async def test_failed_update_keeps_running_and_says_why(ctl):
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    up.on_available({})
+    ctl.installUpdate()
+    await settle()
+    up.on_progress(Progress("failed", 0, "No space left"))
+    assert ctl.updateState == "available" and "No space left" in ctl.toast
+
+
+async def test_published_release_offers_the_update_at_once(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    monkeypatch.setattr(c.updates, "build_info", lambda: {"version": "0.7.2", "commit": "", "feed": "https://f/latest.json"})
+
+    async def newer(_http, feed):
+        return "0.7.3"
+    monkeypatch.setattr(c.updates, "latest_app_version", newer)
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    await ctl.check_app_version()
+    assert ctl.updateState == "available"
+
+
+async def test_feed_ignored_without_the_portal_or_when_current(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    monkeypatch.setattr(c.updates, "build_info", lambda: {"version": "0.7.3", "commit": "", "feed": "https://f/latest.json"})
+
+    async def same(_http, feed):
+        return "0.7.3"
+    monkeypatch.setattr(c.updates, "latest_app_version", same)
+    await ctl.start_update_monitor(FakeUpdater())
+    await ctl.check_app_version()
+    assert ctl.updateState == "current"
+    await ctl.start_update_monitor(FakeUpdater(ok=False))
+    await ctl.check_app_version()
+    assert ctl.updateState == "unavailable"
+
+
+async def test_failed_relaunch_starts_the_speaker_again(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+
+    async def broken(argv, env=None):
+        raise RuntimeError("portal said no")
+    up.spawn_latest = broken
+    await ctl.start_update_monitor(up)
+    up.on_available({})
+    monkeypatch.setattr(c, "request_exit", lambda: None)
+
+    async def freed(timeout):
+        return True
+    monkeypatch.setattr(ctl, "_wait_sendspin_stopped", freed)
+    started, quits = [], []
+    monkeypatch.setattr(ctl, "_start_local_sendspin", lambda: started.append(1))
+    monkeypatch.setattr(ctl, "_quit_app", lambda: quits.append(1))
+    ctl.installUpdate()
+    await settle()
+    up.on_progress(Progress("done", 100, ""))
+    for _ in range(20):
+        await settle()
+    assert started == [1] and quits == [] and "restart Couchside" in ctl.toast
+
+
+async def test_nothing_to_install_does_not_restart(ctl, monkeypatch):
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    ctl._update_state = "available"  # offered by the release feed; the repo isn't there yet
+    restarts = []
+
+    async def restart():
+        restarts.append(1)
+    monkeypatch.setattr(ctl, "_restart_into_update", restart)
+    ctl.installUpdate()
+    await settle()
+    up.on_progress(Progress("empty", 0, ""))
+    await settle()
+    assert restarts == [] and ctl.updateState == "current" and "few minutes" in ctl.toast
+
+
+async def test_already_installed_update_restarts_into_it(ctl, monkeypatch):
+    from couchside.core.flatpak_portal import Progress
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    up.on_available({"running-commit": "old", "local-commit": "new", "remote-commit": "new"})
+    restarts = []
+
+    async def restart():
+        restarts.append(1)
+    monkeypatch.setattr(ctl, "_restart_into_update", restart)
+    ctl.installUpdate()
+    await settle()
+    up.on_progress(Progress("empty", 0, ""))
+    await settle()
+    assert restarts == [1]
