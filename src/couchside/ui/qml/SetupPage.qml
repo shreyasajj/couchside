@@ -340,6 +340,14 @@ Kirigami.Page {
                 hint: app.sendspinVersionText + " — new Sendspin versions arrive as Couchside updates"
             }
 
+            Heading { text: "Visualizer" }
+            SettingRow {
+                label: "Beat pulse"
+                value: app.visualizerEnabled ? "On" : "Off"
+                hint: "A glow behind the artwork that pulses with the music on this TV"
+                onActivated: app.visualizerEnabled = !app.visualizerEnabled
+            }
+
             Heading { text: "Lyrics" }
             SettingRow {
                 label: "Show lyrics"
