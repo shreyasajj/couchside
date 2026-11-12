@@ -1,7 +1,51 @@
-# Runtime Python deps bundled into the Flatpak (PySide6 comes from the PySide BaseApp).
+# Python packages bundled into the Flatpak (PySide6 comes from the PySide BaseApp).
+# Every package is pinned, dependencies included: flatpak/python-deps.json is generated
+# from this file at build time, and Dependabot bumps the pins through PRs.
+
+# What Couchside uses directly
 music-assistant-client==1.8.0
-zeroconf
-qasync
 sendspin==9.1.0
-anyascii
-segno
+zeroconf==0.154.0
+qasync==0.28.0
+anyascii==0.3.3
+segno==1.6.6
+dbus-next==0.2.3
+
+# Their dependencies
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.5
+aiosendspin==10.2.2
+aiosendspin-mpris==2.1.1
+aiosignal==1.4.0
+attrs==26.1.0
+av==19.0.2
+cffi==2.1.1
+cpace==0.1.0
+cryptography==50.0.2
+frozenlist==1.8.0
+idna==3.20
+ifaddr==0.2.0
+markdown-it-py==4.3.0
+mashumaro==3.23
+mdurl==0.1.2
+mpris-api==1.3.0
+multidict==7.2.1
+music-assistant-models==1.1.236
+noiseprotocol==0.3.1
+numpy==2.5.4
+orjson==3.13.0
+pillow==13.0.0
+propcache==0.5.4
+pulsectl==24.12.0
+pulsectl-asyncio==1.3.2
+pycparser==3.12
+pygments==2.21.0
+qrcode==8.2
+readchar==4.2.2
+rich==15.0.0
+sounddevice==0.5.6
+textual-image==0.14.3
+tunit==1.7.2
+typing-extensions==4.16.0
+unidecode==1.4.0
+yarl==1.25.1

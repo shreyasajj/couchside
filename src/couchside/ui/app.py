@@ -68,6 +68,8 @@ def main() -> int:
                 lambda: tail_log(log_path(), controller.on_pairing_event), "pairing log")),
             asyncio.ensure_future(keep_running(
                 lambda: _ensure_sendspin(settings), "Sendspin start", delay=30)),
+            asyncio.ensure_future(keep_running(controller.check_versions_forever, "version check", delay=600)),
+            asyncio.ensure_future(controller.start_update_monitor()),
         ]
         await closing.wait()
         await controller.conn.stop()

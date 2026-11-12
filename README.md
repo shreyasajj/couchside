@@ -4,23 +4,27 @@ A TV-first [Music Assistant](https://music-assistant.io) app for **KDE Plasma Bi
 It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
-Status: **Phase 6**: connect, bundled speaker, Now Playing (blurred artwork, progress,
+Status: **Phase 7**: connect, bundled speaker, Now Playing (blurred artwork, progress,
 shuffle, repeat, volume, synced lyrics), search with recently played/added, the queue,
-the speaker and group picker, guest mode and admin access. Sendspin updates and the
-visualizer follow in later phases (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
+the speaker and group picker, guest mode, admin access, in-app updates and Sendspin
+settings. The visualizer follows in a later phase (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
 ## Install (on the Bigscreen TV)
 
-Couchside ships as a Flatpak. Everything installs per-user; no `sudo` needed.
+Couchside ships as a Flatpak, published as a signed repo on GitHub Pages. Everything
+installs per-user; no `sudo` needed.
 
 ```bash
-git clone <this repo> ~/couchside
-~/couchside/scripts/install.sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user https://shreyasajj.github.io/couchside/couchside.flatpakref
 ```
 
-The script installs the build tools it needs from Flathub (`org.flatpak.Builder`,
-`org.kde.Sdk//6.11`, `io.qt.PySide.BaseApp//6.11`), builds the app and installs it.
-A **Couchside** tile appears on the Bigscreen home screen.
+A **Couchside** tile appears on the Bigscreen home screen. Installed this way, the app
+updates itself from Settings (see [Update](#update)). x86_64 only for now.
+
+To build it yourself instead: `git clone <this repo> ~/couchside && ~/couchside/scripts/install.sh`
+(installs the build tools from Flathub, builds and installs; such a build doesn't get
+in-app updates).
 
 On first launch Couchside:
 
@@ -134,11 +138,23 @@ Shortcuts to let Couchside handle them.
 
 ## Update
 
-```bash
-cd ~/couchside && git pull && scripts/install.sh
-```
+Settings → **Updates** shows this build's version and whether a newer one is published
+(Flatpak checks in the background). OK on **Update available** installs it, then
+restarts Sendspin and the app. The **Sendspin** row shows the bundled Sendspin version
+and the newest on PyPI (checked at launch and daily); new Sendspin versions arrive as
+Couchside updates. Settings, the token and Sendspin's identity are kept.
 
-Settings, the token and Sendspin's identity are kept. (Phase 7 adds an in-app update button.)
+Every change merged to `main` is published by the Release workflow
+(`.github/workflows/release.yml`): it builds the Flatpak, signs it with the key in the
+`FLATPAK_GPG_PRIVATE_KEY` secret and deploys the repo to GitHub Pages. Dependabot bumps
+Sendspin and the other bundled packages in `flatpak/requirements.txt`; those PRs merge
+themselves when CI passes, which publishes a release. The signing key's backup lives
+outside the repo (`~/.config/couchside-release/` on the owner's Mac); losing it means
+TVs must re-add the remote with a new key.
+
+**Sendspin speaker** settings: player name (how the TV appears in Music Assistant),
+audio output (Default or a device Sendspin reports) and sync delay (to line this TV up
+with other speakers). Changes restart the speaker within a couple of seconds.
 
 ## Develop
 
@@ -148,8 +164,8 @@ Settings, the token and Sendspin's identity are kept. (Phase 7 adds an in-app up
 - **On the TV:** `scripts/dev-deploy.sh --run` syncs this checkout to the TV over
   SSH (`COUCHSIDE_TV`, default `mediac@192.168.30.153`), rebuilds the Flatpak
   (only the app module rebuilds) and starts it on screen.
-- **Python deps** for the Flatpak are pinned in `flatpak/python-deps.json`.
-  Regenerate after changing `flatpak/requirements.txt`:
+- **Python deps** for the Flatpak come from `flatpak/requirements.txt`; the pinned file
+  list `flatpak/python-deps.json` is generated at build time (CI, release, install.sh):
   `flatpak run --share=network --filesystem="$PWD" --command=python3 org.kde.Sdk//6.11 flatpak/gen-python-deps.py`
 
 Layout: `src/couchside/core` (Qt-free logic: settings, discovery, MA connection,
@@ -213,6 +229,15 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
 - **Volume handed to another control.** When a player's `volume_control` in MA points
   at another entity (as on the test TV), `players/cmd/volume_set` succeeds but the level
   doesn't change; the TV's volume bar and the admins' volume buttons both depend on it.
+- **Self-update.** Flatpak's portal (`org.freedesktop.portal.Flatpak`, version 6 on the
+  TV) gives an update monitor (`CreateUpdateMonitor`, `UpdateAvailable`, `Progress`,
+  `Update`) and `Spawn` with the latest-version flag, so the sandboxed app can update and
+  relaunch itself. It only works for an app installed from a remote that gets new
+  commits, hence the published repo; a locally built install never sees updates. The
+  portal checks the remote on its own schedule.
+- **Sendspin options.** `sendspin daemon` has `--audio-device` (index, name prefix or ALSA
+  name), `--output-delay-ms`, `--hardware-volume`, `--audio-format` and hooks; Couchside
+  exposes the output (by name, since indexes move) and the delay.
 - **Translation APIs.** Google: `translate.googleapis.com/translate_a/single?client=gtx`
   (unofficial). DeepL: `POST /v2/translate` on `api-free.deepl.com` for keys ending in
   `:fx`, `api.deepl.com` otherwise. LibreTranslate: `POST <url>/translate` with a list `q`.

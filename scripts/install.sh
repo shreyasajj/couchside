@@ -24,6 +24,9 @@ need io.qt.PySide.BaseApp//6.11
 
 mkdir -p "$BUILD_DIR"
 cd "$ROOT"
+echo "Resolving Python dependencies …"
+flatpak run --share=network --filesystem="$ROOT" --command=python3 org.kde.Sdk//6.11 \
+  flatpak/gen-python-deps.py >/dev/null
 flatpak run --filesystem="$ROOT" --filesystem="$BUILD_DIR" org.flatpak.Builder \
   --user --install --force-clean --ccache \
   --state-dir="$BUILD_DIR/state" "$BUILD_DIR/build" "$MANIFEST"
