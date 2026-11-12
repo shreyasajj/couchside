@@ -870,6 +870,9 @@ class FakePulse:
         self.running = False
         self.level = 0.0
 
+    def healthy(self):
+        return True
+
 
 @pytest.fixture
 def pulse_ctl(ctl):
@@ -924,3 +927,25 @@ def test_pulse_swells_on_beats_and_settles(pulse_ctl):
     ctl._pulse.level = 0.51                 # same 0.05 step: no signal, no redraw
     ctl._poll_pulse()
     assert len(seen) == n and other == []
+
+
+def test_glow_settles_to_rest_when_listening_stops(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    ctl._pulse.level, ctl._pulse.beats = 0.8, 1
+    ctl._poll_pulse()
+    assert ctl.audioPulse == 1.0
+    ctl.pulseVisible = False      # e.g. paused right after a kick
+    assert ctl.audioPulse == 0.0
+
+
+def test_a_stream_that_died_is_reopened(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    assert ctl._pulse.starts == 1
+    ctl._pulse.healthy = lambda: False   # PipeWire restarted: no more callbacks
+    ctl._poll_pulse()
+    assert ctl._pulse.stops == 1 and ctl.audioPulse == 0.0
+    ctl._pulse.healthy = lambda: True
+    ctl._poll_pulse()                    # still wanted: listen again
+    assert ctl._pulse.starts == 2 and ctl._pulse.running

@@ -74,7 +74,7 @@ FocusScope {
     QQC2.Label {
         id: hint
         textFormat: Text.PlainText
-        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 64 * party.u }
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 48 * party.u }  // clear of the title
         text: "Party mode · Back to leave"
         color: "#ffffff"
         font.pixelSize: 28 * party.u

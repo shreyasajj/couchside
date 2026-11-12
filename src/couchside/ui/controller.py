@@ -1254,9 +1254,24 @@ class AppController(QObject):
         elif not want and self._pulse.running:
             self._pulse.stop()
             self._pulse_timer.stop()
+            self._kick = 0.0
             self._poll_pulse()  # settle at rest
 
+    def _update_listening_restart(self) -> None:
+        np = self.playback.now_playing
+        playing = np is not None and np.state == "playing"
+        if self._pulse_visible and playing and (self._settings.visualizer_enabled or self._party):
+            self._pulse.start()
+        else:
+            self._pulse_timer.stop()
+
     def _poll_pulse(self) -> None:
+        if self._pulse.running and not self._pulse.healthy():
+            log.info("visualizer audio stopped arriving; reopening")
+            self._pulse.stop()   # the next poll opens it again while it is still wanted
+            self._kick = 0.0
+        elif not self._pulse.running and self._pulse_timer.isActive():
+            self._update_listening_restart()
         if self._pulse.beats != self._seen_beats:
             self._seen_beats = self._pulse.beats
             self._kick = 1.0

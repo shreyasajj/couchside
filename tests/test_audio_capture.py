@@ -77,3 +77,30 @@ def test_a_crashing_detector_does_not_kill_the_audio_thread():
         raise ValueError("bad block")
     pulse._detector.feed = boom
     streams[0].callback(np.zeros((1024, 1), np.float32), 1024, None, None)  # no exception
+
+
+def test_health_follows_the_callbacks():
+    now = {"t": 0.0}
+    pulse, streams = make(clock=lambda: now["t"])
+    pulse.start()
+    streams[0].active = True
+    assert pulse.healthy()               # just started: give it a moment
+    now["t"] = 2.0
+    assert not pulse.healthy()           # nothing arrived for 2 s
+    streams[0].callback(np.zeros((1024, 1), np.float32), 1024, None, None)
+    assert pulse.healthy()
+    streams[0].active = False            # PortAudio gave up on the stream
+    assert not pulse.healthy()
+
+
+def test_a_stream_that_fails_to_start_is_closed():
+    closed = []
+
+    class Broken(FakeStream):
+        def start(self):
+            raise OSError("device busy")
+
+        def close(self):
+            closed.append(1)
+    pulse = AudioPulse(open_stream=lambda cb: Broken(cb), detector_factory=FakeDetector)
+    assert pulse.start() is False and closed == [1]

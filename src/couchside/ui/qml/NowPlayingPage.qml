@@ -34,6 +34,8 @@ Kirigami.Page {
     // Focus returns to the control that opened something (Settings) or to play/pause.
     property Item returnFocus: null
     function focusDefault() {
+        // party mode outlives other pages and overlays: never land on the hidden controls
+        if (app.partyMode) { partyView.forceActiveFocus(); return }
         var target = (returnFocus && returnFocus.visible) ? returnFocus : playButton
         returnFocus = null
         target.forceActiveFocus()
