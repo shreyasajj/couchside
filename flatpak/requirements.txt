@@ -5,3 +5,4 @@ qasync
 sendspin==9.1.0
 anyascii
 segno
+dbus-next==0.2.3
