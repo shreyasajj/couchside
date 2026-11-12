@@ -162,6 +162,9 @@ Kirigami.ApplicationWindow {
         background: Rectangle { color: "#1d1840"; radius: 16 * root.u }
         contentItem: ColumnLayout {
             spacing: 36 * root.u
+            // A modal popup blocks the window's shortcuts and closes itself only on Escape:
+            // the remote's Back key has to close it here.
+            Keys.onPressed: (event) => { if (event.key === Qt.Key_Back) { exitDialog.close(); event.accepted = true } }
             QQC2.Label {
                 text: "Exit Couchside?"
                 color: "#ffffff"
