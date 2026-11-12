@@ -4,10 +4,10 @@ A TV-first [Music Assistant](https://music-assistant.io) app for **KDE Plasma Bi
 It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
-Status: **Phase 7**: connect, bundled speaker, Now Playing (blurred artwork, progress,
-shuffle, repeat, volume, synced lyrics), search with recently played/added, the queue,
-the speaker and group picker, guest mode, admin access, in-app updates and Sendspin
-settings. The visualizer follows in a later phase (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
+Status: **Phase 8** (all phases): connect, bundled speaker, Now Playing (blurred artwork,
+progress, shuffle, repeat, volume, synced lyrics, a beat pulse), party mode, search with
+recently played/added, the queue, the speaker and group picker, guest mode, admin access,
+in-app updates and Sendspin settings (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
 ## Install (on the Bigscreen TV)
 
@@ -131,6 +131,20 @@ The buttons at the right of the bar open:
   speaker / Stop syncing; groups also have Edit members and Delete group. "New group"
   makes a synced group from two or more speakers. Couchside always starts on this TV.
 
+**Party mode** (the button left of Search): the controls go away and the lyrics fill the
+screen, bouncing with the music over a glow in the artwork's colours; songs without lyrics
+show their artwork bouncing instead. The guest QR code stays if guest mode is on. Back
+leaves party mode; media keys keep working.
+
+**Visualizer** (Settings → Visualizer → Beat pulse, on by default): a glow behind the
+artwork that pulses with the beat. Couchside listens to this TV's own sound output
+(PipeWire), so it pulses only when this TV is the speaker playing; nothing is recorded
+or sent anywhere. It listens only while Now Playing is on screen and music plays, and
+costs about as much CPU as Now Playing without it.
+
+**Keyboard on the remote:** just type. On Now Playing, typing opens Search with what you
+typed; on Search it goes into the search box; in Settings into the highlighted text box.
+
 Volume keys: Plasma uses the remote's volume keys for the system volume, so they
 don't reach Couchside. Use the on-screen volume bar (it sets this TV's volume in Music
 Assistant), or unbind Plasma's "Increase/Decrease Volume" shortcuts in System Settings →
@@ -238,6 +252,15 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
 - **Sendspin options.** `sendspin daemon` has `--audio-device` (index, name prefix or ALSA
   name), `--output-delay-ms`, `--hardware-volume`, `--audio-format` and hooks; Couchside
   exposes the output (by name, since indexes move) and the delay.
+- **Beat pulse.** The Flatpak's PulseAudio socket can record the default sink's monitor
+  (`PULSE_SOURCE=@DEFAULT_MONITOR@` with PortAudio's `pulse` device), muted or not. An
+  FFT of 1024 samples 21 times a second takes ~20 µs each. What cost CPU was QML: 60 fps
+  animations redrew the whole 4K screen; the pulse is now computed in Python in 0.05 steps
+  at most 20 times a second and QML just shows it.
+- **Remote keys.** Kirigami's PageRow binds `StandardKey.Back` (the remote's Back key);
+  with a second shortcut on the same key Qt rotates presses between them, so Couchside
+  disables Kirigami's. A Python application-wide event filter crashed PySide (6.11) on
+  the TV, so that route is not used.
 - **Translation APIs.** Google: `translate.googleapis.com/translate_a/single?client=gtx`
   (unofficial). DeepL: `POST /v2/translate` on `api-free.deepl.com` for keys ending in
   `:fx`, `api.deepl.com` otherwise. LibreTranslate: `POST <url>/translate` with a list `q`.
