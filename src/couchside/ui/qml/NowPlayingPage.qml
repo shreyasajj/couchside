@@ -34,6 +34,8 @@ Kirigami.Page {
     // Focus returns to the control that opened something (Settings) or to play/pause.
     property Item returnFocus: null
     function focusDefault() {
+        // party mode outlives other pages and overlays: never land on the hidden controls
+        if (app.partyMode) { partyView.forceActiveFocus(); return }
         var target = (returnFocus && returnFocus.visible) ? returnFocus : playButton
         returnFocus = null
         target.forceActiveFocus()
@@ -41,7 +43,21 @@ Kirigami.Page {
     // Main.goBack() asks the page first; true = handled here.
     function handleBack() {
         if (volumePopup.visible) { volumePopup.close(); return true }
+        if (app.partyMode) { app.togglePartyMode(); return true }
         return false
+    }
+    Connections {
+        target: app
+        function onPartyModeChanged() {
+            if (app.partyMode) partyView.forceActiveFocus()
+            else partyButton.forceActiveFocus()
+        }
+    }
+    // The visualizer listens only while this page is in front (see the controller).
+    Binding {
+        target: app
+        property: "pulseVisible"
+        value: page.isCurrentPage && page.visible && Qt.application.state === Qt.ApplicationActive
     }
     function adjustVolume(delta) {
         if (!app.hasVolume) return
@@ -103,7 +119,7 @@ Kirigami.Page {
     // --- artwork + metadata (no-lyrics layout) -------------------------------------
     Item {
         id: content
-        opacity: page.showLyrics ? 0 : 1
+        opacity: (page.showLyrics || app.partyMode) ? 0 : 1
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 300 } }
         anchors {
@@ -123,6 +139,15 @@ Kirigami.Page {
                 Layout.preferredHeight: side
                 Layout.alignment: Qt.AlignVCenter
 
+                BeatGlow {  // the visualizer: a pulse behind the artwork
+                    anchors.centerIn: parent
+                    width: parent.width * 2.1  // mostly hidden by the cover: the halo is what shows
+                    height: width
+                    strength: 1.3
+                    visible: app.visualizerEnabled
+                    pulse: visible ? app.audioPulse : 0  // hidden: no binding work
+                    baseColour: app.backgroundColour
+                }
                 Rectangle {
                     id: artFrame
                     anchors.fill: parent
@@ -214,7 +239,7 @@ Kirigami.Page {
     // --- lyrics-forward layout (layout B) -------------------------------------------
     Item {
         id: lyricsLayout
-        opacity: page.showLyrics ? 1 : 0
+        opacity: page.showLyrics && !app.partyMode ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 300 } }
         anchors {
@@ -227,16 +252,27 @@ Kirigami.Page {
             id: lyricsHeader
             anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: page.qrSpace }
             spacing: 32 * page.u
-            Rectangle {
+            Item {
                 Layout.preferredWidth: page.width * 0.1
                 Layout.preferredHeight: page.width * 0.1
-                radius: 12 * page.u
-                color: "#2b2163"
-                clip: true
-                CrossfadeImage {
+                BeatGlow {  // outside the cover: the cover clips its contents
+                    anchors.centerIn: parent
+                    width: parent.width * 2.2
+                    height: width
+                    visible: app.visualizerEnabled
+                    pulse: visible ? app.audioPulse : 0  // hidden: no binding work
+                    baseColour: app.backgroundColour
+                }
+                Rectangle {
                     anchors.fill: parent
-                    source: app.artUrl
-                    sourceSize: Qt.size(page.width * 0.1, page.width * 0.1)
+                    radius: 12 * page.u
+                    color: "#2b2163"
+                    clip: true
+                    CrossfadeImage {
+                        anchors.fill: parent
+                        source: app.artUrl
+                        sourceSize: Qt.size(page.width * 0.1, page.width * 0.1)
+                    }
                 }
             }
             ColumnLayout {
@@ -273,6 +309,17 @@ Kirigami.Page {
             lines: app.lyricLines
             position: page.position
         }
+    }
+
+    // --- party mode: no controls, lyrics bouncing with the music --------------------
+    PartyView {
+        id: partyView
+        anchors.fill: parent
+        u: page.u
+        position: page.position
+        opacity: app.partyMode ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 400 } }
     }
 
     // --- guest mode QR (top-right) --------------------------------------------------
@@ -322,6 +369,9 @@ Kirigami.Page {
     ColumnLayout {
         id: bar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: page.margin }
+        opacity: app.partyMode ? 0 : 1
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 300 } }
         spacing: 28 * page.u
 
         TrackProgress {
@@ -384,7 +434,7 @@ Kirigami.Page {
                     text: app.repeatMode === "one" ? "Repeat one" : (app.repeatMode === "all" ? "Repeat all" : "Repeat off")
                     active: app.repeatMode !== "off"
                     KeyNavigation.left: nextButton
-                    KeyNavigation.right: volumeButton.visible ? volumeButton : searchButton
+                    KeyNavigation.right: volumeButton.visible ? volumeButton : partyButton
                     onClicked: app.cycleRepeat()
                 }
                 FocusButton {
@@ -396,7 +446,7 @@ Kirigami.Page {
                               : app.volume < 67 ? "audio-volume-medium" : "audio-volume-high"
                     text: "Volume " + app.volume
                     KeyNavigation.left: repeatButton
-                    KeyNavigation.right: searchButton
+                    KeyNavigation.right: partyButton
                     onClicked: { page.placeVolumePopup(); volumePopup.open(true) }
                 }
             }
@@ -405,11 +455,20 @@ Kirigami.Page {
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 spacing: 20 * page.u
                 NavButton {
+                    id: partyButton
+                    iconName: "view-fullscreen"
+                    iconScale: 0.8
+                    text: "Party mode"
+                    KeyNavigation.left: volumeButton.visible ? volumeButton : repeatButton
+                    KeyNavigation.right: searchButton
+                    onClicked: app.togglePartyMode()
+                }
+                NavButton {
                     id: searchButton
                     iconName: "edit-find"
                     iconScale: 0.8
                     text: "Search"
-                    KeyNavigation.left: volumeButton.visible ? volumeButton : repeatButton
+                    KeyNavigation.left: partyButton
                     KeyNavigation.right: queueButton
                     onClicked: { page.returnFocus = searchButton; page.openPage("search") }
                 }

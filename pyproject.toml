@@ -18,6 +18,7 @@ dependencies = [
     "anyascii>=0.3",
     "segno>=1.6",
     "dbus-next>=0.2.3",  # Flatpak portal (self-update)
+    "numpy>=2.0",        # beat detection (visualizer, party mode)
 ]
 
 [project.optional-dependencies]

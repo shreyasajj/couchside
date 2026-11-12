@@ -860,6 +860,102 @@ async def test_already_installed_update_restarts_into_it(ctl, monkeypatch):
     assert restarts == [1]
 
 
+# --- Phase 8: visualizer and party mode ---------------------------------------------------
+
+class FakePulse:
+    def __init__(self):
+        self.running, self.starts, self.stops = False, 0, 0
+        self.level, self.beats = 0.0, 0
+
+    def start(self):
+        self.starts += 1
+        self.running = True
+        return True
+
+    def stop(self):
+        self.stops += 1
+        self.running = False
+        self.level = 0.0
+
+    def healthy(self):
+        return True
+
+
+@pytest.fixture
+def pulse_ctl(ctl):
+    ctl._pulse = FakePulse()
+    return ctl
+
+
+async def test_listens_only_while_shown_and_playing(pulse_ctl):
+    from dataclasses import replace
+    ctl = pulse_ctl
+    assert ctl.visualizerEnabled is True and not ctl._pulse.running
+    ctl.pulseVisible = True                 # Now Playing on screen, music playing
+    assert ctl._pulse.running
+    ctl.playback.now_playing = replace(ctl.playback.now_playing, state="paused")
+    ctl._on_update()
+    assert not ctl._pulse.running           # paused: nothing to hear
+    ctl.playback.now_playing = replace(ctl.playback.now_playing, state="playing")
+    ctl._on_update()
+    assert ctl._pulse.running
+    ctl.pulseVisible = False                # another page or app in front
+    assert not ctl._pulse.running
+
+
+def test_visualizer_off_stops_listening_but_party_mode_still_listens(pulse_ctl, tmp_path):
+    from couchside.core.settings import load_settings
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    ctl.visualizerEnabled = False
+    assert not ctl._pulse.running and load_settings().visualizer_enabled is False
+    ctl.togglePartyMode()
+    assert ctl.partyMode and ctl._pulse.running
+    ctl.togglePartyMode()
+    assert not ctl.partyMode and not ctl._pulse.running
+
+
+def test_pulse_swells_on_beats_and_settles(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    seen, other = [], []
+    ctl.levelChanged.connect(lambda: seen.append(ctl.audioPulse))
+    ctl.pulseChanged.connect(lambda: other.append(1))
+    ctl._pulse.level = 0.5
+    ctl._poll_pulse()
+    assert ctl.audioPulse == 0.3            # level alone, scaled
+    ctl._pulse.beats = 1
+    ctl._poll_pulse()
+    assert ctl.audioPulse == 1.0            # a beat: full swell
+    for _ in range(8):
+        ctl._poll_pulse()
+    assert ctl.audioPulse == 0.3            # decayed back to the level
+    n = len(seen)
+    ctl._pulse.level = 0.51                 # same 0.05 step: no signal, no redraw
+    ctl._poll_pulse()
+    assert len(seen) == n and other == []
+
+
+def test_glow_settles_to_rest_when_listening_stops(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    ctl._pulse.level, ctl._pulse.beats = 0.8, 1
+    ctl._poll_pulse()
+    assert ctl.audioPulse == 1.0
+    ctl.pulseVisible = False      # e.g. paused right after a kick
+    assert ctl.audioPulse == 0.0
+
+
+def test_a_stream_that_died_is_reopened(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    assert ctl._pulse.starts == 1
+    ctl._pulse.healthy = lambda: False   # PipeWire restarted: no more callbacks
+    ctl._poll_pulse()
+    assert ctl._pulse.stops == 1 and ctl.audioPulse == 0.0
+    ctl._pulse.healthy = lambda: True
+    ctl._poll_pulse()                    # still wanted: listen again
+    assert ctl._pulse.starts == 2 and ctl._pulse.running
 async def test_guest_link_waits_for_a_slow_worker_thread(guest_ctl, monkeypatch):
     """CI runners can take longer than a fixed wait to build the link (flaky before)."""
     import time

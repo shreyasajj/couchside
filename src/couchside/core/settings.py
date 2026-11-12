@@ -20,6 +20,7 @@ class AppSettings:
     player_name: str = "Living Room TV"
     qr_caption: str = "Scan to add songs"
     lyrics_enabled: bool = True
+    visualizer_enabled: bool = True
     lyrics_size: str = "medium"  # small | medium | large
     lyrics_language: str = "romanized"  # romanized | original | english_only
     lyrics_translate: bool = False  # English translation under each line
