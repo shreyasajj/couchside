@@ -52,7 +52,7 @@ Rectangle {
         width: Math.min(parent.width * 0.55, 1000 * editor.u)
         height: column.implicitHeight + 64 * editor.u
         radius: 20 * editor.u
-        color: "#1d1840"
+        color: Theme.panel
 
         ColumnLayout {
             id: column
@@ -96,7 +96,7 @@ Rectangle {
                     radius: 12 * editor.u
                     color: lit ? "#ffffff" : "#26ffffff"
                     border.width: lit ? 5 * editor.u : 0
-                    border.color: "#4fc3f7"
+                    border.color: Theme.focus
                     RowLayout {
                         anchors { fill: parent; leftMargin: 24 * editor.u; rightMargin: 24 * editor.u }
                         spacing: 20 * editor.u
@@ -104,7 +104,7 @@ Rectangle {
                             width: 36 * editor.u
                             height: width
                             radius: 8 * editor.u
-                            color: option.on ? "#4fc3f7" : "transparent"
+                            color: option.on ? Theme.accent : "transparent"
                             border.width: 3 * editor.u
                             border.color: option.lit ? "#000000" : "#ffffff"
                             QQC2.Label {
@@ -166,7 +166,7 @@ Rectangle {
             color: btn.activeFocus ? "#ffffff" : "#33ffffff"
             opacity: btn.enabled ? 1 : 0.6
             border.width: btn.activeFocus ? 6 * editor.u : 0
-            border.color: "#4fc3f7"
+            border.color: Theme.focus
         }
         contentItem: QQC2.Label {
             text: btn.text

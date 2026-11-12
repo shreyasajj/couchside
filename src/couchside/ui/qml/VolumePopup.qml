@@ -19,7 +19,7 @@ Rectangle {
     radius: 20 * u
     color: "#e6141024"
     border.width: interactive ? 5 * u : 0
-    border.color: "#4fc3f7"
+    border.color: Theme.focus
 
     function syncLevel() { if (!settle.running) level = Math.max(0, app.volume) }
     function change(delta) {

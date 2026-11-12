@@ -1,9 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
 // Square artwork card for search results / recents. OK emits activated().
+// The focused card grows a little and gets a white ring.
 FocusScope {
     id: card
     property real u: 1
@@ -14,32 +13,29 @@ FocusScope {
     signal activated()
 
     width: 240 * u
-    height: 240 * u + 100 * u
+    height: 240 * u + 112 * u
 
     Keys.onReturnPressed: (event) => { if (!event.isAutoRepeat) activated() }
     Keys.onEnterPressed: (event) => { if (!event.isAutoRepeat) activated() }
     Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { if (!event.isAutoRepeat) activated(); event.accepted = true } }
 
-    readonly property string icon: ({ track: "media-optical-audio", album: "media-optical",
-                                       artist: "view-media-artist", playlist: "view-media-playlist",
-                                       radio: "radio" })[kind] || "media-optical-audio"
+    readonly property string icon: ({ track: "music", album: "album", artist: "person",
+                                       playlist: "queue", radio: "radio" })[kind] || "music"
 
     Rectangle {
         id: artBox
         width: parent.width
         height: width
-        radius: (kind === "artist" ? width / 2 : 14 * card.u)
-        color: "#2b2163"
+        radius: (kind === "artist" ? width / 2 : 16 * card.u)
+        color: Theme.surfaceHigh
         clip: true
-        scale: card.activeFocus ? 1.04 : 1
-        Behavior on scale { NumberAnimation { duration: 120 } }
-        Kirigami.Icon {
+        scale: card.activeFocus ? 1.05 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.focusMs; easing.type: Easing.OutCubic } }
+        Icon {
             anchors.centerIn: parent
-            width: parent.width * 0.4
-            height: width
-            source: card.icon
-            color: "#aaffffff"
-            isMask: true
+            size: parent.width * 0.4
+            name: card.icon
+            opacity: 0.6
             visible: img.status !== Image.Ready
         }
         Image {
@@ -58,30 +54,29 @@ FocusScope {
         scale: artBox.scale
         radius: artBox.radius + 10 * card.u
         color: "transparent"
-        border.width: 6 * card.u
-        border.color: "#4fc3f7"
+        border.width: 5 * card.u
+        border.color: Theme.focus
         visible: card.activeFocus
     }
     ColumnLayout {
-        anchors { left: parent.left; right: parent.right; top: artBox.bottom; topMargin: 16 * card.u }
+        anchors { left: parent.left; right: parent.right; top: artBox.bottom; topMargin: 20 * card.u }
         spacing: 2 * card.u
-        QQC2.Label {
+        Text {
             textFormat: Text.PlainText
             Layout.fillWidth: true
             text: card.title
-            color: "#ffffff"
-            font.pixelSize: 28 * card.u
+            color: Theme.text
+            font.pixelSize: Theme.label * card.u
             font.weight: card.activeFocus ? Font.Bold : Font.Normal
             elide: Text.ElideRight
         }
-        QQC2.Label {
+        Text {
             textFormat: Text.PlainText
             Layout.fillWidth: true
             visible: text !== ""
             text: card.subtitle
-            color: "#ffffff"
-            opacity: 0.7
-            font.pixelSize: 24 * card.u
+            color: Theme.textDim
+            font.pixelSize: Theme.label * card.u
             elide: Text.ElideRight
         }
     }

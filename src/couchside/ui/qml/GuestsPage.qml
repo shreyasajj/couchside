@@ -12,7 +12,7 @@ Kirigami.Page {
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: Rectangle { color: "#0d0b1a" }
+    background: PageBackground { tint: app.backgroundColour }
 
     function focusDefault() { (rows.length > 0 ? list : codeButton).forceActiveFocus() }
     Component.onCompleted: { rows = app.guestRows; codeButton.forceActiveFocus() }
@@ -60,29 +60,16 @@ Kirigami.Page {
             font.pixelSize: 28 * page.u
         }
 
-        QQC2.Button {
+        ListRow {
             id: codeButton
             objectName: "adminCodeButton"
-            text: "Show an admin code"
-            font.pixelSize: 32 * page.u
-            padding: 22 * page.u
+            Layout.fillWidth: true
+            u: page.u
+            iconName: "star"
+            title: "Show an admin code"
+            subtitle: "A one-time code for a guest to type on their phone"
             Keys.onDownPressed: if (page.rows.length > 0) list.forceActiveFocus()
-            Keys.onReturnPressed: clicked()
-            Keys.onEnterPressed: clicked()
-            onClicked: app.showAdminCode()
-            background: Rectangle {
-                radius: 12 * page.u
-                color: codeButton.activeFocus ? "#ffffff" : "#33ffffff"
-                border.width: codeButton.activeFocus ? 6 * page.u : 0
-                border.color: "#4fc3f7"
-            }
-            contentItem: QQC2.Label {
-                textFormat: Text.PlainText
-                text: codeButton.text
-                font: codeButton.font
-                color: codeButton.activeFocus ? "#000000" : "#ffffff"
-                horizontalAlignment: Text.AlignHCenter
-            }
+            onActivated: app.showAdminCode()
         }
 
         QQC2.Label {
@@ -90,7 +77,7 @@ Kirigami.Page {
             visible: page.rows.length === 0
             text: "No guests yet — they join by scanning the QR code on Now Playing."
             color: "#ffffff"
-            opacity: 0.6
+            opacity: 0.7
             font.pixelSize: 30 * page.u
         }
 
@@ -116,7 +103,7 @@ Kirigami.Page {
                 width: ListView.view.width
                 u: page.u
                 focus: ListView.isCurrentItem
-                iconName: modelData.admin ? "user-admin" : "user"
+                iconName: modelData.admin ? "star" : "person"
                 title: modelData.name
                 subtitle: modelData.admin ? "No limits"
                           : "Skips left " + modelData.skipsLeft + " · Boosts left " + modelData.boostsLeft

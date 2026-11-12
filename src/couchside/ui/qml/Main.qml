@@ -7,7 +7,7 @@ Kirigami.ApplicationWindow {
     id: root
     title: "Couchside"
     visibility: Window.FullScreen
-    color: "#0d0b1a"
+    color: Theme.bg
     // 1.0 at 1080p; every size in the UI is multiplied by this.
     readonly property real u: Math.max(0.5, height / 1080)
 
@@ -159,7 +159,7 @@ Kirigami.ApplicationWindow {
         padding: 48 * root.u
         onOpened: cancelButton.forceActiveFocus()
         onClosed: if (pageStack.currentItem && pageStack.currentItem.focusDefault) pageStack.currentItem.focusDefault()
-        background: Rectangle { color: "#1d1840"; radius: 16 * root.u }
+        background: Rectangle { color: Theme.panel; radius: 16 * root.u }
         contentItem: ColumnLayout {
             spacing: 36 * root.u
             // A modal popup blocks the window's shortcuts and closes itself only on Escape:
@@ -205,7 +205,7 @@ Kirigami.ApplicationWindow {
             radius: 12 * root.u
             color: btn.activeFocus ? "#ffffff" : "#33ffffff"
             border.width: btn.activeFocus ? 6 * root.u : 0
-            border.color: "#4fc3f7"
+            border.color: Theme.focus
         }
         contentItem: QQC2.Label {
             text: btn.text

@@ -1,15 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
 // One focusable list row: art or icon, title, subtitle, badges, trailing text.
-// OK/Enter/Select emits activated().
+// OK/Enter/Select emits activated(). The focused row is white with dark text.
 FocusScope {
     id: row
     property real u: 1
     property string imageUrl: ""
-    property string iconName: "media-optical-audio"
+    property string iconName: "music"
     property string title: ""
     property string subtitle: ""
     property var badges: []
@@ -17,8 +15,9 @@ FocusScope {
     property bool dimmed: false
     property bool marked: false  // e.g. the song playing now
     signal activated()
+    readonly property color ink: activeFocus ? Theme.focusText : Theme.text
 
-    implicitHeight: 128 * u
+    implicitHeight: 132 * u
     activeFocusOnTab: true
 
     Keys.onReturnPressed: (event) => { if (!event.isAutoRepeat) activated() }
@@ -27,30 +26,27 @@ FocusScope {
 
     Rectangle {
         anchors.fill: parent
-        radius: 14 * row.u
-        color: row.activeFocus ? "#33ffffff" : (row.marked ? "#1fffffff" : "transparent")
-        border.width: row.activeFocus ? 5 * row.u : 0
-        border.color: "#4fc3f7"
+        radius: 20 * row.u
+        color: row.activeFocus ? Theme.focus : (row.marked ? Theme.surface : "transparent")
     }
 
     RowLayout {
-        anchors { fill: parent; leftMargin: 20 * row.u; rightMargin: 28 * row.u }
+        anchors { fill: parent; leftMargin: 20 * row.u; rightMargin: 32 * row.u }
         spacing: 28 * row.u
         opacity: row.dimmed ? 0.5 : 1
 
         Rectangle {
             Layout.preferredWidth: 96 * row.u
             Layout.preferredHeight: 96 * row.u
-            radius: 10 * row.u
-            color: "#2b2163"
+            radius: 12 * row.u
+            color: row.activeFocus ? "#1f000000" : Theme.surfaceHigh
             clip: true
-            Kirigami.Icon {
+            Icon {
                 anchors.centerIn: parent
-                width: parent.width * 0.5
-                height: width
-                source: row.iconName
-                color: "#aaffffff"
-                isMask: true
+                size: parent.width * 0.5
+                name: row.iconName
+                color: row.ink
+                opacity: 0.7
                 visible: art.status !== Image.Ready
             }
             Image {
@@ -66,16 +62,16 @@ FocusScope {
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 6 * row.u
+            spacing: 4 * row.u
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 16 * row.u
-                QQC2.Label {
+                Text {
                     textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: row.title
-                    color: "#ffffff"
-                    font.pixelSize: 32 * row.u
+                    color: row.ink
+                    font.pixelSize: Theme.body * row.u
                     font.weight: row.marked ? Font.Bold : Font.Normal
                     elide: Text.ElideRight
                 }
@@ -84,40 +80,40 @@ FocusScope {
                     delegate: Rectangle {
                         required property string modelData
                         radius: height / 2
-                        color: "#334fc3f7"
+                        color: row.activeFocus ? "#1f000000" : "#334fc3f7"
                         implicitHeight: badge.implicitHeight + 8 * row.u
-                        implicitWidth: badge.implicitWidth + 28 * row.u
-                        QQC2.Label {
-                            textFormat: Text.PlainText
+                        implicitWidth: badge.implicitWidth + 32 * row.u
+                        Text {
                             id: badge
+                            textFormat: Text.PlainText
                             anchors.centerIn: parent
                             text: parent.modelData
-                            color: "#bfeaff"
-                            font.pixelSize: 24 * row.u
+                            color: row.activeFocus ? Theme.focusText : "#bfeaff"
+                            font.pixelSize: Theme.label * row.u
                         }
                     }
                 }
             }
-            QQC2.Label {
+            Text {
                 textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: text !== ""
                 text: row.subtitle
-                color: "#ffffff"
+                color: row.ink
                 opacity: 0.7
-                font.pixelSize: 26 * row.u
+                font.pixelSize: Theme.label * row.u
                 elide: Text.ElideRight
             }
         }
 
-        QQC2.Label {
-
+        Text {
             textFormat: Text.PlainText
             visible: text !== ""
             text: row.trailing
-            color: "#ffffff"
+            color: row.ink
             opacity: 0.7
-            font.pixelSize: 28 * row.u
+            font.pixelSize: Theme.label * row.u
+            font.features: { "tnum": 1 }
         }
     }
 

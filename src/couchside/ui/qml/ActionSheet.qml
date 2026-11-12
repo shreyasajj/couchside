@@ -53,7 +53,7 @@ Rectangle {
         width: Math.min(parent.width * 0.5, 900 * sheet.u)
         height: column.implicitHeight + 64 * sheet.u
         radius: 20 * sheet.u
-        color: "#1d1840"
+        color: Theme.panel
 
         ColumnLayout {
             id: column
@@ -87,7 +87,7 @@ Rectangle {
                     radius: 12 * sheet.u
                     color: ListView.isCurrentItem && list.activeFocus ? "#ffffff" : "#26ffffff"
                     border.width: ListView.isCurrentItem && list.activeFocus ? 5 * sheet.u : 0
-                    border.color: "#4fc3f7"
+                    border.color: Theme.focus
                     QQC2.Label {
                         textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter

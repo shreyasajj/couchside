@@ -11,7 +11,7 @@ Kirigami.Page {
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: Rectangle { color: "#0d0b1a" }
+    background: PageBackground { tint: app.backgroundColour }
 
     function focusDefault() { list.forceActiveFocus() }
     Component.onCompleted: { rows = app.queueRows; app.queueVisible = true; list.forceActiveFocus() }
@@ -50,7 +50,7 @@ Kirigami.Page {
         QQC2.Label {
 
             textFormat: Text.PlainText
-            text: "Queue"
+            text: list.count > 1 ? "Queue · " + list.count + " songs" : "Queue"
             color: "#ffffff"
             font.pixelSize: 48 * page.u
             font.weight: Font.Bold
@@ -59,8 +59,7 @@ Kirigami.Page {
             textFormat: Text.PlainText
             visible: list.count === 0
             text: "Nothing queued — add songs from Search"
-            color: "#ffffff"
-            opacity: 0.8
+            color: Theme.textDim
             font.pixelSize: 30 * page.u
         }
 
@@ -76,21 +75,43 @@ Kirigami.Page {
             preferredHighlightBegin: height * 0.2
             preferredHighlightEnd: height * 0.8
             highlightMoveDuration: 150
-            delegate: ListRow {
-                id: rowItem
+            // "Now playing" above the playing song, "Up next" above the first one after it
+            delegate: FocusScope {
+                id: slot
                 required property var modelData
                 required property int index
+                readonly property string caption: modelData.current ? "Now playing"
+                    : (index === 0 || page.rows[index - 1].current) ? "Up next" : ""
                 width: ListView.view.width
-                u: page.u
+                height: rowItem.height + (caption !== "" ? captionText.height + 28 * page.u : 0)
                 focus: ListView.isCurrentItem
+                Text {
+                    id: captionText
+                    textFormat: Text.PlainText
+                    visible: slot.caption !== ""
+                    x: 20 * page.u
+                    y: 12 * page.u
+                    text: slot.caption
+                    color: Theme.textDim
+                    font.pixelSize: Theme.label * page.u
+                    font.weight: Font.DemiBold
+                }
+              ListRow {
+                id: rowItem
+                readonly property var modelData: slot.modelData
+                readonly property int index: slot.index
+                anchors.bottom: parent.bottom
+                width: parent.width
+                u: page.u
+                focus: true
                 imageUrl: modelData.imageUrl
                 title: modelData.title
                 subtitle: modelData.subtitle
                 marked: modelData.current
-                badges: (modelData.current ? ["Now playing"] : [])
-                        .concat(modelData.addedBy ? ["Added by " + modelData.addedBy] : [])
+                badges: modelData.addedBy ? ["Added by " + modelData.addedBy] : []
                 trailing: modelData.duration > 0 ? app.formatTime(modelData.duration) : ""
                 onActivated: page.openRow(modelData, rowItem, index)
+              }
             }
         }
     }

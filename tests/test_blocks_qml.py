@@ -62,13 +62,10 @@ def test_every_icon_the_pages_use_has_a_shape(view):
     import re
     for qml in (Path(__file__).parents[1] / "src/couchside/ui/qml").glob("*.qml"):
         text = qml.read_text()
-        if "FocusButton" not in text and "Icon {" not in text:
-            continue
         for line in text.splitlines():
             if re.search(r"^\s*(iconName|name):", line) and "Kirigami" not in line:
                 line = re.sub(r'[=!]==? *"[^"]*"', "", line)   # comparisons are not icon names
                 used.update(n for n in re.findall(r'"([a-z-]+)"', line))
-    used = {n for n in used if not n.startswith(("media-", "view-", "audio-", "edit-", "user", "configure"))}
     assert used and used <= set(paths), used - set(paths)
 
 
@@ -97,3 +94,30 @@ def test_edge_lights_follow_the_pulse_and_change_colour_with_the_hue(view):
     assert lights.opacity() > quiet > 0
     assert lights.property("leftColour").name() != left
     assert lights.property("leftColour").name() != lights.property("rightColour").name()
+
+
+def test_rows_cards_and_text_buttons_focus_and_activate(view):
+    root = view.rootObject()
+    row, card, pill = child(view, "row"), child(view, "card"), child(view, "pill")
+    row.forceActiveFocus()
+    pump(0.05)
+    assert row.property("activeFocus") is True
+    assert row.property("ink").name() != "#ffffff"       # focused: dark text on a white row
+    QTest.keyClick(view, Qt.Key.Key_Return)
+    pump(0.05)
+    assert root.property("rowHits") == 1
+    pill.forceActiveFocus()
+    QTest.keyClick(view, Qt.Key.Key_Select)
+    pump(0.05)
+    assert root.property("clicks") == 10
+    card.forceActiveFocus()
+    pump(0.3)
+    assert card.property("activeFocus") is True
+    from PySide6.QtQml import QQmlEngine, QQmlExpression
+    for item in (row, card, pill):
+        texts = [c for c in item.findChildren(object) if c.metaObject().className().startswith("QQuickText")]
+        assert texts
+        for t in texts:
+            expr = QQmlExpression(QQmlEngine.contextForObject(t), t,
+                                  "textFormat === Text.PlainText && font.pixelSize >= 28")
+            assert expr.evaluate()[0] is True, t.property("text")

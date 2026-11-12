@@ -12,7 +12,7 @@ Kirigami.Page {
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: Rectangle { color: "#0d0b1a" }
+    background: PageBackground { tint: app.backgroundColour }
 
     // The search box is focused without editing: Bigscreen's on-screen keyboard opens
     // on a focused text field and takes the arrow keys. OK starts editing; the
@@ -104,12 +104,13 @@ Kirigami.Page {
                 color: "#ffffff"
                 placeholderTextColor: "#99ffffff"
                 padding: 22 * page.u
+                leftPadding: 40 * page.u
                 inputMethodHints: Qt.ImhNoPredictiveText
                 background: Rectangle {
-                    radius: 12 * page.u
-                    color: field.activeFocus ? "#33ffffff" : "#22ffffff"
-                    border.width: searchBox.activeFocus ? 5 * page.u : 0
-                    border.color: "#4fc3f7"
+                    radius: height / 2
+                    color: field.activeFocus ? Theme.surfaceHigh : Theme.surface
+                    border.width: searchBox.activeFocus ? 4 * page.u : 0
+                    border.color: field.activeFocus ? Theme.accent : Theme.focus  // blue while typing
                 }
                 onTextEdited: debounce.restart()
                 // typing on a real keyboard: keep Bigscreen's on-screen keyboard out of the way
@@ -137,7 +138,7 @@ Kirigami.Page {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 32 * page.u
+            spacing: 24 * page.u
             model: app.libraryRows
             keyNavigationEnabled: false
             highlightMoveDuration: 200
@@ -176,7 +177,7 @@ Kirigami.Page {
                 ListView {
                     id: cards
                     width: parent.width
-                    height: 340 * page.u + 24 * page.u
+                    height: 352 * page.u + 28 * page.u
                     orientation: ListView.Horizontal
                     spacing: 32 * page.u
                     clip: false
@@ -186,8 +187,8 @@ Kirigami.Page {
                     preferredHighlightBegin: 16 * page.u
                     preferredHighlightEnd: width - 280 * page.u
                     highlightMoveDuration: 150
-                    topMargin: 12 * page.u
-                    leftMargin: 12 * page.u
+                    topMargin: 16 * page.u
+                    leftMargin: 16 * page.u
                     delegate: MediaCardItem {
                         id: cardItem
                         required property var modelData

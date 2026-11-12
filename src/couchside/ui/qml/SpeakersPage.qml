@@ -12,7 +12,7 @@ Kirigami.Page {
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: Rectangle { color: "#0d0b1a" }
+    background: PageBackground { tint: app.backgroundColour }
 
     function focusDefault() { list.forceActiveFocus() }
     Component.onCompleted: { rows = app.speakerRows; list.forceActiveFocus() }
@@ -95,7 +95,7 @@ Kirigami.Page {
                 width: ListView.view.width
                 u: page.u
                 focus: ListView.isCurrentItem
-                iconName: modelData.isGroup ? "view-group" : "speaker"
+                iconName: modelData.isGroup ? "group" : "speaker"
                 title: modelData.name
                 subtitle: !modelData.available ? "Offline"
                           : modelData.playing !== "" ? modelData.playing
@@ -113,27 +113,15 @@ Kirigami.Page {
             }
         }
 
-        QQC2.Button {
+        ListRow {  // looks like one more row at the end of the list
             id: newGroup
-            text: "New group"
-            font.pixelSize: 32 * page.u
-            padding: 22 * page.u
+            Layout.fillWidth: true
+            u: page.u
+            iconName: "plus"
+            title: "New group"
+            subtitle: "Pick speakers to play in sync"
             Keys.onUpPressed: list.forceActiveFocus()
-            Keys.onReturnPressed: clicked()
-            Keys.onEnterPressed: clicked()
-            onClicked: groupEditor.open("", [], newGroup)
-            background: Rectangle {
-                radius: 12 * page.u
-                color: newGroup.activeFocus ? "#ffffff" : "#33ffffff"
-                border.width: newGroup.activeFocus ? 6 * page.u : 0
-                border.color: "#4fc3f7"
-            }
-            contentItem: QQC2.Label {
-                text: newGroup.text
-                font: newGroup.font
-                color: newGroup.activeFocus ? "#000000" : "#ffffff"
-                horizontalAlignment: Text.AlignHCenter
-            }
+            onActivated: groupEditor.open("", [], newGroup)
         }
     }
 }
