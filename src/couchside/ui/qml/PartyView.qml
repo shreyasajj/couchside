@@ -18,7 +18,8 @@ FocusScope {
     // colour to the very edges of the screen: lights that copy the screen dance along
     EdgeLights {
         anchors.fill: parent
-        pulse: party.kick
+        visible: app.partyLights
+        pulse: party.visible && visible ? app.lightPulse : 0   // slower than the glow: see the controller
         hue: party.visible ? app.beatHue : 0.55
     }
 
@@ -27,7 +28,8 @@ FocusScope {
         width: parent.width * 0.75
         height: parent.height * 0.9
         pulse: party.kick
-        baseColour: Qt.hsla(party.visible ? app.beatHue : 0.55, 0.8, 0.5, 1)  // with the edges
+        baseColour: app.partyLights ? Qt.hsla(party.visible ? app.beatHue : 0.55, 0.8, 0.5, 1)  // with the edges
+                                    : app.backgroundColour
         strength: 1.5
     }
 

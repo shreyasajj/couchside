@@ -347,6 +347,12 @@ Kirigami.Page {
                 hint: "A glow behind the artwork that pulses with the music on this TV"
                 onActivated: app.visualizerEnabled = !app.visualizerEnabled
             }
+            SettingRow {
+                label: "Party lights"
+                value: app.partyLights ? "On" : "Off"
+                hint: "Party mode: colour along the screen edges that jumps on every beat"
+                onActivated: app.partyLights = !app.partyLights
+            }
 
             Heading { text: "Lyrics" }
             SettingRow {

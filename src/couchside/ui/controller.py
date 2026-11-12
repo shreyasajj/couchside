@@ -127,6 +127,7 @@ class AppController(QObject):
         self._party = False
         self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
         self._beat_hue = 0.55
+        self._light, self._shown_light = 0.0, 0.0  # the edge lights' slower pulse
         self._pulse_timer = QTimer(self)
         self._pulse_timer.setInterval(50)  # 20 updates a second while listening
         self._pulse_timer.timeout.connect(self._poll_pulse)
@@ -1258,6 +1259,23 @@ class AppController(QObject):
         screen all the time)."""
         return self._shown_level
 
+    @Property(bool, notify=pulseChanged)
+    def partyLights(self) -> bool:
+        return self._settings.party_lights
+
+    @partyLights.setter
+    def partyLights(self, on: bool) -> None:
+        self._settings.party_lights = bool(on)
+        save_settings(self._settings)
+        self.pulseChanged.emit()
+
+    @Property(float, notify=levelChanged)
+    def lightPulse(self) -> float:
+        """0..1 for party mode's edge lights: full on each beat, then falling over about
+        half a second. Slower than audioPulse on purpose: lights that copy the screen
+        smooth what they see, and a shorter flash never reaches them."""
+        return self._shown_light
+
     @Property(float, notify=beatChanged)
     def beatHue(self) -> float:
         """0..1: a colour that takes a step round the colour wheel on every beat. Party
@@ -1296,15 +1314,20 @@ class AppController(QObject):
         if self._pulse.beats != self._seen_beats:
             self._seen_beats = self._pulse.beats
             self._kick = 1.0
+            self._light = 1.0
             self._beat_hue = round((self._beat_hue + 0.17) % 1.0, 2)  # a clearly different colour
             self.beatChanged.emit()
         else:
             self._kick = self._kick * 0.55 if self._kick > 0.05 else 0.0
+            self._light = self._light * 0.82 if self._light > 0.05 else 0.0
+        if not self._pulse.running:
+            self._light = 0.0
         pulse = max(0.6 * self._pulse.level, self._kick)
+        light = max(0.5 * self._pulse.level, self._light)
         # in steps of 0.05: every change costs binding work and a redraw
-        pulse = round(pulse * 20) / 20
-        if pulse != self._shown_level:
-            self._shown_level = pulse
+        pulse, light = round(pulse * 20) / 20, round(light * 20) / 20
+        if pulse != self._shown_level or light != self._shown_light:
+            self._shown_level, self._shown_light = pulse, light
             self.levelChanged.emit()
 
     # --- toast -----------------------------------------------------------------

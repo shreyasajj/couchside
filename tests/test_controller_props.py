@@ -975,3 +975,33 @@ def test_up_next_comes_from_the_queue(ctl):
         next_image_url="http://ma:8095/imageproxy/abc?size=512")
     assert ctl.nextTitle == "Luna" and ctl.nextArtist == "Bolier"
     assert ctl.nextArtUrl == "http://ma:8095/imageproxy/abc?size=256"
+
+
+def test_party_lights_hold_each_beat_longer_than_the_glow(pulse_ctl):
+    """Lights behind the TV smooth what they see: a flash that is gone in a tenth of a
+    second never reaches them. The edge lights fall slowly after each beat."""
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    ctl._pulse.beats = 1
+    ctl._poll_pulse()
+    assert ctl.lightPulse == 1.0 and ctl.audioPulse == 1.0
+    for _ in range(4):                      # 0.2 s later
+        ctl._poll_pulse()
+    assert ctl.audioPulse <= 0.1 and ctl.lightPulse >= 0.4
+    for _ in range(40):
+        ctl._poll_pulse()
+    assert ctl.lightPulse == 0.0
+    ctl._pulse.level, ctl._pulse.beats = 0.8, 2
+    ctl._poll_pulse()
+    ctl.pulseVisible = False                # listening stops: lights go dark at once
+    assert ctl.lightPulse == 0.0
+
+
+def test_party_lights_can_be_switched_off_and_stay_off(pulse_ctl):
+    from couchside.core.settings import load_settings
+    ctl = pulse_ctl
+    seen = []
+    ctl.pulseChanged.connect(lambda: seen.append(1))
+    assert ctl.partyLights is True
+    ctl.partyLights = False
+    assert ctl.partyLights is False and load_settings().party_lights is False and seen

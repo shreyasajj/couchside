@@ -21,6 +21,7 @@ class AppSettings:
     qr_caption: str = "Scan to add songs"
     lyrics_enabled: bool = True
     visualizer_enabled: bool = True
+    party_lights: bool = True  # party mode: colour along the screen edges
     lyrics_size: str = "medium"  # small | medium | large
     lyrics_language: str = "romanized"  # romanized | original | english_only
     lyrics_translate: bool = False  # English translation under each line
