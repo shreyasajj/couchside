@@ -58,6 +58,14 @@ def main() -> int:
     if not engine.rootObjects():
         return 1
 
+    # The remote's Back key goes straight to Main.qml's goBack (see ui/keys.py).
+    from PySide6.QtCore import QMetaObject
+
+    from couchside.ui.keys import BackKeyFilter
+    root = engine.rootObjects()[0]
+    back_filter = BackKeyFilter(lambda: QMetaObject.invokeMethod(root, "goBack"))
+    app.installEventFilter(back_filter)
+
     closing = asyncio.Event()
     app.aboutToQuit.connect(closing.set)
 
