@@ -26,6 +26,10 @@ Kirigami.ApplicationWindow {
             u: root.u
             onOpenSetup: root.showSetup()
             onOpenPage: (name) => root.openPage(name)
+            onTyped: (text) => {
+                root.openPage("search")
+                if (pageStack.currentItem && pageStack.currentItem.typeInto) pageStack.currentItem.typeInto(text)
+            }
         }
     }
     Component {
@@ -77,10 +81,34 @@ Kirigami.ApplicationWindow {
             root.setupWasNeeded = app.needsSetup
         }
     }
-    Component.onCompleted: { setupWasNeeded = app.needsSetup; if (app.needsSetup) showSetup() }
+    Component.onCompleted: {
+        disableKirigamiBack()
+        setupWasNeeded = app.needsSetup
+        if (app.needsSetup) showSetup()
+    }
 
     // Back on any remote; media keys work wherever focus is.
+    // Kirigami's page stack also binds the Back key (StandardKey.Back), so Qt calls the
+    // remote's Back ambiguous and runs neither: handle that case too, with our own rules.
+    // Back on any remote. Kirigami's page stack binds the Back key too (StandardKey.Back);
+    // two shortcuts on one key make Qt rotate presses between them, so switch Kirigami's off
+    // and keep Couchside's rules (close overlays, go back, confirm exit).
     Shortcut { sequences: ["Back", "Esc"]; onActivated: root.goBack() }
+    function disableKirigamiBack() {
+        var found = 0
+        for (const list of [pageStack.resources, pageStack.data]) {
+            if (!list) continue
+            for (var i = 0; i < list.length; i++) {
+                var o = list[i]
+                if (o && o.sequences !== undefined && o.hasOwnProperty("autoRepeat")
+                        && o.sequences.indexOf(StandardKey.Back) >= 0 && o.enabled) {
+                    o.enabled = false
+                    found++
+                }
+            }
+        }
+        console.info("Kirigami Back shortcuts disabled:", found)
+    }
     Shortcut { sequences: ["Media Play", "Media Pause", "Toggle Media Play/Pause"]; onActivated: app.playPause() }
     Shortcut { sequence: "Media Next"; onActivated: app.next() }
     Shortcut { sequence: "Media Previous"; onActivated: app.previous() }
@@ -134,6 +162,9 @@ Kirigami.ApplicationWindow {
         background: Rectangle { color: "#1d1840"; radius: 16 * root.u }
         contentItem: ColumnLayout {
             spacing: 36 * root.u
+            // A modal popup blocks the window's shortcuts and closes itself only on Escape:
+            // the remote's Back key has to close it here.
+            Keys.onPressed: (event) => { if (event.key === Qt.Key_Back) { exitDialog.close(); event.accepted = true } }
             QQC2.Label {
                 text: "Exit Couchside?"
                 color: "#ffffff"

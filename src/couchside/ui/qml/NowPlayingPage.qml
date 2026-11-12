@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Effects
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
+import "typing.js" as Typing
 
 // Now Playing (design "Layout B"). Lyrics arrive in Phase 4; until then this is the
 // design's no-lyrics layout: big artwork left, large title, bottom control bar.
@@ -11,6 +12,12 @@ Kirigami.Page {
     property real u: 1
     signal openSetup()
     signal openPage(string name)
+    signal typed(string text)
+    // letters from a keyboard remote open Search with them
+    Keys.onPressed: (event) => {
+        var t = Typing.typed(event)
+        if (t) { page.typed(t); event.accepted = true }
+    }
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
