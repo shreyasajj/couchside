@@ -460,8 +460,15 @@ def guest_ctl(ctl, monkeypatch):
 
 
 async def settle_long():
+    """Let background work finish: the guest link and QR are built on a worker thread,
+    which can take well over 0.2 s on a busy CI runner. Waits for pending tasks (max 5 s)."""
     for _ in range(100):
         await asyncio.sleep(0.002)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 5
+    me = asyncio.current_task()
+    while loop.time() < deadline and any(t is not me and not t.done() for t in asyncio.all_tasks()):
+        await asyncio.sleep(0.01)
 
 
 async def test_guest_mode_starts_server_and_rotates_link(guest_ctl):
@@ -851,3 +858,16 @@ async def test_already_installed_update_restarts_into_it(ctl, monkeypatch):
     up.on_progress(Progress("empty", 0, ""))
     await settle()
     assert restarts == [1]
+
+
+async def test_guest_link_waits_for_a_slow_worker_thread(guest_ctl, monkeypatch):
+    """CI runners can take longer than a fixed wait to build the link (flaky before)."""
+    import time
+
+    def slow_lan_ip(probe=""):
+        time.sleep(0.6)
+        return "192.168.30.153"
+    monkeypatch.setattr("couchside.ui.controller.lan_ip", slow_lan_ip)
+    guest_ctl.toggleGuestMode()
+    await settle_long()
+    assert guest_ctl.guestUrl.startswith("http://192.168.30.153:8765/g/")
