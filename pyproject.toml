@@ -33,7 +33,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "couchside.ui" = ["qml/*.qml"]
-"couchside" = ["web/*.html"]
+"couchside" = ["web/*.html", "build_info.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

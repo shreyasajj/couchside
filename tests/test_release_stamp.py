@@ -36,3 +36,8 @@ def test_release_workflow_signs_and_publishes_only_the_app():
     assert "--gpg-sign" in wf and "FLATPAK_GPG_PRIVATE_KEY" in wf
     assert "build-export" in wf and "Debug" in wf  # refuses a repo with debug refs
     assert "summary.sig" in wf  # refuses an unsigned repo
+
+
+def test_build_info_is_packaged():
+    text = (ROOT / "pyproject.toml").read_text()
+    assert "build_info.json" in text
