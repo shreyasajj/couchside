@@ -4,7 +4,7 @@
 
 **Goal:** New Couchside builds (each carrying the current Sendspin) are published as a signed Flatpak repo; the TV checks for updates on launch and daily, shows the bundled and latest Sendspin versions, and installs an update with one button, restarting Sendspin and the app. Settings gets a Sendspin section (player name, audio output, sync delay).
 
-**Architecture:** A release workflow builds the Flatpak on every merge to main, signs it with a GPG key from a repo secret and publishes a one-commit OSTree repo plus `.flatpakrepo`/`.flatpakref` to GitHub Pages. The TV installs from that remote once; afterwards Flatpak's portal (`org.freedesktop.portal.Flatpak`: `CreateUpdateMonitor`, `UpdateMonitor.Update`, `Spawn` with the latest-version flag) updates and relaunches it from inside the sandbox. `core/updates.py` (Qt-free) does versions (bundled Sendspin via importlib.metadata, latest from PyPI JSON, build info written by CI). `core/flatpak_portal.py` talks D-Bus with jeepney (asyncio). The Sendspin supervisor rebuilds its command from settings every 2 s and restarts the daemon when it changes; a control file asks it to exit before an update relaunch.
+**Architecture:** A release workflow builds the Flatpak on every merge to main, signs it with a GPG key from a repo secret and publishes a one-commit OSTree repo plus `.flatpakrepo`/`.flatpakref` to GitHub Pages. The TV installs from that remote once; afterwards Flatpak's portal (`org.freedesktop.portal.Flatpak`: `CreateUpdateMonitor`, `UpdateMonitor.Update`, `Spawn` with the latest-version flag) updates and relaunches it from inside the sandbox. `core/updates.py` (Qt-free) does versions (bundled Sendspin via importlib.metadata, latest from PyPI JSON, build info written by CI). `core/flatpak_portal.py` talks D-Bus with dbus-next (asyncio; already bundled for Sendspin's media controls). The Sendspin supervisor rebuilds its command from settings every 2 s and restarts the daemon when it changes; a control file asks it to exit before an update relaunch.
 
 **Spec:** [design](../specs/2026-11-10-couchside-design.md) "Packaging" (updates via the Flatpak portal; Sendspin settings screen), [AGENTS.md](../../../AGENTS.md) "Sendspin client setup" (check on launch and daily, versions in Settings, one-button upgrade + restart, settings preserved). Owner's decision (2026-11-11): publish a signed Flatpak repo on GitHub Pages.
 
@@ -37,7 +37,7 @@
 
 1. **Sendspin settings + live supervisor** — settings `sendspin_audio_device`, `sendspin_delay_ms`; `build_daemon_argv` adds `--audio-device` / `--output-delay-ms`; `supervise(argv_factory, …)` restarts when the argv changes and exits on a control request; `parse_audio_devices(text)`.
 2. **Versions** — `core/updates.py`: `bundled_sendspin_version()`, `latest_sendspin_version(http)`, `is_newer(a, b)`, `build_info()`.
-3. **Portal** — `core/flatpak_portal.py` (jeepney): `in_flatpak()`, `UpdateMonitor` (available / progress callbacks, `update()`), `spawn_latest(argv)`.
+3. **Portal** — `core/flatpak_portal.py` (dbus-next): `in_flatpak()`, `UpdateMonitor` (available / progress callbacks, `update()`), `spawn_latest(argv)`.
 4. **TV** — controller properties/slots for versions, update state, Sendspin settings; daily check; Settings "Sendspin" and "Updates" sections.
 5. **Release** — `release.yml`, generated `python-deps.json`, Dependabot `/flatpak`, install.sh; signing key + Pages; first release; TV moved to the published remote; second release to test the in-app update end to end.
 6. **Docs + PR.**
