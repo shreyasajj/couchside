@@ -71,6 +71,8 @@ class AppController(QObject):
     guestChanged = Signal()
     sendspinChanged = Signal()
     updateChanged = Signal()
+    pulseChanged = Signal()
+    partyChanged = Signal()
     qrChanged = Signal()
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
@@ -117,6 +119,14 @@ class AppController(QObject):
         self._update_state = "checking"   # checking/current/available/updating/restarting/unavailable
         self._update_percent = 0
         self._newer_installed = False  # the portal saw a newer build already on disk
+        from couchside.core.audio_capture import AudioPulse
+        self._pulse = AudioPulse()
+        self._pulse_visible = False   # Now Playing (or party mode) on screen, app in front
+        self._party = False
+        self._shown_level, self._shown_beats = 0.0, 0
+        self._pulse_timer = QTimer(self)
+        self._pulse_timer.setInterval(33)  # ~30 updates a second while listening
+        self._pulse_timer.timeout.connect(self._poll_pulse)
         self.conn.on_state(lambda _s: self._on_update())
         self.conn.on_event(self._on_event)
         self.playback.on_change(self._on_update)
@@ -148,6 +158,7 @@ class AppController(QObject):
         """Release network resources on shutdown."""
         if self._guest_server is not None:
             await self._guest_server.stop()
+        self._pulse.stop()
         if self._updater is not None and hasattr(self._updater, "close"):
             await self._updater.close()
         await self._http.close()
@@ -349,6 +360,7 @@ class AppController(QObject):
 
     def _on_update(self) -> None:
         self._check_lyrics()
+        self._update_listening()
         self._emit_speakers_if_changed()  # controlled speaker may have changed
         qid = self._queue_id()
         if qid != self._last_queue_id:
@@ -1188,6 +1200,66 @@ class AppController(QObject):
     def _start_local_sendspin(self) -> None:
         from PySide6.QtCore import QProcess
         QProcess.startDetached("couchside-sendspin", [])  # single instance via its lock
+
+    # --- visualizer and party mode ---------------------------------------------------
+    @Property(bool, notify=pulseChanged)
+    def visualizerEnabled(self) -> bool:
+        return self._settings.visualizer_enabled
+
+    @visualizerEnabled.setter
+    def visualizerEnabled(self, on: bool) -> None:
+        self._settings.visualizer_enabled = bool(on)
+        save_settings(self._settings)
+        self._update_listening()
+        self.pulseChanged.emit()
+
+    @Property(bool, notify=pulseChanged)
+    def pulseVisible(self) -> bool:
+        return self._pulse_visible
+
+    @pulseVisible.setter
+    def pulseVisible(self, shown: bool) -> None:
+        """QML: Now Playing is on screen and the app is in front."""
+        if bool(shown) != self._pulse_visible:
+            self._pulse_visible = bool(shown)
+            self._update_listening()
+
+    @Property(bool, notify=partyChanged)
+    def partyMode(self) -> bool:
+        return self._party
+
+    @Slot()
+    def togglePartyMode(self) -> None:
+        self._party = not self._party
+        self._update_listening()
+        self.partyChanged.emit()
+
+    @Property(float, notify=pulseChanged)
+    def audioLevel(self) -> float:
+        return self._shown_level
+
+    @Property(int, notify=pulseChanged)
+    def beatCount(self) -> int:
+        return self._shown_beats
+
+    def _update_listening(self) -> None:
+        """Listen only while something on screen pulses and music plays (no CPU otherwise)."""
+        np = self.playback.now_playing
+        playing = np is not None and np.state == "playing"
+        want = self._pulse_visible and playing and (self._settings.visualizer_enabled or self._party)
+        if want and not self._pulse.running:
+            if self._pulse.start():
+                self._pulse_timer.start()
+        elif not want and self._pulse.running:
+            self._pulse.stop()
+            self._pulse_timer.stop()
+            self._poll_pulse()  # settle at rest
+
+    def _poll_pulse(self) -> None:
+        level, beats = round(self._pulse.level, 2), self._pulse.beats
+        if level != self._shown_level or beats != self._shown_beats:
+            self._shown_level, self._shown_beats = level, beats
+            self.pulseChanged.emit()
 
     # --- toast -----------------------------------------------------------------
     @Property(str, notify=toastChanged)

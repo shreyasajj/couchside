@@ -851,3 +851,66 @@ async def test_already_installed_update_restarts_into_it(ctl, monkeypatch):
     up.on_progress(Progress("empty", 0, ""))
     await settle()
     assert restarts == [1]
+
+
+# --- Phase 8: visualizer and party mode ---------------------------------------------------
+
+class FakePulse:
+    def __init__(self):
+        self.running, self.starts, self.stops = False, 0, 0
+        self.level, self.beats = 0.0, 0
+
+    def start(self):
+        self.starts += 1
+        self.running = True
+        return True
+
+    def stop(self):
+        self.stops += 1
+        self.running = False
+        self.level = 0.0
+
+
+@pytest.fixture
+def pulse_ctl(ctl):
+    ctl._pulse = FakePulse()
+    return ctl
+
+
+async def test_listens_only_while_shown_and_playing(pulse_ctl):
+    from dataclasses import replace
+    ctl = pulse_ctl
+    assert ctl.visualizerEnabled is True and not ctl._pulse.running
+    ctl.pulseVisible = True                 # Now Playing on screen, music playing
+    assert ctl._pulse.running
+    ctl.playback.now_playing = replace(ctl.playback.now_playing, state="paused")
+    ctl._on_update()
+    assert not ctl._pulse.running           # paused: nothing to hear
+    ctl.playback.now_playing = replace(ctl.playback.now_playing, state="playing")
+    ctl._on_update()
+    assert ctl._pulse.running
+    ctl.pulseVisible = False                # another page or app in front
+    assert not ctl._pulse.running
+
+
+def test_visualizer_off_stops_listening_but_party_mode_still_listens(pulse_ctl, tmp_path):
+    from couchside.core.settings import load_settings
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    ctl.visualizerEnabled = False
+    assert not ctl._pulse.running and load_settings().visualizer_enabled is False
+    ctl.togglePartyMode()
+    assert ctl.partyMode and ctl._pulse.running
+    ctl.togglePartyMode()
+    assert not ctl.partyMode and not ctl._pulse.running
+
+
+def test_level_and_beats_reach_qml(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    seen = []
+    ctl.pulseChanged.connect(lambda: seen.append((ctl.audioLevel, ctl.beatCount)))
+    ctl._pulse.level, ctl._pulse.beats = 0.42, 3
+    ctl._poll_pulse()
+    ctl._poll_pulse()  # nothing new: no signal
+    assert seen == [(0.42, 3)]
