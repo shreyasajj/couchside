@@ -42,8 +42,30 @@ def test_bundled_sendspin_version():
 
 def test_build_info(tmp_path, monkeypatch):
     monkeypatch.setattr(updates, "BUILD_INFO", tmp_path / "build_info.json")
-    assert updates.build_info() == {"version": "dev", "commit": ""}
-    (tmp_path / "build_info.json").write_text(json.dumps({"version": "0.7.12", "commit": "abc1234"}))
-    assert updates.build_info() == {"version": "0.7.12", "commit": "abc1234"}
+    assert updates.build_info() == {"version": "dev", "commit": "", "feed": ""}
+    (tmp_path / "build_info.json").write_text(json.dumps({"version": "0.7.12", "commit": "abc1234",
+                                                          "feed": "https://x.example/latest.json"}))
+    assert updates.build_info() == {"version": "0.7.12", "commit": "abc1234", "feed": "https://x.example/latest.json"}
     (tmp_path / "build_info.json").write_text("not json")
     assert updates.build_info()["version"] == "dev"
+
+
+async def test_latest_app_version_from_the_release_feed():
+    seen = []
+
+    async def http(url, params):
+        seen.append(url)
+        return 200, {"version": "0.7.13"}
+    assert await updates.latest_app_version(http, "https://x.example/latest.json") == "0.7.13"
+    assert seen == ["https://x.example/latest.json"]
+
+
+async def test_latest_app_version_failures_are_none():
+    async def junk(url, params):
+        return 200, {"version": "7; rm -rf"}
+
+    async def boom(url, params):
+        raise OSError("offline")
+    assert await updates.latest_app_version(junk, "https://x/latest.json") is None
+    assert await updates.latest_app_version(boom, "https://x/latest.json") is None
+    assert await updates.latest_app_version(junk, "") is None  # dev build: no feed

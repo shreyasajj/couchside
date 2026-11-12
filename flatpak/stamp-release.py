@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stamp a release build: write src/couchside/build_info.json (shown in Settings) and set
-the AppStream release entry. Usage: stamp-release.py VERSION COMMIT DATE"""
+the AppStream release entry. Usage: stamp-release.py VERSION COMMIT DATE [FEED_URL]"""
 
 from __future__ import annotations
 
@@ -12,12 +12,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 METAINFO = ROOT / "flatpak/io.github.shreyasajj.Couchside.metainfo.xml"
 BUILD_INFO = ROOT / "src/couchside/build_info.json"
+FEED = "https://shreyasajj.github.io/couchside/latest.json"
 
 
-def stamp(version: str, commit: str, date: str, root: Path = ROOT) -> None:
+def stamp(version: str, commit: str, date: str, feed: str = FEED, root: Path = ROOT) -> None:
     if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         raise SystemExit(f"bad version or date: {version} {date}")
-    (root / BUILD_INFO.relative_to(ROOT)).write_text(json.dumps({"version": version, "commit": commit[:12]}) + "\n")
+    (root / BUILD_INFO.relative_to(ROOT)).write_text(json.dumps({"version": version, "commit": commit[:12], "feed": feed}) + "\n")
     meta = root / METAINFO.relative_to(ROOT)
     text = meta.read_text()
     text, n = re.subn(r'<release version="[^"]*" date="[^"]*"', f'<release version="{version}" date="{date}"', text, count=1)
@@ -27,4 +28,4 @@ def stamp(version: str, commit: str, date: str, root: Path = ROOT) -> None:
 
 
 if __name__ == "__main__":
-    stamp(*sys.argv[1:4])
+    stamp(*sys.argv[1:5])

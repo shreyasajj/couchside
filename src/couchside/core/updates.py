@@ -51,9 +51,27 @@ def is_newer(candidate: str | None, current: str | None) -> bool:
 
 
 def build_info() -> dict:
-    """{"version", "commit"} of this build; "dev" when not built by the release workflow."""
+    """{"version", "commit", "feed"} of this build ("dev" and no feed when not built by
+    the release workflow). `feed` is the published latest.json for this release channel."""
     try:
         data = json.loads(BUILD_INFO.read_text())
-        return {"version": str(data.get("version") or "dev"), "commit": str(data.get("commit") or "")}
+        return {"version": str(data.get("version") or "dev"), "commit": str(data.get("commit") or ""),
+                "feed": str(data.get("feed") or "")}
     except (OSError, ValueError, AttributeError):
-        return {"version": "dev", "commit": ""}
+        return {"version": "dev", "commit": "", "feed": ""}
+
+
+async def latest_app_version(http_get: HttpGet, feed: str) -> str | None:
+    """Newest published Couchside (the release workflow writes latest.json next to the
+    repo). Flatpak's own check runs only every 30 minutes; this one is immediate."""
+    if not feed:
+        return None
+    try:
+        status, data = await http_get(feed, {})
+    except Exception as e:
+        log.info("Couchside version check failed: %s", e)
+        return None
+    version = data.get("version") if status == 200 and isinstance(data, dict) else None
+    if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        return None
+    return version

@@ -1062,10 +1062,23 @@ class AppController(QObject):
         self._sendspin_checked = True
         self.sendspinChanged.emit()
 
+    async def check_app_version(self) -> None:
+        """A published release newer than this build: offer it now (Flatpak's own monitor
+        only looks every 30 minutes)."""
+        if self._updater is None or self._update_state not in ("current", "checking"):
+            return
+        info = updates.build_info()
+        latest = await updates.latest_app_version(self._http.get, info["feed"])
+        if updates.is_newer(latest, info["version"]) and self._update_state in ("current", "checking"):
+            self._update_state = "available"
+            self.updateChanged.emit()
+
     async def check_versions_forever(self) -> None:
         """On launch and then daily."""
+        await asyncio.sleep(3)  # let the update monitor start first
         while True:
             await self.check_sendspin_version()
+            await self.check_app_version()
             await asyncio.sleep(updates.CHECK_EVERY)
 
     @Property(str, constant=True)
@@ -1094,9 +1107,7 @@ class AppController(QObject):
         elif p.status == "failed":
             self._update_state = "available"
             self._set_toast(f"The update didn't install: {p.error or 'unknown error'}")
-        elif p.status == "empty":
-            self._update_state = "current"
-        elif p.status == "done":
+        elif p.status in ("done", "empty"):  # empty: already installed, not running yet
             self._update_state = "restarting"
             self._spawn(self._restart_into_update())
         self.updateChanged.emit()

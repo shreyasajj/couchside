@@ -763,3 +763,31 @@ async def test_failed_update_keeps_running_and_says_why(ctl):
     await settle()
     up.on_progress(Progress("failed", 0, "No space left"))
     assert ctl.updateState == "available" and "No space left" in ctl.toast
+
+
+async def test_published_release_offers_the_update_at_once(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    monkeypatch.setattr(c.updates, "build_info", lambda: {"version": "0.7.2", "commit": "", "feed": "https://f/latest.json"})
+
+    async def newer(_http, feed):
+        return "0.7.3"
+    monkeypatch.setattr(c.updates, "latest_app_version", newer)
+    up = FakeUpdater()
+    await ctl.start_update_monitor(up)
+    await ctl.check_app_version()
+    assert ctl.updateState == "available"
+
+
+async def test_feed_ignored_without_the_portal_or_when_current(ctl, monkeypatch):
+    import couchside.ui.controller as c
+    monkeypatch.setattr(c.updates, "build_info", lambda: {"version": "0.7.3", "commit": "", "feed": "https://f/latest.json"})
+
+    async def same(_http, feed):
+        return "0.7.3"
+    monkeypatch.setattr(c.updates, "latest_app_version", same)
+    await ctl.start_update_monitor(FakeUpdater())
+    await ctl.check_app_version()
+    assert ctl.updateState == "current"
+    await ctl.start_update_monitor(FakeUpdater(ok=False))
+    await ctl.check_app_version()
+    assert ctl.updateState == "unavailable"

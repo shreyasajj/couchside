@@ -87,6 +87,7 @@ jobs:
           <h1>Couchside</h1>
           <p>Install on the TV: <code>flatpak install --user https://shreyasajj.github.io/couchside/couchside.flatpakref</code></p>
           EOT
+          echo "{\"version\": \"0.7.${{ github.run_number }}\"}" > site/latest.json
           touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -21,7 +21,8 @@ def tree(tmp_path):
 def test_stamp_writes_build_info_and_metainfo(tmp_path):
     root = tree(tmp_path)
     stamp_release.stamp("0.7.12", "abcdef1234567890", "2026-11-12", root=root)
-    assert json.loads((root / "src/couchside/build_info.json").read_text()) == {"version": "0.7.12", "commit": "abcdef123456"}
+    assert json.loads((root / "src/couchside/build_info.json").read_text()) == {
+        "version": "0.7.12", "commit": "abcdef123456", "feed": "https://shreyasajj.github.io/couchside/latest.json"}
     assert '<release version="0.7.12" date="2026-11-12"' in (root / "flatpak" / stamp_release.METAINFO.name).read_text()
 
 
@@ -36,6 +37,7 @@ def test_release_workflow_signs_and_publishes_only_the_app():
     assert "--gpg-sign" in wf and "FLATPAK_GPG_PRIVATE_KEY" in wf
     assert "build-export" in wf and "Debug" in wf  # refuses a repo with debug refs
     assert "summary.sig" in wf  # refuses an unsigned repo
+    assert "latest.json" in wf  # the feed the app checks
 
 
 def test_build_info_is_packaged():
