@@ -178,8 +178,11 @@ with other speakers). Changes restart the speaker within a couple of seconds.
 - **On the TV:** `scripts/dev-deploy.sh --run` syncs this checkout to the TV over
   SSH (`COUCHSIDE_TV`, default `mediac@192.168.30.153`), rebuilds the Flatpak
   (only the app module rebuilds) and starts it on screen.
-- **Python deps** for the Flatpak come from `flatpak/requirements.txt`; the pinned file
-  list `flatpak/python-deps.json` is generated at build time (CI, release, install.sh):
+- **Python deps** for the Flatpak: `flatpak/requirements.in` lists what Couchside uses
+  directly; `flatpak/requirements.txt` is the full pinned tree compiled from it with
+  pip-compile inside `org.kde.Sdk//6.11` (Python 3.13), which Dependabot keeps up to date
+  as a whole. The file list `flatpak/python-deps.json` is generated from it at build time
+  (CI, release, install.sh):
   `flatpak run --share=network --filesystem="$PWD" --command=python3 org.kde.Sdk//6.11 flatpak/gen-python-deps.py`
 
 Layout: `src/couchside/core` (Qt-free logic: settings, discovery, MA connection,
