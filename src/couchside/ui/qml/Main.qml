@@ -84,9 +84,13 @@ Kirigami.ApplicationWindow {
     Component.onCompleted: { setupWasNeeded = app.needsSetup; if (app.needsSetup) showSetup() }
 
     // Back on any remote; media keys work wherever focus is.
-    // Esc here; the remote's Back key is taken app-wide in ui/keys.py (Kirigami's page
-    // stack binds it too, and a shared shortcut gets rotated between the two).
-    Shortcut { sequence: "Esc"; onActivated: root.goBack() }
+    // Kirigami's page stack also binds the Back key (StandardKey.Back), so Qt calls the
+    // remote's Back ambiguous and runs neither: handle that case too, with our own rules.
+    Shortcut {
+        sequences: ["Back", "Esc"]
+        onActivated: root.goBack()
+        onActivatedAmbiguously: root.goBack()
+    }
     Shortcut { sequences: ["Media Play", "Media Pause", "Toggle Media Play/Pause"]; onActivated: app.playPause() }
     Shortcut { sequence: "Media Next"; onActivated: app.next() }
     Shortcut { sequence: "Media Previous"; onActivated: app.previous() }
