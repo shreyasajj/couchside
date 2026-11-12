@@ -1,16 +1,18 @@
 import QtQuick
 import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
-// Big round TV button: OK/Enter/Select activates, clear focus ring.
+// Round icon button for the remote: OK/Enter/Select activates. Quiet until focused (just
+// the icon); the focused button turns white, grows a little, gets a ring and shows its name.
 QQC2.AbstractButton {
     id: control
     property string iconName: ""
-    property bool primary: false
-    property bool active: false  // on/off controls (shuffle, repeat): accent dot when on
+    property bool primary: false   // play/pause: always a white disc
+    property bool active: false    // on/off controls (shuffle, repeat): accent colour when on
     property real u: 1
-    property real size: (primary ? 132 : 104) * u
-    property real iconScale: 0.45  // some icons (edit-find) draw small inside their box
+    property real size: (primary ? 92 : 68) * u
+    property real iconScale: 0.5
+    property bool showLabel: true  // the name above the button while it has focus
+    readonly property bool lit: activeFocus || primary
 
     implicitWidth: size
     implicitHeight: size
@@ -24,40 +26,60 @@ QQC2.AbstractButton {
     }
 
     background: Item {
+        scale: control.down ? 0.94 : (control.activeFocus ? 1.12 : 1.0)
+        Behavior on scale { NumberAnimation { duration: Theme.focusMs; easing.type: Easing.OutCubic } }
         Rectangle {
             anchors.fill: parent
             radius: width / 2
-            color: control.primary ? "#ffffff" : (control.activeFocus ? "#33ffffff" : "#22ffffff")
-            scale: control.down ? 0.94 : 1.0
-            Behavior on scale { NumberAnimation { duration: 80 } }
+            color: control.lit ? Theme.focus : "transparent"
         }
-        Rectangle {  // "on" indicator
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 12 * control.u
-            width: 12 * control.u
-            height: width
-            radius: width / 2
-            color: "#4fc3f7"
-            visible: control.active
-        }
-        Rectangle {  // focus ring
+        Rectangle {  // focus ring, a little outside the disc
             anchors.fill: parent
-            anchors.margins: -10 * control.u
+            anchors.margins: -9 * control.u
             radius: width / 2
             color: "transparent"
-            border.width: 5 * control.u
-            border.color: "#4fc3f7"
+            border.width: 4 * control.u
+            border.color: Theme.focus
             visible: control.activeFocus
+        }
+        Rectangle {  // "on" dot
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.bottom
+            anchors.topMargin: (control.activeFocus ? 16 : 2) * control.u
+            width: 8 * control.u
+            height: width
+            radius: width / 2
+            color: Theme.accent
+            visible: control.active
         }
     }
 
-    contentItem: Kirigami.Icon {
-        source: control.iconName
-        color: control.primary ? "#000000" : "#ffffff"
-        isMask: true
-        anchors.centerIn: parent
-        width: control.size * control.iconScale
-        height: width
+    contentItem: Item {
+        Icon {
+            anchors.centerIn: parent
+            name: control.iconName
+            size: control.size * control.iconScale
+            color: control.lit ? Theme.focusText : (control.active ? Theme.accent : Theme.text)
+        }
+    }
+
+    Rectangle {  // the button's name, while focused
+        visible: control.activeFocus && control.showLabel && control.text !== ""
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.top
+        anchors.bottomMargin: 16 * control.u
+        width: nameText.implicitWidth + 36 * control.u
+        height: nameText.implicitHeight + 8 * control.u
+        radius: height / 2
+        color: "#cc000000"
+        Text {
+            id: nameText
+            anchors.centerIn: parent
+            textFormat: Text.PlainText
+            text: control.text
+            color: Theme.text
+            font.pixelSize: Theme.label * control.u
+            font.weight: Font.DemiBold
+        }
     }
 }

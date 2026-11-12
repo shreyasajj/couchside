@@ -26,7 +26,7 @@ class FakeDetector:
         return 0.5, self.n % 2 == 0
 
 
-def make(fail=False, clock=None):
+def make(fail=False, clock=None, runner=None):
     streams = []
 
     def open_stream(cb):
@@ -35,7 +35,7 @@ def make(fail=False, clock=None):
         streams.append(FakeStream(cb))
         return streams[-1]
     pulse = AudioPulse(open_stream=open_stream, detector_factory=FakeDetector,
-                       clock=clock or (lambda: 0.0))
+                       clock=clock or (lambda: 0.0), runner=runner or (lambda job: job()))
     return pulse, streams
 
 
@@ -102,5 +102,48 @@ def test_a_stream_that_fails_to_start_is_closed():
 
         def close(self):
             closed.append(1)
-    pulse = AudioPulse(open_stream=lambda cb: Broken(cb), detector_factory=FakeDetector)
+    pulse = AudioPulse(open_stream=lambda cb: Broken(cb), detector_factory=FakeDetector,
+                       runner=lambda job: job())
     assert pulse.start() is False and closed == [1]
+
+
+# --- opening the audio device takes up to a second: never on the caller's (UI) thread -----
+
+def test_start_and_stop_return_at_once_and_the_device_opens_on_the_runner():
+    jobs = []
+    pulse, streams = make(runner=jobs.append)
+    assert pulse.start() is True and pulse.running   # wanted; nothing opened yet
+    assert streams == [] and pulse.healthy()         # still opening is not "stalled"
+    jobs.pop(0)()
+    assert streams[0].started
+    pulse.stop()
+    assert not pulse.running and not streams[0].closed   # closing waits for the runner too
+    jobs.pop(0)()
+    assert streams[0].closed
+
+
+def test_stop_before_the_device_opened_leaves_nothing_open():
+    jobs = []
+    pulse, streams = make(runner=jobs.append)
+    pulse.start()
+    pulse.stop()
+    for job in jobs:
+        job()
+    assert not pulse.running and all(s.closed for s in streams)
+
+
+def test_default_runner_is_a_background_thread():
+    import threading
+    import time
+    seen = []
+
+    def open_stream(cb):
+        seen.append(threading.current_thread())
+        return FakeStream(cb)
+    pulse = AudioPulse(open_stream=open_stream, detector_factory=FakeDetector)
+    pulse.start()
+    end = time.monotonic() + 2
+    while not seen and time.monotonic() < end:
+        time.sleep(0.01)
+    assert seen and seen[0] is not threading.current_thread()
+    pulse.stop()

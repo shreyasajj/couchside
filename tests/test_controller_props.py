@@ -949,3 +949,29 @@ def test_a_stream_that_died_is_reopened(pulse_ctl):
     ctl._pulse.healthy = lambda: True
     ctl._poll_pulse()                    # still wanted: listen again
     assert ctl._pulse.starts == 2 and ctl._pulse.running
+
+
+def test_every_beat_turns_the_party_colour(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    seen = []
+    ctl.beatChanged.connect(lambda: seen.append(ctl.beatHue))
+    start = ctl.beatHue
+    ctl._poll_pulse()
+    assert seen == []                       # no beat: the colour stays
+    ctl._pulse.beats = 1
+    ctl._poll_pulse()
+    ctl._pulse.beats = 2
+    ctl._poll_pulse()
+    assert len(seen) == 2 and seen[0] != start and seen[1] != seen[0]
+    assert all(0.0 <= h < 1.0 for h in seen)
+
+
+def test_up_next_comes_from_the_queue(ctl):
+    from dataclasses import replace
+    assert ctl.nextTitle == "" and ctl.nextArtist == "" and ctl.nextArtUrl == ""
+    ctl.playback.now_playing = replace(
+        ctl.playback.now_playing, next_title="Luna", next_artist="Bolier",
+        next_image_url="http://ma:8095/imageproxy/abc?size=512")
+    assert ctl.nextTitle == "Luna" and ctl.nextArtist == "Bolier"
+    assert ctl.nextArtUrl == "http://ma:8095/imageproxy/abc?size=256"

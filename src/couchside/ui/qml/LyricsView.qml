@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Effects
 
-// Synced lyrics, lyrics-forward layout B: the current line very large and bold, the next
-// one medium, the rest small and faded; scrolls so the current line sits in the upper third.
+// Synced lyrics, lyrics-forward layout B: the current line large and bright, the others
+// drawn smaller and faded; scrolls so the current line sits in the upper third.
 // Not focusable: the remote stays on the control bar.
 ListView {
     id: view
@@ -31,7 +31,9 @@ ListView {
     focus: false
     activeFocusOnTab: false
     clip: true
-    spacing: 18 * u
+    // lines not being sung are drawn smaller inside their full-size box: tuck the boxes
+    // together a little so the gaps stay even
+    spacing: -0.18 * refWidth * scale[0]
     currentIndex: Math.max(0, activeIndex)
     highlightRangeMode: ListView.StrictlyEnforceRange
     preferredHighlightBegin: height * 0.28
@@ -72,15 +74,16 @@ ListView {
         color: "#ffffff"
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
-        font.weight: current ? Font.Bold : Font.DemiBold
-        // Long lines (rap, Punjabi) shrink so the current line never needs more than two
-        // rows; the 0.85 leaves room for word-wrap waste. Short lines keep the full size.
+        // Every line is laid out once, at the size it has when sung, and never changes
+        // size or wrapping: text that resizes while you read it is hard to follow. The
+        // lines not being sung are only drawn smaller (scale) and dimmer.
+        font.weight: Font.Bold
+        // Long lines (rap, Punjabi) shrink so no line needs more than two rows; the 0.85
+        // leaves room for word-wrap waste. Short lines keep the full size.
         readonly property real fullSize: view.refWidth * view.scale[0]
         readonly property real fit: Math.min(1, (2 * width * 0.85) / Math.max(1, metrics.advanceWidth))
-        font.pixelSize: current ? fullSize * fit
-                        : distance === 1 ? view.refWidth * view.scale[1]
-                        : view.refWidth * view.scale[2]
-        maximumLineCount: current ? 2 : 3
+        font.pixelSize: fullSize * fit
+        maximumLineCount: 2
         elide: Text.ElideRight
         TextMetrics {
             id: metrics
@@ -89,9 +92,12 @@ ListView {
             font.pixelSize: line.fullSize
             text: line.text
         }
-        opacity: current ? 1.0 : distance === 1 ? 0.85 : distance > 1 ? 0.45 : 0.35
-        Behavior on font.pixelSize { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-        Behavior on opacity { NumberAnimation { duration: 300 } }
+        transformOrigin: Item.Center
+        scale: current ? 1.0 : distance === 1 ? 0.72 : 0.62
+        opacity: current ? 1.0 : distance === 1 ? 0.8 : distance > 1 ? 0.45 : 0.35
+        Behavior on scale { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 250 } }
+
         // English underneath (optional translation): the current line's at the "next line"
         // size, the others smaller; sits in the bottom padding so the line keeps its size.
         readonly property string sub: modelData.sub || ""
@@ -109,7 +115,7 @@ ListView {
             maximumLineCount: 2
             elide: Text.ElideRight
             font.italic: true
-            font.pixelSize: line.current ? view.refWidth * view.scale[1] * 0.8 : view.refWidth * view.scale[2] * 0.75
+            font.pixelSize: view.refWidth * view.scale[1] * 0.85  // fixed, like the line itself
         }
         layer.enabled: current
         layer.effect: MultiEffect {

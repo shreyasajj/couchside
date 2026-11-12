@@ -105,3 +105,30 @@ def test_text_from_outside_is_never_rich_text(view):
     assert QQmlExpression(ctx, line, "textFormat === Text.PlainText").evaluate()[0] is True
     sub = [c for c in line.childItems() if c.property("text") == "<h1>big</h1>"][0]
     assert QQmlExpression(ctx, sub, "textFormat === Text.PlainText").evaluate()[0] is True
+
+
+def line_at(root, i):
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+    from PySide6.QtQuick import QQuickItem
+    return QMetaObject.invokeMethod(root, "itemAtIndex", Q_RETURN_ARG(QQuickItem), Q_ARG(int, i))
+
+
+def test_a_line_keeps_its_size_and_wrapping_when_it_becomes_current(view):
+    """Text that changes size while you read it is hard to follow: every line is laid out
+    once, at the size it has when sung; only its scale and brightness change."""
+    root = view.rootObject()
+    root.setProperty("refWidth", 1920)
+    root.setProperty("lines", [{"t": 0.0, "text": "first line"},
+                               {"t": 10.0, "text": "So as long as you're with me you're not alone"},
+                               {"t": 20.0, "text": "third"}])
+    root.setProperty("position", 1.0)
+    pump(0.6)
+    nxt = line_at(root, 1)
+    before = (nxt.property("font").pixelSize(), nxt.property("lineCount"), nxt.height())
+    assert nxt.property("current") is False and nxt.scale() < 1.0
+    root.setProperty("position", 11.0)
+    pump(0.05)   # mid-transition: nothing re-laid out
+    assert (nxt.property("font").pixelSize(), nxt.property("lineCount"), nxt.height()) == before
+    pump(0.6)
+    assert nxt.property("current") is True and abs(nxt.scale() - 1.0) < 0.01
+    assert (nxt.property("font").pixelSize(), nxt.property("lineCount"), nxt.height()) == before

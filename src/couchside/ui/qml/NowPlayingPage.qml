@@ -108,7 +108,7 @@ Kirigami.Page {
     QQC2.Label {
         textFormat: Text.PlainText
         anchors { left: parent.left; top: parent.top; margins: page.margin }
-        width: parent.width * 0.6
+        width: parent.width * 0.5
         visible: text !== ""
         text: app.statusText
         color: "#ffd479"
@@ -125,7 +125,7 @@ Kirigami.Page {
         anchors {
             left: parent.left; right: parent.right; top: parent.top; bottom: bar.top
             leftMargin: page.margin; rightMargin: page.margin + page.qrSpace
-            topMargin: 140 * page.u; bottomMargin: 48 * page.u
+            topMargin: 190 * page.u; bottomMargin: 48 * page.u
         }
 
         RowLayout {
@@ -250,7 +250,7 @@ Kirigami.Page {
 
         RowLayout {  // small sharp artwork, title, artist · album
             id: lyricsHeader
-            anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: page.qrSpace }
+            anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: page.cornerSpace }
             spacing: 32 * page.u
             Item {
                 Layout.preferredWidth: page.width * 0.1
@@ -322,6 +322,22 @@ Kirigami.Page {
         Behavior on opacity { NumberAnimation { duration: 400 } }
     }
 
+    // --- up next (top-right; left of the guest QR when that is showing) -------------
+    UpNext {
+        id: upNext
+        u: page.u
+        anchors { top: parent.top; topMargin: page.margin - 14 * page.u
+                  right: app.guestMode ? guestBox.left : parent.right
+                  rightMargin: app.guestMode ? 40 * page.u : page.margin }
+        title: app.nextTitle
+        artist: app.nextArtist
+        imageUrl: app.nextArtUrl
+        opacity: app.partyMode ? 0 : 1
+        Behavior on opacity { NumberAnimation { duration: 300 } }
+    }
+    // room the top-right corner needs: titles stop before it
+    readonly property real cornerSpace: (upNext.visible ? upNext.width + 48 * u : 0) + qrSpace
+
     // --- guest mode QR (top-right) --------------------------------------------------
     Column {
         id: guestBox
@@ -366,13 +382,16 @@ Kirigami.Page {
     }
 
     // --- bottom bar ---------------------------------------------------------------
+    // Volume on the left, the transport in the middle, the other screens on the right.
+    // Left/Right walks through all of them in that order.
     ColumnLayout {
         id: bar
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: page.margin }
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom
+                  leftMargin: page.margin; rightMargin: page.margin; bottomMargin: 56 * page.u }
         opacity: app.partyMode ? 0 : 1
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 300 } }
-        spacing: 28 * page.u
+        spacing: 52 * page.u  // room for the focused button's name
 
         TrackProgress {
             Layout.fillWidth: true
@@ -386,23 +405,42 @@ Kirigami.Page {
             Layout.fillWidth: true
             Layout.preferredHeight: playButton.height
 
-            RowLayout {
+            FocusButton {
+                id: volumeButton
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                u: page.u
+                size: 60 * page.u
+                visible: app.hasVolume
+                iconName: app.volume === 0 ? "volume-muted"
+                          : app.volume < 34 ? "volume-none"
+                          : app.volume < 67 ? "volume-low" : "volume-high"
+                text: "Volume " + app.volume
+                KeyNavigation.right: shuffleButton
+                onClicked: { page.placeVolumePopup(); volumePopup.open(true) }
+            }
+
+            Row {
                 anchors.centerIn: parent
-                spacing: 40 * page.u
+                spacing: 36 * page.u
 
                 FocusButton {
                     id: shuffleButton
+                    anchors.verticalCenter: parent.verticalCenter
                     u: page.u
-                    iconName: "media-playlist-shuffle"
+                    size: 60 * page.u
+                    iconName: "shuffle"
                     text: app.shuffle ? "Shuffle on" : "Shuffle off"
                     active: app.shuffle
+                    KeyNavigation.left: volumeButton.visible ? volumeButton : null
                     KeyNavigation.right: prevButton
                     onClicked: app.toggleShuffle()
                 }
                 FocusButton {
                     id: prevButton
+                    anchors.verticalCenter: parent.verticalCenter
                     u: page.u
-                    iconName: "media-skip-backward"
+                    iconScale: 0.62
+                    iconName: "previous"
                     text: "Previous"
                     KeyNavigation.left: shuffleButton
                     KeyNavigation.right: playButton
@@ -410,9 +448,12 @@ Kirigami.Page {
                 }
                 FocusButton {
                     id: playButton
+                    anchors.verticalCenter: parent.verticalCenter
                     u: page.u
                     primary: true
-                    iconName: app.isPlaying ? "media-playback-pause" : "media-playback-start"
+                    showLabel: false  // the biggest button, and everyone knows it
+                    iconScale: 0.56
+                    iconName: app.isPlaying ? "pause" : "play"
                     text: app.isPlaying ? "Pause" : "Play"
                     KeyNavigation.left: prevButton
                     KeyNavigation.right: nextButton
@@ -420,8 +461,10 @@ Kirigami.Page {
                 }
                 FocusButton {
                     id: nextButton
+                    anchors.verticalCenter: parent.verticalCenter
                     u: page.u
-                    iconName: "media-skip-forward"
+                    iconScale: 0.62
+                    iconName: "next"
                     text: "Next"
                     KeyNavigation.left: playButton
                     KeyNavigation.right: repeatButton
@@ -429,25 +472,15 @@ Kirigami.Page {
                 }
                 FocusButton {
                     id: repeatButton
+                    anchors.verticalCenter: parent.verticalCenter
                     u: page.u
-                    iconName: app.repeatMode === "one" ? "media-playlist-repeat-song" : "media-playlist-repeat"
+                    size: 60 * page.u
+                    iconName: app.repeatMode === "one" ? "repeat-one" : "repeat"
                     text: app.repeatMode === "one" ? "Repeat one" : (app.repeatMode === "all" ? "Repeat all" : "Repeat off")
                     active: app.repeatMode !== "off"
                     KeyNavigation.left: nextButton
-                    KeyNavigation.right: volumeButton.visible ? volumeButton : partyButton
-                    onClicked: app.cycleRepeat()
-                }
-                FocusButton {
-                    id: volumeButton
-                    u: page.u
-                    visible: app.hasVolume
-                    iconName: app.volume === 0 ? "audio-volume-muted"
-                              : app.volume < 34 ? "audio-volume-low"
-                              : app.volume < 67 ? "audio-volume-medium" : "audio-volume-high"
-                    text: "Volume " + app.volume
-                    KeyNavigation.left: repeatButton
                     KeyNavigation.right: partyButton
-                    onClicked: { page.placeVolumePopup(); volumePopup.open(true) }
+                    onClicked: app.cycleRepeat()
                 }
             }
 
@@ -456,17 +489,15 @@ Kirigami.Page {
                 spacing: 20 * page.u
                 NavButton {
                     id: partyButton
-                    iconName: "view-fullscreen"
-                    iconScale: 0.8
+                    iconName: "party"
                     text: "Party mode"
-                    KeyNavigation.left: volumeButton.visible ? volumeButton : repeatButton
+                    KeyNavigation.left: repeatButton
                     KeyNavigation.right: searchButton
                     onClicked: app.togglePartyMode()
                 }
                 NavButton {
                     id: searchButton
-                    iconName: "edit-find"
-                    iconScale: 0.8
+                    iconName: "search"
                     text: "Search"
                     KeyNavigation.left: partyButton
                     KeyNavigation.right: queueButton
@@ -474,7 +505,7 @@ Kirigami.Page {
                 }
                 NavButton {
                     id: queueButton
-                    iconName: "view-media-playlist"
+                    iconName: "queue"
                     text: "Queue"
                     KeyNavigation.left: searchButton
                     KeyNavigation.right: speakersButton
@@ -490,7 +521,7 @@ Kirigami.Page {
                 }
                 NavButton {
                     id: settingsButton
-                    iconName: "configure"
+                    iconName: "settings"
                     text: "Settings"
                     KeyNavigation.left: speakersButton
                     onClicked: { page.returnFocus = settingsButton; page.openSetup() }
@@ -499,7 +530,7 @@ Kirigami.Page {
         }
     }
 
-    component NavButton: FocusButton { u: page.u; size: 76 * page.u }
+    component NavButton: FocusButton { u: page.u; size: 60 * page.u }
 
     // If the volume button disappears while focused, keep focus on the bar.
     Connections {
@@ -507,7 +538,7 @@ Kirigami.Page {
         function onVisibleChanged() {
             if (!volumeButton.visible) {
                 volumePopup.close()
-                if (volumeButton.activeFocus) repeatButton.forceActiveFocus()
+                if (volumeButton.activeFocus) playButton.forceActiveFocus()
             }
         }
     }

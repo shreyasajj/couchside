@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls as QQC2
 
 // Party mode: no controls, just the music. Big lyrics (or the artwork when there are none)
-// bounce on the beat over a glow; the song sits small in the corner. Back leaves (Main's
+// bounce on the beat over a glow, with colour pulsing along the screen's edges; the song sits small in the corner. Back leaves (Main's
 // shortcut); media keys keep working; every other key is swallowed so nothing hidden reacts.
 FocusScope {
     id: party
@@ -15,12 +15,19 @@ FocusScope {
     // the music's pulse (level + a swell on each beat), 0..1; no animations (see BeatGlow)
     readonly property real kick: visible ? app.audioPulse : 0
 
+    // colour to the very edges of the screen: lights that copy the screen dance along
+    EdgeLights {
+        anchors.fill: parent
+        pulse: party.kick
+        hue: party.visible ? app.beatHue : 0.55
+    }
+
     BeatGlow {
         anchors.centerIn: parent
         width: parent.width * 0.75
         height: parent.height * 0.9
         pulse: party.kick
-        baseColour: app.backgroundColour
+        baseColour: Qt.hsla(party.visible ? app.beatHue : 0.55, 0.8, 0.5, 1)  // with the edges
         strength: 1.5
     }
 

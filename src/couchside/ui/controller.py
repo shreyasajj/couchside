@@ -74,6 +74,7 @@ class AppController(QObject):
     pulseChanged = Signal()       # visualizer on/off, page shown
     levelChanged = Signal()       # audioPulse (up to 20 a second while listening)
     partyChanged = Signal()
+    beatChanged = Signal()        # beatHue (party mode's colour turns on every beat)
     qrChanged = Signal()
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
@@ -125,6 +126,7 @@ class AppController(QObject):
         self._pulse_visible = False   # Now Playing (or party mode) on screen, app in front
         self._party = False
         self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
+        self._beat_hue = 0.55
         self._pulse_timer = QTimer(self)
         self._pulse_timer.setInterval(50)  # 20 updates a second while listening
         self._pulse_timer.timeout.connect(self._poll_pulse)
@@ -484,6 +486,19 @@ class AppController(QObject):
     @Property(str, notify=changed)
     def artUrl(self) -> str:
         return art_url(self._np("image_url", None), 600)
+
+    # "Up next" on Now Playing
+    @Property(str, notify=changed)
+    def nextTitle(self) -> str:
+        return self._np("next_title")
+
+    @Property(str, notify=changed)
+    def nextArtist(self) -> str:
+        return self._np("next_artist")
+
+    @Property(str, notify=changed)
+    def nextArtUrl(self) -> str:
+        return art_url(self._np("next_image_url", None), 256)
 
     @Property(str, notify=changed)
     def artUrlLarge(self) -> str:
@@ -1243,6 +1258,12 @@ class AppController(QObject):
         screen all the time)."""
         return self._shown_level
 
+    @Property(float, notify=beatChanged)
+    def beatHue(self) -> float:
+        """0..1: a colour that takes a step round the colour wheel on every beat. Party
+        mode paints the screen edges with it, so lights that follow the screen dance too."""
+        return self._beat_hue
+
     def _update_listening(self) -> None:
         """Listen only while something on screen pulses and music plays (no CPU otherwise)."""
         np = self.playback.now_playing
@@ -1275,6 +1296,8 @@ class AppController(QObject):
         if self._pulse.beats != self._seen_beats:
             self._seen_beats = self._pulse.beats
             self._kick = 1.0
+            self._beat_hue = round((self._beat_hue + 0.17) % 1.0, 2)  # a clearly different colour
+            self.beatChanged.emit()
         else:
             self._kick = self._kick * 0.55 if self._kick > 0.05 else 0.0
         pulse = max(0.6 * self._pulse.level, self._kick)
