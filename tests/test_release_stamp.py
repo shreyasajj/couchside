@@ -43,3 +43,26 @@ def test_release_workflow_signs_and_publishes_only_the_app():
 def test_build_info_is_packaged():
     text = (ROOT / "pyproject.toml").read_text()
     assert "build_info.json" in text
+
+
+def test_release_checks_refs_by_name_and_ships_no_debug_files():
+    wf = (ROOT / ".github/workflows/release.yml").read_text()
+    assert 'grep -qx "app/$APP_ID/x86_64/master"' in wf    # appstream refs are expected too
+    assert "--exclude=/lib/debug/*" in wf                   # flatpak-builder's own export rule
+    assert "/files/lib/debug" in wf                         # and a check that none slipped in
+
+
+def test_release_also_runs_daily_for_merges_github_doesnt_trigger():
+    wf = (ROOT / ".github/workflows/release.yml").read_text()
+    assert "schedule:" in wf and "cron:" in wf
+    assert "needs.gate.outputs.build" in wf  # skips when main is already published
+
+
+def test_every_bundled_package_is_pinned():
+    """python-deps.json is generated at build time, so the requirements must pin the whole
+    tree: nothing reaches TVs without passing a PR (Dependabot bumps each pin)."""
+    import re
+    lines = [l.split("#")[0].strip() for l in (ROOT / "flatpak/requirements.txt").read_text().splitlines()]
+    lines = [l for l in lines if l]
+    assert len(lines) > 30  # the whole tree, not just the top level
+    assert all(re.fullmatch(r"[A-Za-z0-9._-]+==[0-9][A-Za-z0-9.+-]*", l) for l in lines), lines

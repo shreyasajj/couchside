@@ -1,11 +1,14 @@
 name: Release
 
 # Every change to the app on main becomes a signed Flatpak build on GitHub Pages; TVs
-# installed from it see the update in Settings (Flatpak update portal).
+# installed from it see the update in Settings (Flatpak update portal). The daily run
+# catches merges GitHub doesn't start workflows for (Dependabot's auto-merges).
 on:
   push:
     branches: [main]
     paths: ["src/**", "flatpak/**", "pyproject.toml", ".github/workflows/release.yml"]
+  schedule:
+    - cron: "17 6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +23,25 @@ env:
   REPO_URL: https://shreyasajj.github.io/couchside/repo/
 
 jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then echo "build=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          published=$(curl -fsSL "https://shreyasajj.github.io/couchside/latest.json" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit",""))' 2>/dev/null || true)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$published" = "${{ github.sha }}" ]; then
+            echo "main is already published"; echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -50,12 +71,17 @@ jobs:
             --force-clean build-dir flatpak/$APP_ID.yml
       - name: Export the app (no Debug or Locale extensions) and sign the repo
         run: |
-          flatpak build-export --gpg-sign="$KEY_ID" repo build-dir master
+          # flatpak-builder's own export rules: debug info and locales stay out of the app
+          flatpak build-export --gpg-sign="$KEY_ID" --exclude=/lib/debug/* --include=/lib/debug/app \
+            --exclude=/share/runtime/locale/*/* repo build-dir master
           flatpak build-update-repo --gpg-sign="$KEY_ID" --title=Couchside --default-branch=master --prune repo
           refs=$(ostree --repo=repo refs)
           echo "$refs"
-          test "$refs" = "app/$APP_ID/x86_64/master"
-          if echo "$refs" | grep -q Debug; then exit 1; fi
+          echo "$refs" | grep -qx "app/$APP_ID/x86_64/master"
+          if echo "$refs" | grep -E '\.(Debug|Locale|Sources)/'; then echo "extension refs in the repo"; exit 1; fi
+          if ostree --repo=repo ls -R "app/$APP_ID/x86_64/master" /files/lib/debug 2>/dev/null | grep -q '\.debug$'; then
+            echo "debug info in the app"; exit 1
+          fi
           test -s repo/summary.sig
       - name: Site (repo, .flatpakrepo, .flatpakref)
         run: |
@@ -81,13 +107,12 @@ jobs:
           IsRuntime=false
           GPGKey=$GPGKEY
           EOT
-          sed -i 's/^          //' site/couchside.flatpakrepo site/couchside.flatpakref
           cat > site/index.html <<'EOT'
           <!doctype html><meta charset="utf-8"><title>Couchside</title>
           <h1>Couchside</h1>
           <p>Install on the TV: <code>flatpak install --user https://shreyasajj.github.io/couchside/couchside.flatpakref</code></p>
           EOT
-          echo "{\"version\": \"0.7.${{ github.run_number }}\"}" > site/latest.json
+          echo "{\"version\": \"0.7.${{ github.run_number }}\", \"commit\": \"${{ github.sha }}\"}" > site/latest.json
           touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
