@@ -82,7 +82,7 @@ Kirigami.Page {
             var t = Typing.typed(event)  // a keyboard remote: type straight in, no on-screen keyboard
             if (t) {
                 input.forceActiveFocus()
-                Qt.inputMethod.hide()
+                Typing.hideKeyboard()
                 input.insert(input.text.length, t)
                 event.accepted = true
             }
@@ -93,6 +93,8 @@ Kirigami.Page {
             id: input
             anchors.fill: parent
             focus: false
+            // typing on a real keyboard: keep Bigscreen's on-screen keyboard out of the way
+            Keys.onPressed: (event) => { if (Typing.typed(event)) Typing.hideKeyboard() }
             activeFocusOnTab: false
             font.pixelSize: 32 * page.u
             color: "#ffffff"

@@ -35,7 +35,7 @@ Kirigami.Page {
     function typeInto(text) {
         if (!field.activeFocus) field.text = ""
         field.forceActiveFocus()
-        Qt.inputMethod.hide()
+        Typing.hideKeyboard()
         field.insert(field.cursorPosition, text)
         debounce.restart()
     }
@@ -112,6 +112,8 @@ Kirigami.Page {
                     border.color: "#4fc3f7"
                 }
                 onTextEdited: debounce.restart()
+                // typing on a real keyboard: keep Bigscreen's on-screen keyboard out of the way
+                Keys.onPressed: (event) => { if (Typing.typed(event)) Typing.hideKeyboard() }
                 onAccepted: { debounce.stop(); app.search(text); page.toResults() }
             }
         }
