@@ -104,3 +104,90 @@ def test_log_trimmed_between_restarts(tmp_path):
     supervise([sys.executable, "-c", FAIL_N_TIMES, str(tmp_path / "c"), "2"],
               log, restart_delay=0, max_log_bytes=150, sleep=lambda d: None)
     assert log.stat().st_size < 300  # three runs of 100+ bytes each, trimmed on the way
+
+
+# --- Phase 7: Sendspin settings and a live supervisor ----------------------------------
+
+from couchside.sendspin.runner import parse_audio_devices, request_exit  # noqa: E402
+
+SLEEPER = ("import pathlib,sys,time;p=pathlib.Path(sys.argv[1]);"
+           "p.write_text(p.read_text()+sys.argv[2]+',' if p.exists() else sys.argv[2]+',');time.sleep(30)")
+
+
+def test_argv_audio_device_and_delay():
+    argv = build_daemon_argv(AppSettings(sendspin_audio_device="HD-Audio Generic: HISENSE (hw:0,3)",
+                                         sendspin_delay_ms=150), Path("/x"))
+    assert argv[argv.index("--audio-device") + 1] == "HD-Audio Generic: HISENSE (hw:0,3)"
+    assert argv[argv.index("--output-delay-ms") + 1] == "150"
+
+
+def test_argv_defaults_leave_sendspin_to_choose():
+    argv = build_daemon_argv(AppSettings(), Path("/x"))
+    assert "--audio-device" not in argv and "--output-delay-ms" not in argv
+
+
+def test_supervise_restarts_when_the_command_changes_and_exits_on_request(tmp_path):
+    import threading
+    import time
+
+    seen = tmp_path / "seen"
+    control = tmp_path / "control"
+    which = {"v": "a"}
+
+    def argv():
+        return [sys.executable, "-c", SLEEPER, str(seen), which["v"]]
+
+    def drive():
+        deadline = time.monotonic() + 10
+        while not (seen.exists() and "a," in seen.read_text()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        which["v"] = "b"  # e.g. the player name changed in Settings
+        while not (seen.exists() and "b," in seen.read_text()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        request_exit(control)
+    t = threading.Thread(target=drive)
+    t.start()
+    started = time.monotonic()
+    rc = supervise(argv, tmp_path / "out.log", restart_delay=0, poll=0.1, control_file=control)
+    t.join()
+    assert rc == 0
+    assert seen.read_text() == "a,b,"           # one daemon each, no failure restarts
+    assert time.monotonic() - started < 10      # didn't wait for the 30 s sleeps
+    assert not control.exists()                 # the request is consumed
+
+
+def test_supervise_keeps_running_when_settings_cant_be_read(tmp_path):
+    import threading
+
+    seen = tmp_path / "seen"
+    control = tmp_path / "control"
+    calls = {"n": 0}
+
+    def argv():
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise ValueError("corrupt settings")
+        return [sys.executable, "-c", SLEEPER, str(seen), "a"]
+    threading.Timer(0.8, request_exit, [control]).start()
+    assert supervise(argv, tmp_path / "out.log", restart_delay=0, poll=0.1, control_file=control) == 0
+    assert seen.read_text() == "a,"
+
+
+def test_parse_audio_devices():
+    text = """Available audio output devices:
+
+  [0] HD-Audio Generic: HISENSE (hw:0,3)
+       Channels: 8, Sample rate: 44100.0 Hz
+  [4] HD-Audio Generic: ALC897 Analog (hw:2,0)
+       Channels: 2, Sample rate: 44100.0 Hz
+  [8] pulse
+       Channels: 32, Sample rate: 44100.0 Hz
+  [9] default (default)
+       Channels: 32, Sample rate: 44100.0 Hz
+
+To select an audio device:
+  sendspin --audio-device 0
+"""
+    assert parse_audio_devices(text) == ["HD-Audio Generic: HISENSE (hw:0,3)",
+                                         "HD-Audio Generic: ALC897 Analog (hw:2,0)", "pulse"]
+    assert parse_audio_devices("") == []

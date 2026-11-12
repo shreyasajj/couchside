@@ -33,6 +33,8 @@ class AppSettings:
     autostart_requested: bool = False
     # Not Sendspin's default (8927/8928) so it can't clash with another Sendspin on the host.
     sendspin_port: int = 8937
+    sendspin_audio_device: str | None = None   # None = Sendspin's default output
+    sendspin_delay_ms: int = 0
 
 
 def _settings_path() -> Path:
