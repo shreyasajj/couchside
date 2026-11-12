@@ -30,3 +30,10 @@ def test_page_is_packaged():
 def test_skip_names_the_song_being_skipped():
     html = PAGE.read_text()
     assert 'act($("skip"), "skip", { currentItemId: last.nowPlaying.itemId }' in html
+
+
+def test_admin_controls_use_the_admin_api():
+    html = PAGE.read_text()
+    for route in ("admin/queue", "admin/volume", "admin/shuffle", "admin/speaker", "admin/guest", '"code"'):
+        assert route in html
+    assert 'autocomplete="one-time-code"' in html

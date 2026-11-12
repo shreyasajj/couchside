@@ -30,8 +30,13 @@ Kirigami.ApplicationWindow {
     }
     Component {
         id: setupComponent
-        SetupPage { objectName: "setup"; u: root.u; onDone: root.goBack() }
+        SetupPage {
+            objectName: "setup"; u: root.u
+            onDone: root.goBack()
+            onOpenGuests: pageStack.push(guestsComponent)
+        }
     }
+    Component { id: guestsComponent; GuestsPage { objectName: "guests"; u: root.u; sheet: actionSheet } }
     Component { id: libraryComponent; LibraryPage { u: root.u; sheet: actionSheet } }
     Component { id: queueComponent; QueuePage { u: root.u; sheet: actionSheet } }
     Component {
@@ -48,6 +53,7 @@ Kirigami.ApplicationWindow {
     }
     function goBack() {
         if (pairing.visible) { pairing.dismissedCode = app.pairingCode; return }
+        if (adminCode.visible) { app.closeAdminCode(); return }
         if (exitDialog.opened) { exitDialog.close(); return }
         if (actionSheet.visible) { actionSheet.close(); return }
         if (groupEditorOverlay.visible) { groupEditorOverlay.close(); return }
@@ -107,6 +113,15 @@ Kirigami.ApplicationWindow {
             if (visible) forceActiveFocus()
             else if (pageStack.currentItem && pageStack.currentItem.focusDefault) pageStack.currentItem.focusDefault()
         }
+    }
+
+    AdminCodeOverlay {
+        id: adminCode
+        u: root.u
+        z: 90
+        parent: root.overlay
+        visible: app.adminCode !== ""
+        onVisibleChanged: if (visible) forceActiveFocus(); else root.focusCurrentPage()
     }
 
     QQC2.Dialog {
