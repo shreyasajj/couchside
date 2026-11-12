@@ -1,0 +1,106 @@
+name: Release
+
+# Every change to the app on main becomes a signed Flatpak build on GitHub Pages; TVs
+# installed from it see the update in Settings (Flatpak update portal).
+on:
+  push:
+    branches: [main]
+    paths: ["src/**", "flatpak/**", "pyproject.toml", ".github/workflows/release.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  APP_ID: io.github.shreyasajj.Couchside
+  REPO_URL: https://shreyasajj.github.io/couchside/repo/
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Flatpak tools and the SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder ostree
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.kde.Sdk//6.11 org.kde.Platform//6.11 io.qt.PySide.BaseApp//6.11
+      - name: Python dependencies (pinned files for the offline build)
+        run: flatpak run --share=network --filesystem="$PWD" --command=python3 org.kde.Sdk//6.11 flatpak/gen-python-deps.py
+      - name: Stamp the version
+        run: python3 flatpak/stamp-release.py "0.7.${{ github.run_number }}" "${{ github.sha }}" "$(date -u +%F)"
+      - name: Import the signing key
+        env:
+          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+        run: |
+          test -n "$FLATPAK_GPG_PRIVATE_KEY" || { echo "signing key secret missing"; exit 1; }
+          echo "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          test -n "$KEY_ID"
+          echo "KEY_ID=$KEY_ID" >> "$GITHUB_ENV"
+      - name: Build
+        run: |
+          flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse \
+            --force-clean build-dir flatpak/$APP_ID.yml
+      - name: Export the app (no Debug or Locale extensions) and sign the repo
+        run: |
+          flatpak build-export --gpg-sign="$KEY_ID" repo build-dir master
+          flatpak build-update-repo --gpg-sign="$KEY_ID" --title=Couchside --default-branch=master --prune repo
+          refs=$(ostree --repo=repo refs)
+          echo "$refs"
+          test "$refs" = "app/$APP_ID/x86_64/master"
+          if echo "$refs" | grep -q Debug; then exit 1; fi
+          test -s repo/summary.sig
+      - name: Site (repo, .flatpakrepo, .flatpakref)
+        run: |
+          GPGKEY=$(gpg --export "$KEY_ID" | base64 -w0)
+          mkdir -p site
+          mv repo site/repo
+          cat > site/couchside.flatpakrepo <<EOT
+          [Flatpak Repo]
+          Title=Couchside
+          Url=$REPO_URL
+          Homepage=https://github.com/shreyasajj/couchside
+          Comment=Music Assistant on your TV
+          GPGKey=$GPGKEY
+          EOT
+          cat > site/couchside.flatpakref <<EOT
+          [Flatpak Ref]
+          Name=$APP_ID
+          Branch=master
+          Title=Couchside
+          Url=$REPO_URL
+          SuggestRemoteName=couchside
+          RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
+          IsRuntime=false
+          GPGKey=$GPGKEY
+          EOT
+          sed -i 's/^          //' site/couchside.flatpakrepo site/couchside.flatpakref
+          cat > site/index.html <<'EOT'
+          <!doctype html><meta charset="utf-8"><title>Couchside</title>
+          <h1>Couchside</h1>
+          <p>Install on the TV: <code>flatpak install --user https://shreyasajj.github.io/couchside/couchside.flatpakref</code></p>
+          EOT
+          touch site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -9,3 +9,4 @@ repo/
 *.egg-info/
 tests/qml/_SheetHarness_run.qml
 src/couchside/build_info.json
+flatpak/python-deps.json
