@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
+import "typing.js" as Typing
 
 // Settings: Music Assistant connection and lyrics. Up/Down move between rows (the page
 // scrolls to follow), OK changes a row. Text fields only start editing on OK, because
@@ -76,7 +77,16 @@ Kirigami.Page {
         function stopEditing() { input.focus = false; Qt.inputMethod.hide(); tv.forceActiveFocus() }
         Keys.onReturnPressed: startEditing()
         Keys.onEnterPressed: startEditing()
-        Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { startEditing(); event.accepted = true } }
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Select) { startEditing(); event.accepted = true; return }
+            var t = Typing.typed(event)  // a keyboard remote: type straight in, no on-screen keyboard
+            if (t) {
+                input.forceActiveFocus()
+                Qt.inputMethod.hide()
+                input.insert(input.text.length, t)
+                event.accepted = true
+            }
+        }
         Keys.onUpPressed: page.move(tv, false)
         Keys.onDownPressed: page.move(tv, true)
         QQC2.TextField {

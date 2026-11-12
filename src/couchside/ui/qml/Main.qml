@@ -26,6 +26,10 @@ Kirigami.ApplicationWindow {
             u: root.u
             onOpenSetup: root.showSetup()
             onOpenPage: (name) => root.openPage(name)
+            onTyped: (text) => {
+                root.openPage("search")
+                if (pageStack.currentItem && pageStack.currentItem.typeInto) pageStack.currentItem.typeInto(text)
+            }
         }
     }
     Component {
@@ -80,7 +84,13 @@ Kirigami.ApplicationWindow {
     Component.onCompleted: { setupWasNeeded = app.needsSetup; if (app.needsSetup) showSetup() }
 
     // Back on any remote; media keys work wherever focus is.
-    Shortcut { sequences: ["Back", "Esc"]; onActivated: root.goBack() }
+    // Kirigami's page stack also binds the Back key (StandardKey.Back), so Qt calls the
+    // remote's Back ambiguous and runs neither: handle that case too, with our own rules.
+    Shortcut {
+        sequences: ["Back", "Esc"]
+        onActivated: root.goBack()
+        onActivatedAmbiguously: root.goBack()
+    }
     Shortcut { sequences: ["Media Play", "Media Pause", "Toggle Media Play/Pause"]; onActivated: app.playPause() }
     Shortcut { sequence: "Media Next"; onActivated: app.next() }
     Shortcut { sequence: "Media Previous"; onActivated: app.previous() }

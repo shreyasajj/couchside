@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
+import "typing.js" as Typing
 
 // Search + recently played/added. Rows of cards: Up/Down between rows, Left/Right within.
 Kirigami.Page {
@@ -29,6 +30,20 @@ Kirigami.Page {
         return false
     }
     function startEditing() { field.forceActiveFocus(); Qt.inputMethod.show() }
+    // Letters from a keyboard remote: start a new search with them (or keep typing),
+    // without the on-screen keyboard.
+    function typeInto(text) {
+        if (!field.activeFocus) field.text = ""
+        field.forceActiveFocus()
+        Qt.inputMethod.hide()
+        field.insert(field.cursorPosition, text)
+        debounce.restart()
+    }
+    // typing anywhere on the page (results included) goes to the search box
+    Keys.onPressed: (event) => {
+        var t = Typing.typed(event)
+        if (t) { page.typeInto(t); event.accepted = true }
+    }
     // Clearing field.focus matters: a FocusScope hands focus back to the child that
     // last had it, which would put the cursor (and the keyboard) straight back.
     function stopEditing() { field.focus = false; Qt.inputMethod.hide() }
@@ -71,7 +86,11 @@ Kirigami.Page {
             implicitHeight: field.implicitHeight
             Keys.onReturnPressed: page.startEditing()
             Keys.onEnterPressed: page.startEditing()
-            Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { page.startEditing(); event.accepted = true } }
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_Select) { page.startEditing(); event.accepted = true; return }
+                var t = Typing.typed(event)
+                if (t) { page.typeInto(t); event.accepted = true }
+            }
             Keys.onDownPressed: page.toResults()
 
             QQC2.TextField {
