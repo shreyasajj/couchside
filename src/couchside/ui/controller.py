@@ -94,6 +94,7 @@ class AppController(QObject):
         self._library_error = ""
         self._library_busy = False
         self._search_gen = 0
+        self._search_cache: dict[str, list] = {}  # finished searches, newest last
         self._queue_rows: list[dict] = []
         self._queue_visible = False
         self._toast = ""
@@ -623,24 +624,46 @@ class AppController(QObject):
 
     @Slot(str)
     def search(self, query: str) -> None:
+        """Results as fast as they can be had: a search done before is answered from
+        memory; otherwise the library's own matches show first (a fraction of a second)
+        and the full results, streaming services included, replace them when they arrive."""
         self._search_gen += 1
         gen = self._search_gen
-        if not query.strip():
+        key = query.strip().lower()
+        if not key:
             self.loadRecents()
+            return
+        if key in self._search_cache:
+            self._set_library(self._search_cache[key])
             return
         self._library_busy = True
         self.libraryChanged.emit()
+        client = self.conn.client
+        done = {"full": False}
 
-        async def run():
-            client = self.conn.client
+        async def quick():
+            out = await library.search(client, query, library_only=True)
+            if gen == self._search_gen and not done["full"] and out.rows:
+                self._set_library(out.rows, busy=True)   # still searching the services
+
+        async def full():
             out = await library.search(client, query) if client is not None else \
                 library.SearchOutcome(error=library.SEARCH_ERROR)
+            done["full"] = True
+            if not out.error:
+                self._search_cache.pop(key, None)
+                self._search_cache[key] = out.rows
+                while len(self._search_cache) > 30:
+                    self._search_cache.pop(next(iter(self._search_cache)))
             if gen == self._search_gen:  # a newer search wins
                 self._set_library(out.rows, out.error)
-        self._spawn(run())
+        if client is not None:
+            self._spawn(quick())
+        self._spawn(full())
 
     @Slot()
     def loadRecents(self) -> None:
+        self._search_cache.clear()  # the Search page was opened or emptied: start fresh
         self._search_gen += 1
         gen = self._search_gen
         self._library_busy = True

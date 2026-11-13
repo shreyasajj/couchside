@@ -100,7 +100,7 @@ async def settle():
 async def test_search_rows_shape(ctl, monkeypatch):
     wire(ctl)
 
-    async def fake_search(client, q, limit=12):
+    async def fake_search(client, q, limit=12, library_only=False):
         return SearchOutcome(rows=[("Tracks", [CARD])])
     monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
     ctl.search("love")
@@ -114,7 +114,7 @@ async def test_search_rows_shape(ctl, monkeypatch):
 async def test_search_error_text(ctl, monkeypatch):
     wire(ctl)
 
-    async def fake_search(client, q, limit=12):
+    async def fake_search(client, q, limit=12, library_only=False):
         return SearchOutcome(error="Search failed — check the connection")
     monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
     ctl.search("love")
@@ -1005,3 +1005,79 @@ def test_party_lights_can_be_switched_off_and_stay_off(pulse_ctl):
     assert ctl.partyLights is True
     ctl.partyLights = False
     assert ctl.partyLights is False and load_settings().party_lights is False and seen
+
+
+# --- faster search: the library answers first, repeats come from memory ----------------------
+
+async def test_library_results_show_first_then_everything(ctl, monkeypatch):
+    import asyncio
+    wire(ctl)
+    full = asyncio.Event()
+    other = MediaCard(key="x://t/2", kind="track", title="Other", subtitle="", image_url=None, uri="x://t/2")
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        if library_only:
+            return SearchOutcome(rows=[("Tracks", [CARD])])
+        await full.wait()                       # streaming services take seconds
+        return SearchOutcome(rows=[("Tracks", [CARD, other])])
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    assert len(ctl.libraryRows[0]["items"]) == 1 and ctl.libraryBusy   # library hits, still searching
+    full.set()
+    await settle()
+    assert len(ctl.libraryRows[0]["items"]) == 2 and not ctl.libraryBusy
+
+
+async def test_a_slow_or_failed_library_answer_never_replaces_the_full_one(ctl, monkeypatch):
+    import asyncio
+    wire(ctl)
+    quick = asyncio.Event()
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        if library_only:
+            await quick.wait()
+            return SearchOutcome(error="Search failed — check the connection")
+        return SearchOutcome(rows=[("Tracks", [CARD])])
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    quick.set()
+    await settle()
+    assert len(ctl.libraryRows) == 1 and ctl.libraryError == "" and not ctl.libraryBusy
+
+
+async def test_the_same_search_again_is_answered_from_memory(ctl, monkeypatch):
+    wire(ctl)
+    calls = []
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        calls.append((q, library_only))
+        return SearchOutcome(rows=[("Tracks", [CARD])]) if q.strip().lower() == "love" else SearchOutcome()
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    ctl.search("lovex")
+    await settle()
+    n = len(calls)
+    ctl.search(" Love ")                        # back to the earlier words (e.g. after deleting a letter)
+    assert len(ctl.libraryRows) == 1 and not ctl.libraryBusy   # at once, no waiting
+    await settle()
+    assert len(calls) == n
+
+
+async def test_failed_searches_are_not_remembered(ctl, monkeypatch):
+    wire(ctl)
+    answers = [SearchOutcome(error="Search failed — check the connection"), SearchOutcome(rows=[("Tracks", [CARD])])]
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        if library_only:
+            return SearchOutcome()
+        return answers.pop(0)
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    assert ctl.libraryError != ""
+    ctl.search("love")
+    await settle()
+    assert ctl.libraryError == "" and len(ctl.libraryRows) == 1

@@ -63,7 +63,7 @@ Kirigami.Page {
 
     Timer {
         id: debounce
-        interval: 500
+        interval: 300  // after the last letter; the library's matches then show almost at once
         onTriggered: app.search(field.text)
     }
 

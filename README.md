@@ -134,9 +134,12 @@ The buttons at the right of the bar open:
 **Party mode** (the button left of Search): the controls go away and the lyrics fill the
 screen, bouncing with the music over a glow in the artwork's colours; songs without lyrics
 show their artwork bouncing instead. The guest QR code stays if guest mode is on. Back
-leaves party mode; media keys keep working.
+leaves party mode; media keys keep working. **Party lights** (Settings → Party and
+visualizer → Party lights, on by default) add colour along all four screen edges that
+jumps on every beat and changes colour with it, so LED strips that follow the screen
+dance with the music.
 
-**Visualizer** (Settings → Visualizer → Beat pulse, on by default): a glow behind the
+**Visualizer** (Settings → Party and visualizer → Beat pulse, on by default): a glow behind the
 artwork that pulses with the beat. Couchside listens to this TV's own sound output
 (PipeWire), so it pulses only when this TV is the speaker playing; nothing is recorded
 or sent anywhere. It listens only while Now Playing is on screen and music plays, and

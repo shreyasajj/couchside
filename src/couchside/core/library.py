@@ -77,12 +77,18 @@ def _cards(client: Any, items: Any) -> list[MediaCard]:
     return [c for c in (to_card(client, i) for i in (items or [])) if c is not None]
 
 
-async def search(client: Any, query: str, limit: int = 12) -> SearchOutcome:
+async def search(client: Any, query: str, limit: int = 12, library_only: bool = False) -> SearchOutcome:
+    """Search Music Assistant. `library_only` skips the streaming services: the library
+    answers in a fraction of a second, the services take seconds. Only the kinds that are
+    shown are asked for (MA otherwise also searches audiobooks, podcasts and genres)."""
+    from music_assistant_models.enums import MediaType
+
     query = (query or "").strip()
     if not query:
         return SearchOutcome()
+    kinds = [MediaType.TRACK, MediaType.ALBUM, MediaType.ARTIST, MediaType.PLAYLIST, MediaType.RADIO]
     try:
-        res = await client.music.search(query, limit=limit)
+        res = await client.music.search(query, media_types=kinds, limit=limit, library_only=library_only)
     except Exception as e:
         log.warning("search %r failed: %s", query, e)
         return SearchOutcome(error=SEARCH_ERROR)
@@ -96,16 +102,23 @@ async def recents(client: Any, limit: int = 15) -> list[tuple[str, list[MediaCar
     MA 2.10 (schema 65) has no `recently_added_tracks` (needs schema 101), so the
     library sorted by date added stands in for it.
     """
+    import asyncio
+
+    async def played():
+        return "Recently played", _cards(client, await client.music.recently_played(limit=limit))
+
+    async def added():
+        tracks = await client.music.get_library_tracks(limit=limit, order_by="timestamp_added_desc")
+        return "Recently added", _cards(client, tracks)
+
     rows: list[tuple[str, list[MediaCard]]] = []
-    try:
-        rows.append(("Recently played", _cards(client, await client.music.recently_played(limit=limit))))
-    except Exception as e:
-        log.warning("recently played failed: %s", e)
-    try:
-        added = await client.music.get_library_tracks(limit=limit, order_by="timestamp_added_desc")
-        rows.append(("Recently added", _cards(client, added)))
-    except Exception as e:
-        log.warning("recently added failed: %s", e)
+    # both at once: the page waits for the slower one, not for their sum
+    for name, result in zip(("recently played", "recently added"),
+                            await asyncio.gather(played(), added(), return_exceptions=True)):
+        if isinstance(result, BaseException):
+            log.warning("%s failed: %s", name, result)
+        else:
+            rows.append(result)
     return [(t, cards) for t, cards in rows if cards]
 
 
