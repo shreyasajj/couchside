@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 
 // Square artwork card for search results / recents. OK emits activated().
-// The focused card grows a little and gets a white ring.
+// The focused card grows a little and gets the accent ring.
 FocusScope {
     id: card
     property real u: 1
@@ -26,7 +26,7 @@ FocusScope {
         id: artBox
         width: parent.width
         height: width
-        radius: (kind === "artist" ? width / 2 : 16 * card.u)
+        radius: (kind === "artist" ? width / 2 : 18 * card.u)
         color: Theme.surfaceHigh
         clip: true
         scale: card.activeFocus ? 1.05 : 1
@@ -48,15 +48,12 @@ FocusScope {
             visible: status === Image.Ready
         }
     }
-    Rectangle {  // focus ring: outside artBox, which clips its children
+    FocusRing {  // outside artBox, which clips its children
         anchors.fill: artBox
-        anchors.margins: -10 * card.u
         scale: artBox.scale
-        radius: artBox.radius + 10 * card.u
-        color: "transparent"
-        border.width: 5 * card.u
-        border.color: Theme.focus
-        visible: card.activeFocus
+        u: card.u
+        radius: artBox.radius
+        shown: card.activeFocus
     }
     ColumnLayout {
         anchors { left: parent.left; right: parent.right; top: artBox.bottom; topMargin: 20 * card.u }
@@ -67,7 +64,7 @@ FocusScope {
             text: card.title
             color: Theme.text
             font.pixelSize: Theme.label * card.u
-            font.weight: card.activeFocus ? Font.Bold : Font.Normal
+            font.weight: Font.Bold
             elide: Text.ElideRight
         }
         Text {

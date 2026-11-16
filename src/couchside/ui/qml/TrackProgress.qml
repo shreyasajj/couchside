@@ -1,7 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Elapsed time, a thin progress line, time left: one row. Not focusable (no seeking).
+// Elapsed time, a progress line in the accent gradient, the song's length: one row.
+// Not focusable (no seeking).
 RowLayout {
     id: progress
     property real u: 1
@@ -12,29 +13,32 @@ RowLayout {
 
     Text {
         textFormat: Text.PlainText
+        Layout.preferredWidth: 96 * progress.u
         text: app.formatTime(progress.position)
-        color: Theme.textDim
+        color: "#b8ffffff"
         font.pixelSize: Theme.label * progress.u
         font.features: { "tnum": 1 }
     }
     Rectangle {
         Layout.fillWidth: true
-        Layout.preferredHeight: 6 * progress.u
+        Layout.preferredHeight: 8 * progress.u
         radius: height / 2
-        color: Theme.surfaceHigh
+        color: "#29ffffff"
         opacity: progress.known ? 1 : 0
-        Rectangle {
+        clip: true
+        GradientFill {
             width: parent.width * Math.max(0, Math.min(1, progress.position / Math.max(1, progress.duration)))
             height: parent.height
             radius: height / 2
-            color: Theme.text
         }
     }
     Text {
         textFormat: Text.PlainText
-        visible: progress.known
-        text: "−" + app.formatTime(Math.max(0, progress.duration - progress.position))
-        color: Theme.textDim
+        Layout.preferredWidth: 96 * progress.u
+        horizontalAlignment: Text.AlignRight
+        opacity: progress.known ? 1 : 0
+        text: app.formatTime(progress.duration)
+        color: "#b8ffffff"
         font.pixelSize: Theme.label * progress.u
         font.features: { "tnum": 1 }
     }

@@ -85,3 +85,27 @@ def test_ok_right_after_open_is_ignored(harness):
     ran = harness.property("ran")
     ran = ran.toVariant() if hasattr(ran, "toVariant") else ran
     assert list(ran) == ["first"]
+
+
+def test_a_picker_opens_on_the_ticked_choice_and_shows_section_headings(harness):
+    from PySide6.QtCore import QMetaObject, Q_ARG
+    from PySide6.QtQuick import QQuickItem
+    call(harness, "makeOpener")
+    call(harness, "openPicker")
+    pump(0.4)
+    s = sheet(harness)
+    assert s.property("currentIndex") == 2            # the ticked one
+    def items(item):   # list delegates are visual children only, not QObject children
+        for c in item.childItems():
+            yield c
+            yield from items(c)
+    shown = [i for i in items(s) if i.isVisible()]
+    headings = [h for h in shown if h.objectName() == "sectionHeading"]
+    assert sorted(h.property("text") for h in headings) == ["Direct", "Outputs"]
+    ticks = [t for t in shown if t.objectName() == "tick"]
+    assert len(ticks) == 1
+    QMetaObject.invokeMethod(s, "run", Q_ARG("QVariant", 2))
+    pump()
+    ran = harness.property("ran")
+    ran = ran.toVariant() if hasattr(ran, "toVariant") else ran
+    assert list(ran) == ["b"]

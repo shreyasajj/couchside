@@ -1,64 +1,110 @@
 import QtQuick
+import QtQuick.Layouts
 
-// "Up next" in the corner of Now Playing: the next song's name, artist and cover.
-// Only to look at; never takes focus.
-Rectangle {
-    id: chip
+// The "Up Next" card on Now Playing: the next few songs. Focusable as one thing; OK emits
+// activated() (the page opens the queue). rows: [{title, subtitle, imageUrl, trailing}].
+FocusScope {
+    id: card
     property real u: 1
-    property string title: ""
-    property string artist: ""
-    property string imageUrl: ""
-    property real maxTextWidth: 440 * u
+    property var rows: []
+    property int maxRows: 4
+    property int total: rows.length      // how many are waiting in all (the count in the corner)
+    readonly property int shown: Math.min(maxRows, rows.length)
+    signal activated()
 
-    visible: title !== ""
-    width: row.width + 36 * u
-    height: row.height + 28 * u
-    radius: 20 * u
-    color: Theme.scrim
+    visible: rows.length > 0
+    implicitWidth: 432 * u
+    implicitHeight: column.implicitHeight + 44 * u
+    activeFocusOnTab: true
 
-    Row {
-        id: row
-        anchors.centerIn: parent
-        spacing: 20 * chip.u
-        Column {
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2 * chip.u
-            width: Math.min(chip.maxTextWidth, Math.max(caption.implicitWidth, name.implicitWidth))
+    Keys.onReturnPressed: (event) => { if (!event.isAutoRepeat) activated() }
+    Keys.onEnterPressed: (event) => { if (!event.isAutoRepeat) activated() }
+    Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { if (!event.isAutoRepeat) activated(); event.accepted = true } }
+
+    Rectangle {
+        anchors.fill: parent
+        radius: 24 * card.u
+        color: "#990a0a10"
+        border.width: Math.max(1, card.u)
+        border.color: Theme.border
+    }
+    FocusRing { anchors.fill: parent; u: card.u; radius: 24 * card.u; shown: card.activeFocus }
+
+    ColumnLayout {
+        id: column
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 * card.u }
+        spacing: 14 * card.u
+        RowLayout {
+            Layout.fillWidth: true
             Text {
-                id: caption
                 textFormat: Text.PlainText
-                width: parent.width
-                horizontalAlignment: Text.AlignRight
-                text: "Up next"
-                color: Theme.textDim
-                font.pixelSize: Theme.label * chip.u
+                Layout.fillWidth: true
+                text: "Up Next"
+                color: Theme.text
+                font.pixelSize: Theme.label * card.u
+                font.weight: Font.ExtraBold
             }
             Text {
-                id: name
                 textFormat: Text.PlainText
-                width: parent.width
-                horizontalAlignment: Text.AlignRight
-                elide: Text.ElideRight
-                text: chip.artist !== "" ? chip.title + " · " + chip.artist : chip.title
-                color: Theme.text
-                font.pixelSize: Theme.label * chip.u
+                text: card.total === 1 ? "1 song" : card.total + " songs"
+                color: Theme.textDim
+                font.pixelSize: Theme.small * card.u
                 font.weight: Font.DemiBold
             }
         }
-        Rectangle {
-            width: 84 * chip.u
-            height: width
-            radius: 10 * chip.u
-            color: Theme.surfaceHigh
-            visible: chip.imageUrl !== ""
-            Image {
-                anchors.fill: parent
-                anchors.margins: 0
-                source: chip.imageUrl
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                sourceSize: Qt.size(width, height)
+        Repeater {
+            model: card.rows.slice(0, card.shown)
+            delegate: RowLayout {
+                id: line
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: 15 * card.u
+                Rectangle {
+                    Layout.preferredWidth: 64 * card.u
+                    Layout.preferredHeight: 64 * card.u
+                    radius: 10 * card.u
+                    color: Theme.surfaceHigh
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        source: line.modelData.imageUrl || ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        sourceSize: Qt.size(128, 128)
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Text {
+                        textFormat: Text.PlainText
+                        Layout.fillWidth: true
+                        text: line.modelData.title || ""
+                        color: Theme.text
+                        font.pixelSize: Theme.label * card.u
+                        font.weight: Font.Bold
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        textFormat: Text.PlainText
+                        Layout.fillWidth: true
+                        visible: text !== ""
+                        text: line.modelData.subtitle || ""
+                        color: Theme.textDim
+                        font.pixelSize: Theme.small * card.u
+                        elide: Text.ElideRight
+                    }
+                }
+                Text {
+                    textFormat: Text.PlainText
+                    visible: text !== ""
+                    text: line.modelData.trailing || ""
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.small * card.u
+                    font.features: { "tnum": 1 }
+                }
             }
         }
     }
+    MouseArea { anchors.fill: parent; onClicked: { card.forceActiveFocus(); card.activated() } }
 }

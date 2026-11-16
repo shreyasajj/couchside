@@ -49,8 +49,8 @@ def test_button_ok_clicks_and_the_theme_loads(view):
         QTest.keyClick(view, key)
     pump(0.05)
     assert root.property("clicks") == 2
-    assert child(view, "playButton").property("lit") is True   # play is white without focus
-    assert button.width() < child(view, "playButton").width() <= 100  # small, play a little bigger
+    assert child(view, "playButton").property("lit") is True   # play is lit without focus
+    assert button.width() < child(view, "playButton").width() == 116  # the mockup's play button
 
 
 def test_every_icon_the_pages_use_has_a_shape(view):
@@ -69,19 +69,42 @@ def test_every_icon_the_pages_use_has_a_shape(view):
     assert used and used <= set(paths), used - set(paths)
 
 
-def test_up_next_hides_without_a_next_song_and_is_plain_text(view):
-    chip = child(view, "upNext")
-    assert chip.isVisible() is False
-    chip.setProperty("title", "<b>Luna</b>")
-    chip.setProperty("artist", "Bolier")
-    pump(0.05)
-    assert chip.isVisible() is True and chip.width() > 0
-    texts = [c for c in chip.findChildren(object) if c.metaObject().className().startswith("QQuickText")]
+def plain_texts(item, min_size=28):
     from PySide6.QtQml import QQmlEngine, QQmlExpression
+    texts = [c for c in item.findChildren(object) if c.metaObject().className().startswith("QQuickText")]
     assert texts
     for t in texts:
-        expr = QQmlExpression(QQmlEngine.contextForObject(t), t, "textFormat === Text.PlainText")
-        assert expr.evaluate()[0] is True
+        expr = QQmlExpression(QQmlEngine.contextForObject(t), t,
+                              "textFormat === Text.PlainText && font.pixelSize >= %d" % min_size)
+        assert expr.evaluate()[0] is True, t.property("text")
+
+
+def test_up_next_hides_without_songs_lists_them_and_opens_the_queue(view):
+    root = view.rootObject()
+    card = child(view, "upNext")
+    assert card.isVisible() is False
+    card.setProperty("rows", [{"title": "<b>Luna</b>", "subtitle": "Bolier", "imageUrl": "", "trailing": "3:05"},
+                              {"title": "Two", "subtitle": "", "imageUrl": "", "trailing": ""},
+                              {"title": "Three", "subtitle": "", "imageUrl": "", "trailing": ""}])
+    card.setProperty("maxRows", 2)
+    pump(0.05)
+    assert card.isVisible() is True and card.property("shown") == 2
+    plain_texts(card, 24)
+    card.forceActiveFocus()
+    QTest.keyClick(view, Qt.Key.Key_Return)
+    pump(0.05)
+    assert root.property("clicks") == 100
+
+
+def test_chip_keeps_long_names_short_and_clicks(view):
+    root = view.rootObject()
+    chip = child(view, "chip")
+    assert 0 < chip.width() <= 520      # an 80-letter name is cut, not spread over the bar
+    chip.forceActiveFocus()
+    QTest.keyClick(view, Qt.Key.Key_Return)
+    pump(0.05)
+    assert root.property("clicks") == 1000
+    plain_texts(chip)
 
 
 def test_edge_lights_follow_the_pulse_and_change_colour_with_the_hue(view):
@@ -102,7 +125,9 @@ def test_rows_cards_and_text_buttons_focus_and_activate(view):
     row.forceActiveFocus()
     pump(0.05)
     assert row.property("activeFocus") is True
-    assert row.property("ink").name() != "#ffffff"       # focused: dark text on a white row
+    assert row.property("ink").name() == "#ffffff"       # focused: tinted row, text stays white
+    hint = child(view, "rowHint")
+    assert hint.isVisible() is True                      # "PLAY" shows on the focused row only
     QTest.keyClick(view, Qt.Key.Key_Return)
     pump(0.05)
     assert root.property("rowHits") == 1
@@ -113,6 +138,7 @@ def test_rows_cards_and_text_buttons_focus_and_activate(view):
     card.forceActiveFocus()
     pump(0.3)
     assert card.property("activeFocus") is True
+    assert hint.isVisible() is False
     from PySide6.QtQml import QQmlEngine, QQmlExpression
     for item in (row, card, pill):
         texts = [c for c in item.findChildren(object) if c.metaObject().className().startswith("QQuickText")]
