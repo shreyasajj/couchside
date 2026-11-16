@@ -38,6 +38,7 @@ def main() -> int:
     from couchside.sendspin.pairing import tail_log
     from couchside.sendspin.runner import log_path
     from couchside.ui.controller import AppController
+    from couchside.ui.bridge_control import UiControl
 
     app = QGuiApplication(sys.argv)
     app.setApplicationName("Couchside")
@@ -49,14 +50,31 @@ def main() -> int:
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
+    control = UiControl()
+    try:
+        primary = loop.run_until_complete(control.acquire())
+    except Exception:
+        logging.getLogger(__name__).exception("Could not acquire the UI control endpoint")
+        control.close()
+        loop.close()
+        return 1
+    if not primary:
+        control.close()
+        loop.close()
+        return 0
+
     settings = load_settings()
     controller = AppController(settings)
 
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("app", controller)
+    engine.rootContext().setContextProperty("bridgeControl", control)
     engine.load(str(Path(__file__).parent / "qml" / "Main.qml"))
     if not engine.rootObjects():
+        control.close()
+        loop.close()
         return 1
+    control.attach(controller)
 
     closing = asyncio.Event()
     app.aboutToQuit.connect(closing.set)
@@ -77,8 +95,11 @@ def main() -> int:
         for t in tasks:
             t.cancel()
 
-    with loop:
-        loop.run_until_complete(run())
+    try:
+        with loop:
+            loop.run_until_complete(run())
+    finally:
+        control.close()
     return 0
 
 
