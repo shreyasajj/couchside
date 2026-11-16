@@ -1,18 +1,15 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
 // Every speaker and group: control it, sync it, move the queue, manage groups.
-Kirigami.Page {
+FocusScope {
     id: page
     property real u: 1
     property var sheet: null
     property var groupEditor: null
-
-    padding: 0
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: PageBackground { tint: app.backgroundColour }
+    property real topInset: 104 * u
+    property real qrWidth: 0
+    property real qrBottom: 0
 
     function focusDefault() { list.forceActiveFocus() }
     Component.onCompleted: { rows = app.speakerRows; list.forceActiveFocus() }
@@ -62,16 +59,15 @@ Kirigami.Page {
     }
 
     ColumnLayout {
-        anchors { fill: parent; margins: 72 * page.u }
-        spacing: 24 * page.u
+        anchors { fill: parent; topMargin: page.topInset + 36 * page.u; bottomMargin: 40 * page.u
+                  leftMargin: 150 * page.u; rightMargin: Math.max(150 * page.u, page.qrWidth) }
+        spacing: 16 * page.u
 
-        QQC2.Label {
-
-            textFormat: Text.PlainText
-            text: "Speakers"
-            color: "#ffffff"
-            font.pixelSize: 48 * page.u
-            font.weight: Font.Bold
+        ScreenTitle {
+            Layout.fillWidth: true
+            u: page.u
+            title: "Speakers"
+            note: page.controlled ? "Playing on " + page.controlled.name : ""
         }
 
         ListView {
@@ -79,12 +75,14 @@ Kirigami.Page {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 8 * page.u
+            spacing: 12 * page.u
             model: page.rows
             keyNavigationEnabled: true
             highlightRangeMode: ListView.ApplyRange
             preferredHighlightBegin: height * 0.2
             preferredHighlightEnd: height * 0.8
+            leftMargin: 10 * page.u
+            rightMargin: 10 * page.u
             Keys.onDownPressed: (event) => {
                 if (currentIndex >= count - 1) newGroup.forceActiveFocus()
                 else incrementCurrentIndex()
@@ -92,7 +90,7 @@ Kirigami.Page {
             delegate: ListRow {
                 id: rowItem
                 required property var modelData
-                width: ListView.view.width
+                width: ListView.view.width - 20 * page.u
                 u: page.u
                 focus: ListView.isCurrentItem
                 iconName: modelData.isGroup ? "group" : "speaker"
@@ -116,6 +114,8 @@ Kirigami.Page {
         ListRow {  // looks like one more row at the end of the list
             id: newGroup
             Layout.fillWidth: true
+            Layout.leftMargin: 10 * page.u
+            Layout.rightMargin: 10 * page.u
             u: page.u
             iconName: "plus"
             title: "New group"

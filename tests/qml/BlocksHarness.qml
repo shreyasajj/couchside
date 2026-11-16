@@ -12,7 +12,6 @@ Item {
     UpNext { id: upNext; objectName: "upNext"; x: 600; onActivated: parent.clicks += 100 }
     Chip { objectName: "chip"; x: 600; y: 700; onClicked: parent.clicks += 1000
            text: "Playing on the very long name of a speaker group that someone typed in with a keyboard" }
-    PageBackground { objectName: "background"; anchors.fill: parent; z: -1; tint: "#804020" }
     ListRow { id: row; objectName: "row"; y: 300; width: 900; title: "<i>Bobby</i>"; subtitle: "Skips left 2"
               badges: ["Admin"]; trailing: "3:05"; hint: "PLAY"; onActivated: parent.rowHits++ }
     MediaCardItem { objectName: "card"; x: 1000; y: 300; title: "Luna"; subtitle: "Bolier"; kind: "artist" }

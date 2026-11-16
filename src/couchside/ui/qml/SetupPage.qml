@@ -1,25 +1,25 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 import "typing.js" as Typing
 
 // Settings in two panes: the sections on the left, the chosen section's rows on the right.
 // Left pane: Up/Down pick a section (the right pane follows), Right or OK goes into it.
 // Right pane: Up/Down move between rows (the pane scrolls to follow), OK changes a row,
-// Left goes back to the sections. Back leaves Settings from anywhere. Text fields only start editing on OK, because
+// Left goes back to the sections. Up from the first row or section reaches the top bar.
+// Back leaves Settings from anywhere. Text fields only start editing on OK, because
 // Bigscreen's on-screen keyboard takes the arrow keys while a field is being edited;
 // the keyboard's Enter or Back stops editing.
-Kirigami.Page {
+FocusScope {
     id: page
     property real u: 1
+    property var sheet: null
+    property real topInset: 104 * u
+    property real qrWidth: 0
+    property real qrBottom: 0
+    property Item returnTo: null
     signal done()
     signal openGuests()
-    property Item returnTo: null  // the row to focus when coming back from a page opened here
-
-    padding: 0
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: PageBackground { tint: app.backgroundColour }
 
     function focusDefault() {
         if (returnTo && returnTo.visible) { returnTo.forceActiveFocus(); returnTo = null; return }
@@ -27,7 +27,7 @@ Kirigami.Page {
         else toCategories()
     }
 
-    readonly property var categories: ["Music Assistant", "Guest mode", "This speaker", "Updates", "Party and visualizer", "Lyrics"]
+    readonly property var categories: ["Music Assistant", "Guest mode", "This speaker", "Visualizer", "Lyrics", "Look", "Updates"]
     property int category: 0
     onCategoryChanged: flick.contentY = 0
     function toCategories() {
@@ -69,11 +69,13 @@ Kirigami.Page {
         return false
     }
     // Up/Down: next focusable row in that direction (skips hidden rows, no wrap-around).
+    // Returns false when there is no such row (Up from the first row then goes to the top bar).
     function move(from, forward) {
         var next = from.nextItemInFocusChain(forward)
-        if (!next || !inside(next, column)) return  // stay in the right pane
+        if (!next || !inside(next, column)) return false  // stay in the right pane
         var a = from.mapToItem(column, 0, 0).y, b = next.mapToItem(column, 0, 0).y
-        if (forward ? b > a : b < a) next.forceActiveFocus()
+        if (forward ? b > a : b < a) { next.forceActiveFocus(); return true }
+        return false
     }
     // keep the focused row on screen
     function follow(item) {
@@ -118,7 +120,7 @@ Kirigami.Page {
                 event.accepted = true
             }
         }
-        Keys.onUpPressed: page.move(tv, false)
+        Keys.onUpPressed: (event) => { if (!page.move(tv, false)) event.accepted = false }
         Keys.onDownPressed: page.move(tv, true)
         Keys.onLeftPressed: (event) => { if (tv.editing) event.accepted = false; else page.toCategories() }
         QQC2.TextField {
@@ -129,119 +131,158 @@ Kirigami.Page {
             Keys.onPressed: (event) => { if (Typing.typed(event)) Typing.hideKeyboard() }
             activeFocusOnTab: false
             font.pixelSize: 32 * page.u
-            color: "#ffffff"
-            placeholderTextColor: "#99ffffff"
+            color: Theme.text
+            placeholderTextColor: "#66ffffff"
             padding: 20 * page.u
             leftPadding: 28 * page.u
             onAccepted: { tv.stopEditing(); tv.accepted() }
-            background: Rectangle {
-                radius: 16 * page.u
-                color: input.activeFocus ? Theme.surfaceHigh : Theme.surface
-                border.width: tv.activeFocus ? 4 * page.u : 0
-                border.color: input.activeFocus ? Theme.accent : Theme.focus  // blue while typing
+            background: Item {
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 18 * page.u
+                    color: input.activeFocus ? Theme.surfaceHigh : Theme.surface
+                    border.width: 2 * page.u
+                    border.color: input.activeFocus ? Theme.a2 : "#1fffffff"   // pink while typing
+                }
+                FocusRing { anchors.fill: parent; u: page.u; radius: 18 * page.u; shown: tv.activeFocus && !input.activeFocus }
             }
         }
     }
 
-    // A row that toggles or cycles a setting with OK.
-    component SettingRow: Rectangle {
+    // A row that toggles, cycles or opens a setting with OK. `adjust` rows also take
+    // Left/Right (emitting adjusted(-1 or 1)); Left on the others returns to the sections.
+    component SettingRow: FocusScope {
         id: row
         property string label: ""
         property string value: ""
         property string hint: ""
+        property bool adjust: false
         signal activated()
+        signal adjusted(int direction)
         Layout.fillWidth: true
         implicitHeight: (hint !== "" ? 128 : 96) * page.u
-        radius: 20 * page.u
         activeFocusOnTab: true
-        color: activeFocus ? Theme.focus : Theme.surface
-        readonly property color ink: activeFocus ? Theme.focusText : Theme.text
-        Keys.onLeftPressed: page.toCategories()
+        Keys.onLeftPressed: if (adjust) adjusted(-1); else page.toCategories()
+        Keys.onRightPressed: (event) => { if (adjust) adjusted(1); else event.accepted = false }
         Keys.onReturnPressed: activated()
         Keys.onEnterPressed: activated()
         Keys.onPressed: (event) => { if (event.key === Qt.Key_Select) { activated(); event.accepted = true } }
-        Keys.onUpPressed: page.move(row, false)
+        Keys.onUpPressed: (event) => { if (!page.move(row, false)) event.accepted = false }
         Keys.onDownPressed: page.move(row, true)
+        Rectangle {
+            anchors.fill: parent
+            radius: 22 * page.u
+            color: Theme.surface
+            border.width: 2 * page.u
+            border.color: row.activeFocus ? Theme.a1 : "#0fffffff"
+            gradient: row.activeFocus ? rowFocusFill : null
+        }
         ColumnLayout {
             anchors { fill: parent; leftMargin: 28 * page.u; rightMargin: 28 * page.u }
             spacing: 2 * page.u
             RowLayout {
                 Layout.fillWidth: true
-                QQC2.Label {
+                spacing: 20 * page.u
+                Text {
                     textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: row.label
-                    color: row.ink
-                    font.pixelSize: 32 * page.u
+                    color: Theme.text
+                    font.pixelSize: Theme.body * page.u
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
                 }
-                QQC2.Label {
+                Text {
                     textFormat: Text.PlainText
-                    text: row.value
-                    color: row.activeFocus ? Theme.focusText : Theme.accent
-                    font.pixelSize: 32 * page.u
+                    Layout.maximumWidth: row.width * 0.55
+                    text: (row.adjust && row.activeFocus ? "‹  " : "") + row.value + (row.adjust && row.activeFocus ? "  ›" : "")
+                    color: Theme.a1
+                    font.pixelSize: Theme.body * page.u
                     font.weight: Font.Bold
+                    elide: Text.ElideRight
                 }
             }
-            QQC2.Label {
+            Text {
                 textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: row.hint !== ""
                 text: row.hint
-                color: row.ink
-                opacity: 0.7
+                color: Theme.textDim
                 font.pixelSize: Theme.label * page.u
                 elide: Text.ElideRight
             }
         }
         MouseArea { anchors.fill: parent; onClicked: { row.forceActiveFocus(); row.activated() } }
     }
-
-    component Heading: QQC2.Label {
-        Layout.bottomMargin: 8 * page.u
-        color: "#ffffff"
-        font.pixelSize: Theme.title * page.u
-        font.weight: Font.Bold
+    Gradient {
+        id: rowFocusFill
+        orientation: Gradient.Horizontal
+        GradientStop { position: 0; color: Theme.tint(Theme.a1, 0.32) }
+        GradientStop { position: 1; color: Theme.tint(Theme.a2, 0.2) }
     }
-    component Note: QQC2.Label {
+    function pick(title, choices, from, apply) {
+        sheet.open(title, choices.map(function(c) {
+            return { id: c.id, label: c.label, section: c.section || "", checked: c.current, a1: c.a1, a2: c.a2 }
+        }), from, apply)
+    }
+
+    component Heading: Text {
+        textFormat: Text.PlainText
+        Layout.bottomMargin: 8 * page.u
+        color: Theme.text
+        font.pixelSize: Theme.title * page.u
+        font.weight: Font.ExtraBold
+    }
+    component Note: Text {
+        textFormat: Text.PlainText
         Layout.fillWidth: true
-        color: "#ffffff"
-        opacity: 0.8
-        font.pixelSize: 28 * page.u
+        color: Theme.textDim
+        font.pixelSize: Theme.label * page.u
         wrapMode: Text.WordWrap
     }
 
     // --- left pane: the sections ---------------------------------------------------
     Column {
         id: side
-        anchors { left: parent.left; top: parent.top; leftMargin: 72 * page.u; topMargin: 72 * page.u }
-        width: 440 * page.u
+        anchors { left: parent.left; top: parent.top; leftMargin: Theme.margin * page.u; topMargin: page.topInset + 28 * page.u }
+        width: 420 * page.u
         spacing: 8 * page.u
 
         Text {
             textFormat: Text.PlainText
             text: "Settings"
-            color: Theme.textDim
-            font.pixelSize: Theme.body * page.u
-            font.weight: Font.DemiBold
-            leftPadding: 28 * page.u
+            color: Theme.text
+            font.pixelSize: Theme.title * page.u
+            font.weight: Font.ExtraBold
+            leftPadding: 24 * page.u
             bottomPadding: 20 * page.u
-            topPadding: 10 * page.u
         }
         Repeater {
             id: cats
             model: page.categories
-            delegate: Rectangle {
+            delegate: FocusScope {
                 id: cat
                 required property int index
                 required property string modelData
                 readonly property bool chosen: page.category === index
                 width: side.width
-                height: 88 * page.u
-                radius: 20 * page.u
+                height: 84 * page.u
                 activeFocusOnTab: true
-                color: activeFocus ? Theme.focus : (chosen ? Theme.surfaceHigh : "transparent")
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 20 * page.u
+                    color: cat.activeFocus ? Theme.tint(Theme.a1, 0.22) : (cat.chosen ? Theme.surfaceHigh : "transparent")
+                    border.width: cat.activeFocus ? 2 * page.u : 0
+                    border.color: Theme.a1
+                }
+                Rectangle {   // the chosen section's mark
+                    visible: cat.chosen
+                    anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 * page.u }
+                    width: 6 * page.u; height: parent.height * 0.5; radius: width / 2
+                    color: Theme.a1
+                }
                 onActiveFocusChanged: if (activeFocus) page.category = index
-                Keys.onUpPressed: if (index > 0) cats.itemAt(index - 1).forceActiveFocus()
+                Keys.onUpPressed: (event) => { if (index > 0) cats.itemAt(index - 1).forceActiveFocus(); else event.accepted = false }
                 Keys.onDownPressed: if (index < cats.count - 1) cats.itemAt(index + 1).forceActiveFocus()
                 Keys.onRightPressed: page.enterPane()
                 Keys.onReturnPressed: page.enterPane()
@@ -252,9 +293,9 @@ Kirigami.Page {
                     anchors.verticalCenter: parent.verticalCenter
                     x: 28 * page.u
                     text: cat.modelData
-                    color: cat.activeFocus ? Theme.focusText : Theme.text
+                    color: cat.chosen || cat.activeFocus ? Theme.text : Theme.textDim
                     font.pixelSize: Theme.body * page.u
-                    font.weight: cat.chosen ? Font.DemiBold : Font.Normal
+                    font.weight: cat.chosen ? Font.Bold : Font.Medium
                 }
                 MouseArea { anchors.fill: parent; onClicked: cat.forceActiveFocus() }
             }
@@ -265,16 +306,18 @@ Kirigami.Page {
     Flickable {
         id: flick
         anchors { left: side.right; right: parent.right; top: parent.top; bottom: parent.bottom
-                  leftMargin: 64 * page.u; rightMargin: 72 * page.u }
-        contentHeight: column.implicitHeight + 144 * page.u
+                  topMargin: page.topInset; leftMargin: 56 * page.u
+                  rightMargin: Math.max(Theme.margin * page.u, page.qrWidth) }
+        contentHeight: column.implicitHeight + 120 * page.u
         interactive: false
         clip: true
         Behavior on contentY { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
         ColumnLayout {
             id: column
-            y: 72 * page.u
-            width: flick.width
+            y: 28 * page.u
+            x: 8 * page.u
+            width: flick.width - 16 * page.u
             spacing: 0
 
             ColumnLayout {
@@ -282,14 +325,10 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 spacing: 20 * page.u
                 Heading { text: "Music Assistant" }
-                QQC2.Label {
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
+                Note {
                     visible: app.connState === "auth_failed" && app.hasToken
                     text: "Music Assistant did not accept the token. Create a new one and enter it below."
-                    color: "#ffd479"
-                    font.pixelSize: 30 * page.u
-                    wrapMode: Text.WordWrap
+                    color: Theme.warn
                 }
                 Note { text: "Server address" }
                 TvField {
@@ -308,9 +347,10 @@ Kirigami.Page {
                     id: saveButton
                     Layout.alignment: Qt.AlignLeft
                     u: page.u
+                    strong: true
                     text: "Save and connect"
                     dim: tokenField.text.trim() === "" && !app.hasToken
-                    Keys.onUpPressed: page.move(saveButton, false)
+                    Keys.onUpPressed: (event) => { if (!page.move(saveButton, false)) event.accepted = false }
                     Keys.onDownPressed: page.move(saveButton, true)
                     Keys.onLeftPressed: page.toCategories()
                     onClicked: {
@@ -391,10 +431,13 @@ Kirigami.Page {
                     onAccepted: { app.setPlayerName(text); text = app.playerName }
                 }
                 SettingRow {
+                    id: outputRow
+                    objectName: "audioOutputRow"
                     label: "Audio output"
-                    value: app.audioDevice
-                    hint: "Changes restart the speaker for a moment"
-                    onActivated: app.cycleAudioDevice()
+                    value: app.audioOutputLabel
+                    hint: "Where this TV's music comes out · changing it restarts the speaker for a moment"
+                    onActivated: page.pick("Audio output", app.audioOutputs, outputRow,
+                                           function(id) { app.setAudioOutput(id) })
                 }
                 SettingRow {
                     label: "Sync delay"
@@ -408,29 +451,35 @@ Kirigami.Page {
                 visible: page.category === 3
                 Layout.fillWidth: true
                 spacing: 20 * page.u
-                Heading { text: "Updates" }
+                Heading { text: "Visualizer" }
                 SettingRow {
-                    label: "Couchside " + app.appVersion
-                    value: app.updateState === "available" ? "Install" : ""
-                    hint: app.updateText
-                    onActivated: app.installUpdate()
-                }
-                SettingRow {
-                    label: "Sendspin"
-                    hint: app.sendspinVersionText + " — new Sendspin versions arrive as Couchside updates"
-                }
-            }
-
-            ColumnLayout {
-                visible: page.category === 4
-                Layout.fillWidth: true
-                spacing: 20 * page.u
-                Heading { text: "Party and visualizer" }
-                SettingRow {
-                    label: "Beat pulse"
+                    label: "Beat pulse on Now Playing"
                     value: app.visualizerEnabled ? "On" : "Off"
-                    hint: "A glow behind the artwork that pulses with the music on this TV"
+                    hint: "The cover and a glow behind it move with the music on this TV"
                     onActivated: app.visualizerEnabled = !app.visualizerEnabled
+                }
+                SettingRow {
+                    id: sourceRow
+                    objectName: "beatSourceRow"
+                    label: "Beat source"
+                    value: app.beatSourceLabel
+                    hint: "What the visualizer listens to: this TV's music, one output, or a microphone"
+                    onActivated: page.pick("Listen for the beat on", app.beatSources, sourceRow,
+                                           function(id) { app.setBeatSource(id) })
+                }
+                SettingRow {
+                    objectName: "beatIntensityRow"
+                    label: "Beat intensity"
+                    value: app.visualizerIntensity.toFixed(2)
+                    hint: "How hard the Visualizer hits on each beat · Left and Right change it"
+                    adjust: true
+                    onAdjusted: (direction) => app.visualizerIntensity = app.visualizerIntensity + 0.05 * direction
+                    onActivated: {
+                        var steps = [0.5, 1.0, 1.5, 2.0]
+                        var next = steps[0]
+                        for (var i = 0; i < steps.length; i++) if (steps[i] > app.visualizerIntensity + 0.001) { next = steps[i]; break }
+                        app.visualizerIntensity = next
+                    }
                 }
                 SettingRow {
                     label: "Party lights"
@@ -441,7 +490,7 @@ Kirigami.Page {
             }
 
             ColumnLayout {
-                visible: page.category === 5
+                visible: page.category === 4
                 Layout.fillWidth: true
                 spacing: 20 * page.u
                 Heading { text: "Lyrics" }
@@ -501,6 +550,42 @@ Kirigami.Page {
                     placeholderText: "Press OK to enter the address"
                     inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
                     onAccepted: app.setLibretranslateUrl(text)
+                }
+            }
+
+            ColumnLayout {
+                visible: page.category === 5
+                Layout.fillWidth: true
+                spacing: 20 * page.u
+                Heading { text: "Look" }
+                SettingRow {
+                    id: coloursRow
+                    objectName: "coloursRow"
+                    label: "Colours"
+                    value: {
+                        var all = app.accents
+                        for (var i = 0; i < all.length; i++) if (all[i].current) return all[i].label
+                        return ""
+                    }
+                    hint: "The two colours used for focus, progress and the visualizer"
+                    onActivated: page.pick("Colours", app.accents, coloursRow, function(id) { app.setAccent(id) })
+                }
+            }
+
+            ColumnLayout {
+                visible: page.category === 6
+                Layout.fillWidth: true
+                spacing: 20 * page.u
+                Heading { text: "Updates" }
+                SettingRow {
+                    label: "Couchside " + app.appVersion
+                    value: app.updateState === "available" ? "Install" : ""
+                    hint: app.updateText
+                    onActivated: app.installUpdate()
+                }
+                SettingRow {
+                    label: "Sendspin"
+                    hint: app.sendspinVersionText + " — new Sendspin versions arrive as Couchside updates"
                 }
             }
         }

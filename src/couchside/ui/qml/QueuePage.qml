@@ -1,21 +1,18 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
 // What is still to play on the controlled speaker. OK on a row: play / move / remove.
-Kirigami.Page {
+// (The shell keeps the queue loaded while this screen or Now Playing shows.)
+FocusScope {
     id: page
     property real u: 1
     property var sheet: null
-
-    padding: 0
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: PageBackground { tint: app.backgroundColour }
+    property real topInset: 104 * u
+    property real qrWidth: 0
+    property real qrBottom: 0
 
     function focusDefault() { list.forceActiveFocus() }
-    Component.onCompleted: { rows = app.queueRows; app.queueVisible = true; list.forceActiveFocus() }
-    Component.onDestruction: app.queueVisible = false
+    Component.onCompleted: { rows = app.queueRows; list.forceActiveFocus() }
 
     // The page owns its copy of the rows: a ListView resets to row 0 the moment its
     // model changes, so swap the rows and put focus back on the same song in one step.
@@ -44,37 +41,33 @@ Kirigami.Page {
     }
 
     ColumnLayout {
-        anchors { fill: parent; margins: 72 * page.u; bottomMargin: 0 }
-        spacing: 24 * page.u
+        anchors { fill: parent; topMargin: page.topInset + 36 * page.u
+                  leftMargin: 150 * page.u; rightMargin: Math.max(150 * page.u, page.qrWidth) }
+        spacing: 16 * page.u
 
-        QQC2.Label {
-
-            textFormat: Text.PlainText
-            text: list.count > 1 ? "Queue · " + list.count + " songs" : "Queue"
-            color: "#ffffff"
-            font.pixelSize: 48 * page.u
-            font.weight: Font.Bold
-        }
-        QQC2.Label {
-            textFormat: Text.PlainText
-            visible: list.count === 0
-            text: "Nothing queued — add songs from Search"
-            color: Theme.textDim
-            font.pixelSize: 30 * page.u
+        ScreenTitle {
+            Layout.fillWidth: true
+            u: page.u
+            title: list.count > 1 ? "Queue · " + list.count + " songs" : "Queue"
+            note: list.count === 0 ? "Nothing queued — add songs from Search" : ""
         }
 
         ListView {
             id: list
+            objectName: "queueList"
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 8 * page.u
+            spacing: 12 * page.u
             model: page.rows
             keyNavigationEnabled: true
             highlightRangeMode: ListView.ApplyRange
             preferredHighlightBegin: height * 0.2
             preferredHighlightEnd: height * 0.8
             highlightMoveDuration: 150
+            leftMargin: 10 * page.u
+            rightMargin: 10 * page.u
+            bottomMargin: 40 * page.u
             // "Now playing" above the playing song, "Up next" above the first one after it
             delegate: FocusScope {
                 id: slot
@@ -82,36 +75,37 @@ Kirigami.Page {
                 required property int index
                 readonly property string caption: modelData.current ? "Now playing"
                     : (index === 0 || page.rows[index - 1].current) ? "Up next" : ""
-                width: ListView.view.width
-                height: rowItem.height + (caption !== "" ? captionText.height + 28 * page.u : 0)
+                width: ListView.view.width - 20 * page.u
+                height: rowItem.height + (caption !== "" ? captionText.height + 22 * page.u : 0)
                 focus: ListView.isCurrentItem
+                z: ListView.isCurrentItem ? 1 : 0
                 Text {
                     id: captionText
                     textFormat: Text.PlainText
                     visible: slot.caption !== ""
-                    x: 20 * page.u
-                    y: 12 * page.u
+                    x: 6 * page.u
+                    y: 8 * page.u
                     text: slot.caption
                     color: Theme.textDim
                     font.pixelSize: Theme.label * page.u
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Bold
                 }
-              ListRow {
-                id: rowItem
-                readonly property var modelData: slot.modelData
-                readonly property int index: slot.index
-                anchors.bottom: parent.bottom
-                width: parent.width
-                u: page.u
-                focus: true
-                imageUrl: modelData.imageUrl
-                title: modelData.title
-                subtitle: modelData.subtitle
-                marked: modelData.current
-                badges: modelData.addedBy ? ["Added by " + modelData.addedBy] : []
-                trailing: modelData.duration > 0 ? app.formatTime(modelData.duration) : ""
-                onActivated: page.openRow(modelData, rowItem, index)
-              }
+                ListRow {
+                    id: rowItem
+                    readonly property var modelData: slot.modelData
+                    readonly property int index: slot.index
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    u: page.u
+                    focus: true
+                    imageUrl: modelData.imageUrl
+                    title: modelData.title
+                    subtitle: modelData.subtitle
+                    marked: modelData.current
+                    badges: modelData.addedBy ? ["Added by " + modelData.addedBy] : []
+                    trailing: modelData.duration > 0 ? app.formatTime(modelData.duration) : ""
+                    onActivated: page.openRow(modelData, rowItem, index)
+                }
             }
         }
     }

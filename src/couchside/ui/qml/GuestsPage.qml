@@ -1,21 +1,18 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
-// Guest mode's people: show a one-time admin code, and for each guest make or unmake an
+// Guest mode's people: turn guest mode off, show a one-time admin code, and for each guest make or unmake an
 // admin, give their skips and boosts back, or remove them from the party.
-Kirigami.Page {
+FocusScope {
     id: page
     property real u: 1
     property var sheet: null
+    property real topInset: 104 * u
+    property real qrWidth: 0
+    property real qrBottom: 0
 
-    padding: 0
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: PageBackground { tint: app.backgroundColour }
-
-    function focusDefault() { (rows.length > 0 ? list : codeButton).forceActiveFocus() }
-    Component.onCompleted: { rows = app.guestRows; codeButton.forceActiveFocus() }
+    function focusDefault() { (rows.length > 0 ? list : modeButton).forceActiveFocus() }
+    Component.onCompleted: { rows = app.guestRows; modeButton.forceActiveFocus() }
 
     // Own copy of the rows, swapped together with the focus (see QueuePage).
     property var rows: []
@@ -28,7 +25,7 @@ Kirigami.Page {
         for (var i = 0; i < rows.length; i++) if (rows[i].id === keep) { idx = i; break }
         if (idx < 0) idx = Math.min(oldIndex, rows.length - 1)
         list.currentIndex = Math.max(0, idx)
-        if (hadFocus && rows.length === 0) codeButton.forceActiveFocus()
+        if (hadFocus && rows.length === 0) modeButton.forceActiveFocus()
     }
     Connections { target: app; function onGuestChanged() { page.takeRows() } }
 
@@ -40,30 +37,42 @@ Kirigami.Page {
     }
 
     ColumnLayout {
-        anchors { fill: parent; margins: 72 * page.u }
-        spacing: 24 * page.u
+        anchors { fill: parent; topMargin: page.topInset + 36 * page.u; bottomMargin: 40 * page.u
+                  leftMargin: 150 * page.u; rightMargin: Math.max(150 * page.u, page.qrWidth) }
+        spacing: 12 * page.u
 
-        QQC2.Label {
-            textFormat: Text.PlainText
-            text: "Guests and admins"
-            color: "#ffffff"
-            font.pixelSize: 48 * page.u
-            font.weight: Font.Bold
-        }
-        QQC2.Label {
-            textFormat: Text.PlainText
+        ScreenTitle {
             Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            text: "Admins can skip without limits, change the queue, volume and speakers, and reset or remove guests."
-            color: "#ffffff"
-            opacity: 0.75
-            font.pixelSize: 28 * page.u
+            Layout.bottomMargin: 8 * page.u
+            u: page.u
+            title: "Guests and admins"
+            note: "Admins can skip without limits, change the queue, volume and speakers, and reset or remove guests."
+        }
+
+        ListRow {
+            id: modeButton
+            objectName: "guestModeButton"
+            Layout.fillWidth: true
+            Layout.leftMargin: 10 * page.u
+            Layout.rightMargin: 10 * page.u
+            u: page.u
+            iconName: "qr"
+            title: app.guestMode ? "Guest mode is on" : "Guest mode is off"
+            subtitle: app.guestMode ? "OK turns it off — the QR code stops working and everyone is signed out"
+                                    : "OK turns it on and shows a QR code for guests to scan"
+            trailing: app.guestMode ? (app.guestCount === 1 ? "1 guest" : app.guestCount + " guests") : ""
+            Keys.onDownPressed: codeButton.forceActiveFocus()
+            onActivated: app.toggleGuestMode()
         }
 
         ListRow {
             id: codeButton
             objectName: "adminCodeButton"
             Layout.fillWidth: true
+            Layout.leftMargin: 10 * page.u
+            Layout.rightMargin: 10 * page.u
+            dimmed: !app.guestMode
+            Keys.onUpPressed: modeButton.forceActiveFocus()
             u: page.u
             iconName: "star"
             title: "Show an admin code"
@@ -72,13 +81,17 @@ Kirigami.Page {
             onActivated: app.showAdminCode()
         }
 
-        QQC2.Label {
+        Text {
             textFormat: Text.PlainText
+            Layout.fillWidth: true
+            Layout.leftMargin: 16 * page.u
+            Layout.topMargin: 8 * page.u
             visible: page.rows.length === 0
-            text: "No guests yet — they join by scanning the QR code on Now Playing."
-            color: "#ffffff"
-            opacity: 0.7
-            font.pixelSize: 30 * page.u
+            text: app.guestMode ? "No guests yet — they join by scanning the QR code in the corner."
+                                : "Turn guest mode on to let guests add songs from their phones."
+            color: Theme.textDim
+            font.pixelSize: Theme.label * page.u
+            wrapMode: Text.WordWrap
         }
 
         ListView {
@@ -87,7 +100,9 @@ Kirigami.Page {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 8 * page.u
+            spacing: 12 * page.u
+            leftMargin: 10 * page.u
+            rightMargin: 10 * page.u
             model: page.rows
             keyNavigationEnabled: true
             highlightRangeMode: ListView.ApplyRange
@@ -100,7 +115,7 @@ Kirigami.Page {
             delegate: ListRow {
                 id: rowItem
                 required property var modelData
-                width: ListView.view.width
+                width: ListView.view.width - 20 * page.u
                 u: page.u
                 focus: ListView.isCurrentItem
                 iconName: modelData.admin ? "star" : "person"

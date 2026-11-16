@@ -7,9 +7,7 @@ import QtQuick.Effects
 Item {
     id: bg
     property url source
-    property color baseColour: "#0d0b1a"
-    // Kirigami's page transitions read `background.color` (opaque = slide behind).
-    readonly property color color: baseColour
+    property color baseColour: "#07070b"
     readonly property real blurWidth: 384
 
     Rectangle {
@@ -48,9 +46,10 @@ Item {
     Rectangle {  // scrim: keeps text readable on any artwork
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#59000000" }
-            GradientStop { position: 0.55; color: "#8c000000" }
-            GradientStop { position: 1.0; color: "#d9000000" }
+            GradientStop { position: 0.0; color: "#5907070b" }
+            GradientStop { position: 0.38; color: "#6b07070b" }
+            GradientStop { position: 0.7; color: "#cc07070b" }
+            GradientStop { position: 1.0; color: "#fa07070b" }
         }
     }
 }

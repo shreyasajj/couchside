@@ -1,85 +1,84 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
-// A music item opened by the bridge. Playback is an explicit action in Couchside.
-Kirigami.Page {
+// A music item opened from outside (Bigscreen Bridge). Playback is an explicit action here.
+FocusScope {
     id: page
     objectName: "bridgeContent"
     property real u: 1
     property var item: ({})
     property var sheet: null
-    padding: 0
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: PageBackground { tint: app.backgroundColour }
+    property real topInset: 104 * u
     function focusDefault() { actions.forceActiveFocus() }
     Component.onCompleted: focusDefault()
 
     RowLayout {
-        anchors { fill: parent; margins: 72 * page.u }
-        spacing: 56 * page.u
-        Image {
-            source: page.item.imageUrl || ""
-            Layout.preferredWidth: 420 * page.u
-            Layout.preferredHeight: 420 * page.u
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
+        anchors { fill: parent; topMargin: page.topInset + 56 * page.u; leftMargin: 150 * page.u
+                  rightMargin: 150 * page.u; bottomMargin: 72 * page.u }
+        spacing: 64 * page.u
+        Rectangle {
+            Layout.preferredWidth: 480 * page.u
+            Layout.preferredHeight: 480 * page.u
+            Layout.alignment: Qt.AlignTop
+            radius: 28 * page.u
+            color: Theme.surfaceHigh
+            Icon { anchors.centerIn: parent; size: parent.width * 0.3; name: "music"; color: "#40ffffff"; visible: cover.status !== Image.Ready }
+            Image {
+                id: cover
+                anchors.fill: parent
+                source: page.item.imageUrl || ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                sourceSize: Qt.size(width, height)
+            }
         }
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 28 * page.u
-            QQC2.Label {
-                text: page.item.kind || ""
+            Layout.alignment: Qt.AlignTop
+            spacing: 16 * page.u
+            Text {
                 textFormat: Text.PlainText
-                color: Theme.textDim
-                font.pixelSize: 28 * page.u
+                text: (page.item.kind || "").toUpperCase()
+                color: Theme.a1
+                font.pixelSize: Theme.label * page.u
+                font.weight: Font.Bold
+                font.letterSpacing: 2 * page.u
             }
-            QQC2.Label {
+            Text {
+                textFormat: Text.PlainText
+                Layout.fillWidth: true
                 text: page.item.title || ""
-                textFormat: Text.PlainText
-                Layout.fillWidth: true
                 wrapMode: Text.Wrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
                 color: Theme.text
-                font.pixelSize: 48 * page.u
-                font.bold: true
+                font.pixelSize: Theme.display * page.u
+                font.weight: Font.ExtraBold
+                lineHeight: 1.02
             }
-            QQC2.Label {
-                text: page.item.subtitle || ""
+            Text {
                 textFormat: Text.PlainText
                 Layout.fillWidth: true
+                text: page.item.subtitle || ""
                 wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
                 color: Theme.textDim
-                font.pixelSize: 30 * page.u
+                font.pixelSize: Theme.subtitle * page.u
+                font.weight: Font.Medium
             }
-            QQC2.Button {
+            PillButton {
                 id: actions
+                Layout.topMargin: 28 * page.u
+                u: page.u
+                strong: true
                 text: "Play or add to queue"
-                font.pixelSize: 32 * page.u
-                padding: 24 * page.u
-                Keys.onReturnPressed: clicked()
-                Keys.onEnterPressed: clicked()
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Select) { clicked(); event.accepted = true }
-                }
                 onClicked: page.sheet.open(page.item.title, [
                     { id: "now", label: "Play now" },
                     { id: "next", label: "Play next" },
                     { id: "add", label: "Add to queue" }
                 ], actions, mode => app.playUri(page.item.uri, mode))
-                background: Rectangle {
-                    radius: 12 * page.u
-                    color: actions.activeFocus ? Theme.focus : Theme.surfaceHigh
-                    border.width: actions.activeFocus ? 5 * page.u : 0
-                    border.color: Theme.focus
-                }
-                contentItem: QQC2.Label {
-                    text: actions.text
-                    font: actions.font
-                    color: actions.activeFocus ? Theme.focusText : Theme.text
-                }
             }
-            Item { Layout.fillHeight: true }
         }
     }
 }
