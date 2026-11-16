@@ -9,6 +9,8 @@ Kirigami.Page {
     id: page
     property real u: 1
     property var sheet: null
+    property bool bridgeManaged: false
+    objectName: "library"
 
     padding: 0
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
@@ -22,12 +24,18 @@ Kirigami.Page {
         else searchBox.forceActiveFocus()
     }
     property bool cardFocused: false
-    Component.onCompleted: { app.loadRecents(); searchBox.forceActiveFocus() }
+    Component.onCompleted: { if (!bridgeManaged) app.loadRecents(); searchBox.forceActiveFocus() }
     function handleBack() {
         // Back while typing: keyboard away, straight to the results (Bigscreen's keyboard
         // swallows the first key after it hides, so landing there saves a press).
         if (field.activeFocus) { debounce.stop(); app.search(field.text); toResults(); return true }
         return false
+    }
+    function setBridgeQuery(query) {
+        debounce.stop()
+        field.text = query
+        stopEditing()
+        toResults()
     }
     function startEditing() { field.forceActiveFocus(); Qt.inputMethod.show() }
     // Letters from a keyboard remote: start a new search with them (or keep typing),

@@ -11,6 +11,7 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  - --own-name=io.github.shreyasajj.Couchside.Control  # narrow UI-only local IPC
   - --socket=pulseaudio      # Sendspin audio output (PipeWire-pulse)
   - --own-name=org.mpris.MediaPlayer2.Sendspin.*  # Sendspin MPRIS: ...Sendspin.instance<pid>
 cleanup-commands:
