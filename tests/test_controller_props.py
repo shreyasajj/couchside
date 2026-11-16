@@ -653,13 +653,6 @@ def test_sendspin_settings_cycle_and_save(ctl, tmp_path):
     assert ctl.sendspinDelay == 0
     ctl.cycleSendspinDelay()
     assert ctl.sendspinDelay == 25
-    ctl._audio_devices = ["HD-Audio Generic: HISENSE (hw:0,3)", "pulse"]
-    assert ctl.audioDevice == "Default"
-    ctl.cycleAudioDevice()
-    assert ctl.audioDevice == "HD-Audio Generic: HISENSE (hw:0,3)"
-    ctl.cycleAudioDevice()
-    ctl.cycleAudioDevice()
-    assert ctl.audioDevice == "Default"
     ctl.setPlayerName("  Den TV  ")
     ctl.setPlayerName("   ")  # ignored
     saved = load_settings()
@@ -667,13 +660,90 @@ def test_sendspin_settings_cycle_and_save(ctl, tmp_path):
     assert saved.sendspin_delay_ms == 25 and saved.sendspin_audio_device is None
 
 
-async def test_audio_devices_loaded_from_sendspin(ctl, monkeypatch):
+SINKS_JSON = '[{"name":"hdmi","description":"HDMI Surround"}]'
+SOURCES_JSON = ('[{"name":"mic","description":"USB Mic"},'
+                '{"name":"hdmi.monitor","description":"Monitor of HDMI Surround"}]')
+
+
+async def load_devices(ctl, monkeypatch, sinks=SINKS_JSON, sources=SOURCES_JSON, direct=("HDMI 1 (hw:0,7)",)):
     async def fake_list():
-        return ["Speaker A", "Speaker B"]
+        return list(direct)
+
+    async def fake_pactl(kind):
+        return {"sinks": sinks, "sources": sources}[kind]
     monkeypatch.setattr(ctl, "_list_audio_devices", fake_list)
+    monkeypatch.setattr(ctl, "_pactl", fake_pactl)
     ctl.loadAudioDevices()
     await settle()
-    assert ctl._audio_devices == ["Speaker A", "Speaker B"]
+
+
+async def test_audio_outputs_listed_and_chosen(ctl, monkeypatch):
+    from couchside.core.settings import load_settings
+    ctl._pulse = FakePulse()
+    assert ctl.audioOutputs == [{"id": "", "label": "Default", "section": "", "current": True}]
+    assert ctl.audioOutputLabel == "Default"
+    await load_devices(ctl, monkeypatch)
+    assert [(o["id"], o["label"], o["section"]) for o in ctl.audioOutputs] == [
+        ("", "Default", ""), ("sink:hdmi", "HDMI Surround", "Outputs"),
+        ("HDMI 1 (hw:0,7)", "HDMI 1 (hw:0,7)", "Direct (visualizer can't listen)")]
+    ctl.setAudioOutput("sink:hdmi")
+    assert load_settings().sendspin_audio_device == "sink:hdmi"
+    assert ctl.audioOutputLabel == "HDMI Surround"
+    assert [o["current"] for o in ctl.audioOutputs] == [False, True, False]
+    assert ctl._pulse.sources[-1] == "hdmi.monitor"     # the visualizer follows the output
+    ctl.setAudioOutput("")
+    assert load_settings().sendspin_audio_device is None and ctl._pulse.sources[-1] == "@DEFAULT_MONITOR@"
+
+
+async def test_beat_source_listed_and_chosen(ctl, monkeypatch):
+    from couchside.core.settings import load_settings
+    ctl._pulse = FakePulse()
+    assert ctl.beatSources == [{"id": "", "label": "What this TV is playing", "section": "", "current": True}]
+    assert ctl.beatSourceLabel == "What this TV is playing"
+    await load_devices(ctl, monkeypatch)
+    assert [(o["id"], o["section"]) for o in ctl.beatSources] == [
+        ("", ""), ("hdmi.monitor", "Outputs"), ("mic", "Inputs")]
+    ctl.setBeatSource("mic")
+    assert load_settings().visualizer_source == "mic" and ctl._pulse.sources[-1] == "mic"
+    assert ctl.beatSourceLabel == "USB Mic"
+    ctl.setBeatSource("")
+    assert load_settings().visualizer_source is None and ctl._pulse.sources[-1] == "@DEFAULT_MONITOR@"
+
+
+async def test_a_beat_source_that_is_gone_falls_back_and_says_so(ctl, monkeypatch):
+    ctl._pulse = FakePulse()
+    ctl._settings.visualizer_source = "old-mic"
+    ctl._settings.sendspin_audio_device = "sink:hdmi"
+    await load_devices(ctl, monkeypatch)
+    assert ctl._pulse.sources[-1] == "hdmi.monitor"
+    assert "isn't connected" in ctl.toast
+    assert ctl.beatSources[-1] == {"id": "old-mic", "label": "old-mic (not connected)",
+                                   "section": "", "current": True}
+
+
+async def test_no_pactl_still_gives_both_lists(ctl, monkeypatch):
+    ctl._pulse = FakePulse()
+    ctl._settings.visualizer_source = "mic"
+    await load_devices(ctl, monkeypatch, sinks="", sources="")
+    assert [o["id"] for o in ctl.audioOutputs] == ["", "HDMI 1 (hw:0,7)"]
+    assert [o["id"] for o in ctl.beatSources] == ["", "mic"]
+    assert ctl._pulse.sources[-1] == "mic" and ctl.toast == ""   # unknown list: trust the setting
+
+
+def test_accent_colours(ctl):
+    from couchside.core.settings import load_settings
+    assert (ctl.accent1, ctl.accent2) == ("#00e0c6", "#ff3da6")
+    assert [a["id"] for a in ctl.accents] == ["teal-pink", "sky-coral", "violet", "gold-green"]
+    ctl.setAccent("violet")
+    assert (ctl.accent1, ctl.accent2) == ("#7c5cff", "#b14dff") and load_settings().accent == "violet"
+    assert [a["current"] for a in ctl.accents] == [False, False, True, False]
+    ctl.setAccent("x")
+    assert ctl.accent1 == "#7c5cff"
+
+
+def test_an_unknown_saved_accent_shows_the_default(ctl):
+    ctl._settings.accent = "nope"
+    assert (ctl.accent1, ctl.accent2) == ("#00e0c6", "#ff3da6")
 
 
 async def test_sendspin_version_text(ctl, monkeypatch):
@@ -859,6 +929,11 @@ class FakePulse:
     def __init__(self):
         self.running, self.starts, self.stops = False, 0, 0
         self.level, self.beats = 0.0, 0
+        self.bars = [0.0] * 64
+        self.sources = []
+
+    def set_source(self, source):
+        self.sources.append(source)
 
     def start(self):
         self.starts += 1
@@ -896,16 +971,62 @@ async def test_listens_only_while_shown_and_playing(pulse_ctl):
     assert not ctl._pulse.running
 
 
-def test_visualizer_off_stops_listening_but_party_mode_still_listens(pulse_ctl, tmp_path):
+def test_visualizer_off_stops_the_pulse_but_the_visualizer_screen_still_listens(pulse_ctl, tmp_path):
     from couchside.core.settings import load_settings
     ctl = pulse_ctl
     ctl.pulseVisible = True
     ctl.visualizerEnabled = False
     assert not ctl._pulse.running and load_settings().visualizer_enabled is False
-    ctl.togglePartyMode()
-    assert ctl.partyMode and ctl._pulse.running
-    ctl.togglePartyMode()
-    assert not ctl.partyMode and not ctl._pulse.running
+    ctl.vizVisible = True
+    assert ctl._pulse.running and ctl._pulse_timer.interval() == 33
+    ctl.vizVisible = False
+    assert not ctl._pulse.running and ctl._pulse_timer.interval() == 50
+
+
+def test_spectrum_rests_at_zero_and_follows_the_audio(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.playback.now_playing = None
+    ctl.vizVisible = True
+    assert ctl.spectrum == [0.0] * 64 and not ctl._pulse.running   # nothing playing
+    assert ctl.vizBeat == 0.0 and ctl.vizEnergy == 0.0
+
+
+def test_spectrum_updates_only_on_the_visualizer_screen(pulse_ctl):
+    ctl = pulse_ctl
+    seen = []
+    ctl.spectrumChanged.connect(lambda: seen.append(1))
+    ctl.pulseVisible = True
+    ctl._pulse.bars = [0.5] * 64
+    ctl._pulse.level, ctl._pulse.beats = 0.4, 1
+    ctl._poll_pulse()
+    assert seen == []                       # Now Playing: only the stepped pulse
+    ctl.vizVisible = True
+    ctl._pulse.beats = 2
+    ctl._poll_pulse()
+    assert seen and ctl.spectrum == [0.5] * 64
+    assert ctl.vizBeat == 1.0 and ctl.vizEnergy == 0.4
+    ctl._poll_pulse()
+    assert ctl.vizBeat == 0.75              # falls between beats
+
+
+def test_visualizer_intensity_and_mode(ctl):
+    from couchside.core.settings import load_settings
+    assert ctl.visualizerIntensity == 1.0 and ctl.visualizerMode == "radial"
+    ctl.visualizerIntensity = 9
+    assert ctl.visualizerIntensity == 2.4
+    ctl.visualizerIntensity = 0.52
+    assert ctl.visualizerIntensity == 0.5 and load_settings().visualizer_intensity == 0.5
+    ctl.visualizerIntensity = -1
+    assert ctl.visualizerIntensity == 0.0
+    ctl.visualizerMode = "party"
+    assert ctl.visualizerMode == "party" and load_settings().visualizer_mode == "party"
+    ctl.visualizerMode = "nope"
+    assert ctl.visualizerMode == "party"
+
+
+def test_an_unknown_saved_mode_shows_radial(ctl):
+    ctl._settings.visualizer_mode = "nope"
+    assert ctl.visualizerMode == "radial"
 
 
 def test_pulse_swells_on_beats_and_settles(pulse_ctl):

@@ -8,6 +8,7 @@ import time
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
+from couchside.core import audio_devices
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
@@ -52,6 +53,14 @@ _FAIL_TEXT = {
     "create_group": "Couldn't create the group", "edit_group": "Couldn't change the group",
     "delete_group": "Couldn't delete the group",
 }
+# colour pairs for the look (Settings → Look): id, name, first and second accent
+ACCENTS = (
+    ("teal-pink", "Teal and pink", "#00e0c6", "#ff3da6"),
+    ("sky-coral", "Sky and coral", "#36d6ff", "#ff5d3d"),
+    ("violet", "Violet", "#7c5cff", "#b14dff"),
+    ("gold-green", "Gold and green", "#ffd23d", "#23d18b"),
+)
+VISUALIZER_MODES = ("radial", "flow", "bars", "party")
 _QUEUE_EVENTS = {"queue_items_updated", "queue_updated"}
 _PLAYER_EVENTS = {"player_added", "player_updated", "player_removed"}
 
@@ -73,7 +82,8 @@ class AppController(QObject):
     updateChanged = Signal()
     pulseChanged = Signal()       # visualizer on/off, page shown
     levelChanged = Signal()       # audioPulse (up to 20 a second while listening)
-    partyChanged = Signal()
+    spectrumChanged = Signal()    # spectrum, vizBeat, vizEnergy (30 a second on the Visualizer screen)
+    accentChanged = Signal()
     beatChanged = Signal()        # beatHue (party mode's colour turns on every beat)
     qrChanged = Signal()
 
@@ -115,7 +125,9 @@ class AppController(QObject):
         self._raw_english = False
         self._translation: list[str] | None = None
         self._translations: dict[tuple[str, str], list[str]] = {}  # (song, service)
-        self._audio_devices: list[str] = []
+        self._audio_devices: list[str] = []      # Sendspin's own (direct ALSA) devices
+        self._sinks: list[audio_devices.AudioChoice] = []     # PipeWire outputs
+        self._sources: list[audio_devices.AudioChoice] = []   # what the visualizer can listen to
         self._sendspin_latest: str | None = None
         self._sendspin_checked = False
         self._updater = None
@@ -123,9 +135,11 @@ class AppController(QObject):
         self._update_percent = 0
         self._newer_installed = False  # the portal saw a newer build already on disk
         from couchside.core.audio_capture import AudioPulse
-        self._pulse = AudioPulse()
-        self._pulse_visible = False   # Now Playing (or party mode) on screen, app in front
-        self._party = False
+        self._pulse = AudioPulse(source=audio_devices.capture_source(
+            self._settings.visualizer_source, self._settings.sendspin_audio_device))
+        self._pulse_visible = False   # Now Playing on screen, app in front
+        self._viz_visible = False     # the Visualizer screen on screen, app in front
+        self._viz_beat = 0.0
         self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
         self._beat_hue = 0.55
         self._light, self._shown_light = 0.0, 0.0  # the edge lights' slower pulse
@@ -1050,19 +1064,65 @@ class AppController(QObject):
         save_settings(self._settings)  # the Sendspin supervisor restarts the speaker
         self.sendspinChanged.emit()
 
-    @Property(str, notify=sendspinChanged)
-    def audioDevice(self) -> str:
-        return self._settings.sendspin_audio_device or "Default"
+    @staticmethod
+    def _choice_rows(choices: list, current: str) -> list[dict]:
+        return [{"id": c.id, "label": c.label, "section": c.section, "current": c.id == current}
+                for c in choices]
 
-    @Slot()
-    def cycleAudioDevice(self) -> None:
-        choices: list[str | None] = [None] + self._audio_devices
-        cur = self._settings.sendspin_audio_device
-        if cur not in choices:
-            choices.append(cur)  # a saved device that isn't plugged in right now
-        self._settings.sendspin_audio_device = choices[(choices.index(cur) + 1) % len(choices)]
-        save_settings(self._settings)
+    def _output_choices(self) -> list:
+        return audio_devices.output_choices(self._sinks, self._audio_devices,
+                                            self._settings.sendspin_audio_device)
+
+    @Property("QVariantList", notify=sendspinChanged)
+    def audioOutputs(self) -> list[dict]:
+        """Where Sendspin can play: Default, the PipeWire outputs, then the direct devices."""
+        return self._choice_rows(self._output_choices(), self._settings.sendspin_audio_device or "")
+
+    @Property(str, notify=sendspinChanged)
+    def audioOutputLabel(self) -> str:
+        current = self._settings.sendspin_audio_device or ""
+        return next((c.label for c in self._output_choices() if c.id == current), "Default")
+
+    @Slot(str)
+    def setAudioOutput(self, choice: str) -> None:
+        self._settings.sendspin_audio_device = choice or None
+        save_settings(self._settings)  # the Sendspin supervisor restarts the speaker
+        self._apply_capture_source()   # "what this TV is playing" moves with the output
         self.sendspinChanged.emit()
+
+    # --- what the visualizer listens to ---
+    def _source_choices(self) -> list:
+        return audio_devices.source_choices(self._sources, self._settings.visualizer_source)
+
+    @Property("QVariantList", notify=pulseChanged)
+    def beatSources(self) -> list[dict]:
+        return self._choice_rows(self._source_choices(), self._settings.visualizer_source or "")
+
+    @Property(str, notify=pulseChanged)
+    def beatSourceLabel(self) -> str:
+        current = self._settings.visualizer_source or ""
+        return next((c.label for c in self._source_choices() if c.id == current),
+                    "What this TV is playing")
+
+    @Slot(str)
+    def setBeatSource(self, choice: str) -> None:
+        self._settings.visualizer_source = choice or None
+        save_settings(self._settings)
+        self._apply_capture_source()
+        self.pulseChanged.emit()
+
+    def _apply_capture_source(self, announce: bool = False) -> None:
+        """Point the listener at the chosen source; one that is gone (unplugged) falls back
+        to what this TV plays, and `announce` says so."""
+        saved = self._settings.visualizer_source
+        known = self._sources or None   # no list (no pactl): trust the setting
+        source = audio_devices.capture_source(saved, self._settings.sendspin_audio_device, known)
+        self._pulse.set_source(source)
+        if announce and saved and source != saved:
+            self._set_toast(f"{saved} isn't connected — listening to what this TV plays")
+
+    async def _pactl(self, kind: str) -> str:
+        return await audio_devices.pactl_json(kind)
 
     async def _list_audio_devices(self) -> list[str]:
         proc = await asyncio.create_subprocess_exec(*AUDIO_DEVICES_ARGV, stdout=asyncio.subprocess.PIPE,
@@ -1077,11 +1137,18 @@ class AppController(QObject):
     @Slot()
     def loadAudioDevices(self) -> None:
         async def run():
-            try:
-                self._audio_devices = await self._list_audio_devices()
-            except Exception as e:
-                log.warning("listing audio devices failed: %s", e)
+            direct, sinks, sources = await asyncio.gather(
+                self._list_audio_devices(), self._pactl("sinks"), self._pactl("sources"),
+                return_exceptions=True)
+            if isinstance(direct, BaseException):
+                log.warning("listing audio devices failed: %s", direct)
+            else:
+                self._audio_devices = direct
+            self._sinks = audio_devices.parse_sinks(sinks if isinstance(sinks, str) else "")
+            self._sources = audio_devices.parse_sources(sources if isinstance(sources, str) else "")
+            self._apply_capture_source(announce=True)
             self.sendspinChanged.emit()
+            self.pulseChanged.emit()
         self._spawn(run())
 
     @Property(int, notify=sendspinChanged)
@@ -1264,15 +1331,82 @@ class AppController(QObject):
             self._pulse_visible = bool(shown)
             self._update_listening()
 
-    @Property(bool, notify=partyChanged)
-    def partyMode(self) -> bool:
-        return self._party
+    @Property(bool, notify=pulseChanged)
+    def vizVisible(self) -> bool:
+        return self._viz_visible
 
-    @Slot()
-    def togglePartyMode(self) -> None:
-        self._party = not self._party
-        self._update_listening()
-        self.partyChanged.emit()
+    @vizVisible.setter
+    def vizVisible(self, shown: bool) -> None:
+        """QML: the Visualizer screen is on screen and the app is in front. It listens
+        whatever the "Beat pulse" setting says, and gets the spectrum 30 times a second."""
+        if bool(shown) != self._viz_visible:
+            self._viz_visible = bool(shown)
+            self._pulse_timer.setInterval(33 if self._viz_visible else 50)
+            self._update_listening()
+            self.spectrumChanged.emit()
+
+    @Property("QVariantList", notify=spectrumChanged)
+    def spectrum(self) -> list[float]:
+        """64 bars, low to high, 0..1.15; all zero while nothing is heard."""
+        return self._pulse.bars if self._pulse.running else [0.0] * 64
+
+    @Property(float, notify=spectrumChanged)
+    def vizBeat(self) -> float:
+        """1 on a beat, falling by a quarter per frame."""
+        return self._viz_beat
+
+    @Property(float, notify=spectrumChanged)
+    def vizEnergy(self) -> float:
+        return self._pulse.level if self._pulse.running else 0.0
+
+    @Property(float, notify=pulseChanged)
+    def visualizerIntensity(self) -> float:
+        return self._settings.visualizer_intensity
+
+    @visualizerIntensity.setter
+    def visualizerIntensity(self, value: float) -> None:
+        value = round(round(max(0.0, min(2.4, float(value))) * 20) / 20, 2)  # steps of 0.05
+        if value != self._settings.visualizer_intensity:
+            self._settings.visualizer_intensity = value
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
+    @Property(str, notify=pulseChanged)
+    def visualizerMode(self) -> str:
+        mode = self._settings.visualizer_mode
+        return mode if mode in VISUALIZER_MODES else VISUALIZER_MODES[0]
+
+    @visualizerMode.setter
+    def visualizerMode(self, mode: str) -> None:
+        if mode in VISUALIZER_MODES and mode != self._settings.visualizer_mode:
+            self._settings.visualizer_mode = mode
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
+    # --- look ---
+    def _accent(self) -> tuple:
+        return next((a for a in ACCENTS if a[0] == self._settings.accent), ACCENTS[0])
+
+    @Property(str, notify=accentChanged)
+    def accent1(self) -> str:
+        return self._accent()[2]
+
+    @Property(str, notify=accentChanged)
+    def accent2(self) -> str:
+        return self._accent()[3]
+
+    @Property("QVariantList", notify=accentChanged)
+    def accents(self) -> list[dict]:
+        current = self._accent()[0]
+        return [{"id": i, "label": label, "a1": a1, "a2": a2, "current": i == current}
+                for i, label, a1, a2 in ACCENTS]
+
+    @Slot(str)
+    def setAccent(self, accent: str) -> None:
+        if any(a[0] == accent for a in ACCENTS):
+            self._settings.accent = accent
+            save_settings(self._settings)
+            self.accentChanged.emit()
 
     @Property(float, notify=levelChanged)
     def audioPulse(self) -> float:
@@ -1305,11 +1439,15 @@ class AppController(QObject):
         mode paints the screen edges with it, so lights that follow the screen dance too."""
         return self._beat_hue
 
-    def _update_listening(self) -> None:
-        """Listen only while something on screen pulses and music plays (no CPU otherwise)."""
+    def _want_listening(self) -> bool:
+        """Listen only while something on screen moves with the music and music plays."""
         np = self.playback.now_playing
         playing = np is not None and np.state == "playing"
-        want = self._pulse_visible and playing and (self._settings.visualizer_enabled or self._party)
+        return playing and (self._viz_visible
+                            or (self._pulse_visible and self._settings.visualizer_enabled))
+
+    def _update_listening(self) -> None:
+        want = self._want_listening()
         if want and not self._pulse.running:
             if self._pulse.start():
                 self._pulse_timer.start()
@@ -1320,9 +1458,7 @@ class AppController(QObject):
             self._poll_pulse()  # settle at rest
 
     def _update_listening_restart(self) -> None:
-        np = self.playback.now_playing
-        playing = np is not None and np.state == "playing"
-        if self._pulse_visible and playing and (self._settings.visualizer_enabled or self._party):
+        if self._want_listening():
             self._pulse.start()
         else:
             self._pulse_timer.stop()
@@ -1338,13 +1474,18 @@ class AppController(QObject):
             self._seen_beats = self._pulse.beats
             self._kick = 1.0
             self._light = 1.0
+            self._viz_beat = 1.0
             self._beat_hue = round((self._beat_hue + 0.17) % 1.0, 2)  # a clearly different colour
             self.beatChanged.emit()
         else:
             self._kick = self._kick * 0.55 if self._kick > 0.05 else 0.0
             self._light = self._light * 0.82 if self._light > 0.05 else 0.0
+            self._viz_beat = self._viz_beat * 0.75 if self._viz_beat > 0.02 else 0.0
         if not self._pulse.running:
             self._light = 0.0
+            self._viz_beat = 0.0
+        if self._viz_visible:
+            self.spectrumChanged.emit()
         pulse = max(0.6 * self._pulse.level, self._kick)
         light = max(0.5 * self._pulse.level, self._light)
         # in steps of 0.05: every change costs binding work and a redraw
