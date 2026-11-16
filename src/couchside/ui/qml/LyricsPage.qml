@@ -56,19 +56,12 @@ FocusScope {
         anchors.centerIn: parent
         visible: !page.shown || app.title === ""
         spacing: 36 * page.u
-        Rectangle {
+        Cover {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 420 * page.u
             height: width
             radius: 28 * page.u
-            color: "#16161f"
-            clip: true
-            Icon { anchors.centerIn: parent; size: parent.width * 0.3; name: "music"; color: "#40ffffff" }
-            CrossfadeImage {
-                anchors.fill: parent
-                source: app.artUrl
-                sourceSize: Qt.size(width, height)
-            }
+            source: app.artUrl
         }
         Text {
             textFormat: Text.PlainText

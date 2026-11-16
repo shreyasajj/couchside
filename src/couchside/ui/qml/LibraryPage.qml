@@ -84,6 +84,19 @@ FocusScope {
         if (flat.count === 0 && list.activeFocus) { page.rowFocused = false; searchBox.forceActiveFocus() }
     }
     Connections { target: app; function onLibraryChanged() { page.rebuild() } }
+    // Opened before the server was reachable (right after starting): ask for the recents
+    // once more when it is.
+    property bool askedAgain: false
+    Connections {
+        target: app
+        function onChanged() {
+            if (!page.askedAgain && !page.bridgeManaged && flat.count === 0 && field.text === ""
+                    && app.connState === "connected") {
+                page.askedAgain = true
+                app.loadRecents()
+            }
+        }
+    }
 
     Timer {
         id: debounce

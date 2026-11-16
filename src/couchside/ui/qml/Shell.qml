@@ -129,9 +129,16 @@ FocusScope {
             shell.setupWasNeeded = app.needsSetup
         }
     }
+    // `couchside --screen=queue` starts on that screen (for screenshots and development).
+    readonly property string startScreen: {
+        var args = Qt.application.arguments
+        for (var i = 0; i < args.length; i++) if (args[i].indexOf("--screen=") === 0) return args[i].slice(9)
+        return ""
+    }
     Component.onCompleted: {
         setupWasNeeded = app.needsSetup
         if (app.needsSetup) go("settings")
+        else if (startScreen !== "") go(startScreen)
         else focusScreen()
     }
 

@@ -49,20 +49,14 @@ Item {
     }
 
     // no lyrics: the artwork bounces
-    Rectangle {
+    Cover {
         anchors.centerIn: parent
         width: Math.min(parent.width, parent.height) * 0.5
         height: width
-        radius: 24 * party.u
-        color: "#16161f"
-        clip: true
+        radius: 28 * party.u
         visible: !party.hasLyrics
         scale: 1.0 + 0.06 * party.kick
-        CrossfadeImage {
-            anchors.fill: parent
-            source: app.artUrl
-            sourceSize: Qt.size(width, height)
-        }
+        source: app.artUrl
     }
 
     Text {

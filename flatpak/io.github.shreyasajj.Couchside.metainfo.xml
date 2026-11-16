@@ -26,6 +26,9 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.9.0" date="2026-11-16">
+      <description><p>New look: a top bar with tabs, a centred Now Playing with Up Next, a full-screen Lyrics tab and a Visualizer tab (Radial Pulse, Flow Lines, Bars, Party). Pick the audio output and what the visualizer listens to from a list; choose the colours.</p></description>
+    </release>
     <release version="0.1.0" date="2026-11-10">
       <description><p>Phase 1: connect to Music Assistant, bundled Sendspin player, basic playback controls.</p></description>
     </release>

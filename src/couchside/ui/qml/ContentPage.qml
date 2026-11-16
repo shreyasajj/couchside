@@ -16,21 +16,12 @@ FocusScope {
         anchors { fill: parent; topMargin: page.topInset + 56 * page.u; leftMargin: 150 * page.u
                   rightMargin: 150 * page.u; bottomMargin: 72 * page.u }
         spacing: 64 * page.u
-        Rectangle {
+        Cover {
             Layout.preferredWidth: 480 * page.u
             Layout.preferredHeight: 480 * page.u
             Layout.alignment: Qt.AlignTop
             radius: 28 * page.u
-            color: Theme.surfaceHigh
-            Icon { anchors.centerIn: parent; size: parent.width * 0.3; name: "music"; color: "#40ffffff"; visible: cover.status !== Image.Ready }
-            Image {
-                id: cover
-                anchors.fill: parent
-                source: page.item.imageUrl || ""
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                sourceSize: Qt.size(width, height)
-            }
+            source: page.item.imageUrl || ""
         }
         ColumnLayout {
             Layout.fillWidth: true

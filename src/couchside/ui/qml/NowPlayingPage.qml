@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Effects
 import "typing.js" as Typing
 
 // Now Playing: blurred artwork behind, the cover in the middle, then the song, its
@@ -79,46 +78,10 @@ FocusScope {
             pulse: visible ? app.audioPulse : 0  // hidden: no binding work
             baseColour: Theme.a2
         }
-        Rectangle {
-            id: artMask
+        Cover {
             anchors.fill: parent
             radius: 28 * page.u
-            color: "#ffffff"
-            visible: false
-            layer.enabled: true
-        }
-        Item {
-            id: artContent
-            anchors.fill: parent
-            visible: false
-            layer.enabled: true
-            Rectangle { anchors.fill: parent; color: "#16161f" }
-            Icon {
-                anchors.centerIn: parent
-                size: parent.width * 0.3
-                name: "music"
-                color: "#40ffffff"
-                visible: !artImage.hasImage
-            }
-            CrossfadeImage {
-                id: artImage
-                anchors.fill: parent
-                source: app.artUrl
-                // decode at the cover's real size: sharp on a 4K TV (the URL serves 1024 px)
-                sourceSize: Qt.size(artCard.side, artCard.side)
-            }
-        }
-        MultiEffect {  // rounded corners + soft shadow
-            anchors.fill: parent
-            source: artContent
-            maskEnabled: true
-            maskSource: artMask
-            maskThresholdMin: 0.5
-            maskSpreadAtMin: 1.0
-            shadowEnabled: true
-            shadowBlur: 1.0
-            shadowOpacity: 0.6
-            shadowVerticalOffset: 16 * page.u
+            source: app.artUrl
         }
     }
 
