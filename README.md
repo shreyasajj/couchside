@@ -270,3 +270,31 @@ player selection), `src/couchside/sendspin` (bundled player helpers),
   One request per song; a result with the wrong number of lines is discarded.
 - **Flatpak instead of `uv` + systemd** (owner's decision, see design doc):
   Sendspin is bundled and autostarted through the Background portal.
+
+### Bigscreen Bridge UI control
+
+Couchside exposes a local, UI-only session-bus endpoint at
+`io.github.shreyasajj.Couchside.Control`, path
+`/io/github/shreyasajj/Couchside/Control`, method `Execute(JSON) → JSON`.
+The Flatpak manifest grants ownership of that name only. No broad session-bus
+permission is required. A D-Bus name lock keeps patched UI launches single-instance;
+subsequent launches request focus on the existing UI before exiting.
+
+Requests carry a unique `id` and a `command` (`get_state`, `focus`, `navigate`).
+`focus` preserves the current UI. `navigate` accepts `content_type` and
+`content_id`: `now_playing` with an empty ID, `search` with a query, or
+`track`/`album`/`artist`/`playlist` with a matching Music Assistant URI, for example
+`library://album/123`. Items are resolved through the connected MA client before
+opening a detail page; navigation never starts playback. Use Music Assistant's
+HA integration for playback. Unknown types, disconnected MA, missing content and
+navigation failures return explicit errors. Responses echo the request ID;
+repeated IDs return a bounded cached response and cannot change the request body.
+
+`get_state` reports readiness, supported content types, MA playback ownership and
+the local Sendspin player's MA ID. `view` records the most recent acknowledged
+bridge navigation, not subsequent manual remote navigation. Closing the UI leaves
+the separately supervised Sendspin process alone.
+
+Local IPC trusts the logged-in Unix user. This endpoint has no remote JavaScript,
+shell, URL navigation, token access or playback commands. Network access goes
+through Bigscreen Bridge's authenticated API.

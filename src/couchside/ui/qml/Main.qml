@@ -48,6 +48,42 @@ Kirigami.ApplicationWindow {
         SpeakersPage { u: root.u; sheet: actionSheet; groupEditor: groupEditorOverlay }
     }
 
+    Component { id: bridgeContentComponent; ContentPage { u: root.u; sheet: actionSheet } }
+    Connections {
+        target: bridgeControl
+        function onNavigationRequested(requestId, kind, payloadJson) {
+            try {
+                const payload = JSON.parse(payloadJson)
+                if (kind !== "focus") {
+                    exitDialog.close()
+                    actionSheet.close()
+                    groupEditorOverlay.close()
+                    app.closeAdminCode()
+                    pageStack.clear()
+                    pageStack.push(nowPlayingComponent)
+                    if (kind === "search") {
+                        pageStack.push(libraryComponent, {bridgeManaged: true})
+                        pageStack.currentItem.setBridgeQuery(payload.value)
+                    } else if (kind !== "now_playing") {
+                        pageStack.push(bridgeContentComponent, {item: payload.item})
+                    }
+                }
+                root.showFullScreen()
+                root.raise()
+                root.requestActivate()
+                Qt.callLater(function() {
+                    const expected = kind === "search" ? "library" : "bridgeContent"
+                    const valid = kind === "focus" || (kind === "now_playing" ? pageStack.depth === 1
+                        : pageStack.currentItem && pageStack.currentItem.objectName === expected)
+                    bridgeControl.completeNavigation(requestId, Boolean(valid))
+                })
+            } catch (error) {
+                console.warn("Bridge navigation failed:", error)
+                bridgeControl.completeNavigation(requestId, false)
+            }
+        }
+    }
+
     function showSetup() {
         if (!pageStack.currentItem || pageStack.currentItem.objectName !== "setup") pageStack.push(setupComponent)
     }
