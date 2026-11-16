@@ -67,3 +67,36 @@ def test_stereo_or_odd_blocks_are_accepted():
     level, beat = d.feed(np.zeros((BLOCK, 2), np.float32))
     assert level == 0.0 and beat is False
     d.feed(np.zeros(300, np.float32))  # a short block doesn't crash
+
+
+def bars_for(signal):
+    d = BeatDetector(SR, BLOCK)
+    for k in range(len(signal) // BLOCK):
+        d.feed(signal[k * BLOCK:(k + 1) * BLOCK])
+    return d.bars
+
+
+def tone(hz, seconds=1.0, amp=0.5):
+    t = np.arange(int(SR * seconds)) / SR
+    return (amp * np.sin(2 * np.pi * hz * t)).astype(np.float32)
+
+
+def test_bars_are_64_and_still_in_silence():
+    assert len(BeatDetector(SR, BLOCK).bars) == 64   # before any audio
+    bars = bars_for(np.zeros(SR, np.float32))
+    assert len(bars) == 64 and not bars.any()
+
+
+def test_bars_follow_the_pitch():
+    low, high = bars_for(tone(100)), bars_for(tone(5000))
+    assert int(np.argmax(low)) < 16 and low.max() > 0.5
+    assert int(np.argmax(high)) >= 40 and high.max() > 0.5
+
+
+def test_bars_stay_in_range_for_loud_noise():
+    bars = bars_for(np.random.default_rng(2).uniform(-1, 1, SR).astype(np.float32))
+    assert bars.min() >= 0 and bars.max() <= 1.15
+
+
+def test_quiet_music_fills_the_bars_too():
+    assert bars_for(tone(100, amp=0.01)).max() > 0.5

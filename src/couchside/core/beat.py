@@ -15,6 +15,9 @@ import numpy as np
 
 SILENCE = 1e-5          # low-band RMS below this is silence
 LOW_HZ, HIGH_HZ = 40.0, 180.0
+BARS = 64
+BARS_LOW_HZ, BARS_HIGH_HZ = 40.0, 10000.0
+BARS_MAX = 1.15         # a bar may overshoot a little on a peak, like the level never does
 
 
 class BeatDetector:
@@ -33,6 +36,17 @@ class BeatDetector:
         self._since_beat = 1e9
         self._peak = 0.0
         self._level = 0.0
+        # spectrum bars: 64 bands, evenly spaced in pitch. Low bands are narrower than one
+        # FFT bin, so each bar reads the spectrum at its centre (interpolated) as well as
+        # the loudest bin inside it.
+        top = min(BARS_HIGH_HZ, sample_rate / 2)
+        edges = np.geomspace(BARS_LOW_HZ, top, BARS + 1)
+        self._freqs = freqs
+        self._centres = np.sqrt(edges[:-1] * edges[1:])
+        self._starts = np.minimum(np.searchsorted(freqs, edges[:-1]), len(freqs) - 1)
+        self._end = int(min(np.searchsorted(freqs, top) + 1, len(freqs)))
+        self._bar_peak = 0.0
+        self.bars = np.zeros(BARS, dtype=np.float32)   # 0..BARS_MAX, replaced on every feed
 
     def feed(self, samples) -> tuple[float, bool]:
         """One block of audio (mono, or the first channel is used) -> (level, beat)."""
@@ -44,6 +58,7 @@ class BeatDetector:
         elif len(x) > self._block:
             x = x[-self._block:]
         spectrum = np.abs(np.fft.rfft(x * self._window))
+        self._update_bars(spectrum)
         rms = float(np.sqrt(np.mean(spectrum[self._band] ** 2)) / self._block)
         self._since_beat += self._dt
 
@@ -76,3 +91,19 @@ class BeatDetector:
         # quick to rise, slower to fall: a pulse rather than a flicker
         self._level += (target - self._level) * (0.7 if target > self._level else 0.25)
         return max(0.0, min(1.0, self._level)), beat
+
+    def _update_bars(self, spectrum) -> None:
+        mags = np.maximum(np.interp(self._centres, self._freqs, spectrum),
+                          np.maximum.reduceat(spectrum[:self._end], self._starts)) / self._block
+        loudest = float(mags.max())
+        if loudest < SILENCE:
+            bars = self.bars * 0.6
+            bars[bars < 0.01] = 0.0
+            self.bars = bars.astype(np.float32)
+            return
+        # against a slowly falling peak, like the level: quiet and loud music both fill
+        # the bars. The square root lifts the quieter bands into view.
+        self._bar_peak = max(loudest, self._bar_peak * 0.995)
+        target = np.minimum(BARS_MAX, np.sqrt(mags / self._bar_peak) * BARS_MAX)
+        # quick to rise, slower to fall
+        self.bars = np.where(target > self.bars, target, self.bars * 0.75 + target * 0.25).astype(np.float32)

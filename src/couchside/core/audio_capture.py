@@ -1,6 +1,7 @@
-"""What this TV is playing, as a level and beats: records the default PipeWire output's
-monitor (through the PulseAudio socket the Flatpak already has) and runs the beat detector
-in the audio callback. Only the latest level and a beat counter are kept; the UI polls
+"""What this TV is playing, as a level, beats and spectrum bars: records a PipeWire source
+(the default output's monitor unless another is chosen: a specific output, a microphone)
+through the PulseAudio socket the Flatpak already has, and runs the beat detector in the
+audio callback. Only the latest level, bars and a beat counter are kept; the UI polls
 them. The stream is open only while something on screen uses it. Qt-free.
 
 Opening and closing the device takes up to a second (PortAudio lists every device), so
@@ -27,9 +28,14 @@ RETRY_AFTER = 30.0  # seconds before trying a missing audio device again
 STALL_AFTER = 1.5   # seconds without audio blocks: the stream died (PipeWire restart, …)
 
 
-def open_monitor_stream(callback) -> Any:
-    """A PortAudio input on the `pulse` device, pointed at the default sink's monitor."""
-    os.environ["PULSE_SOURCE"] = "@DEFAULT_MONITOR@"  # read when the stream opens
+DEFAULT_SOURCE = "@DEFAULT_MONITOR@"
+BARS = 64
+
+
+def open_monitor_stream(callback, source: str = DEFAULT_SOURCE) -> Any:
+    """A PortAudio input on the `pulse` device, pointed at `source` (a PulseAudio source
+    name; the default is the default output's monitor)."""
+    os.environ["PULSE_SOURCE"] = source  # read when the stream opens
     import sounddevice as sd
 
     names = [d["name"] for d in sd.query_devices()]
@@ -62,11 +68,13 @@ class _Worker:
 
 
 class AudioPulse:
-    def __init__(self, open_stream: Callable[[Callable], Any] = open_monitor_stream,
+    def __init__(self, open_stream: Callable[[Callable, str], Any] = open_monitor_stream,
                  detector_factory: Callable[..., Any] = BeatDetector,
                  clock: Callable[[], float] = time.monotonic,
-                 runner: Callable[[Callable[[], None]], None] | None = None):
+                 runner: Callable[[Callable[[], None]], None] | None = None,
+                 source: str = DEFAULT_SOURCE):
         self._open = open_stream
+        self.source = source   # the PulseAudio source to record
         self._make_detector = detector_factory
         self._clock = clock
         self._run = runner or _Worker()   # runs the slow open/close jobs, in order
@@ -78,6 +86,23 @@ class AudioPulse:
         self._last_block = 0.0
         self.level = 0.0   # 0..1, written by the audio thread
         self.beats = 0     # counts up on every beat
+        self._bars = None  # the detector's latest spectrum (its array, replaced per block)
+
+    @property
+    def bars(self) -> list[float]:
+        """The spectrum, low to high: 64 values of 0..1.15; all zero while not listening."""
+        bars = self._bars
+        return [0.0] * BARS if bars is None else [float(v) for v in bars]
+
+    def set_source(self, source: str) -> None:
+        """Listen to another source; an open stream is closed and opened again on it."""
+        if source == self.source:
+            return
+        self.source = source
+        self._failed_at = None   # a different device: worth trying at once
+        if self._wanted:
+            self.stop()
+            self.start()
 
     @property
     def running(self) -> bool:
@@ -91,6 +116,7 @@ class AudioPulse:
         except Exception:  # never let an exception reach PortAudio's thread
             return
         self.level = level
+        self._bars = getattr(self._detector, "bars", None)
         if beat:
             self.beats += 1
 
@@ -111,7 +137,7 @@ class AudioPulse:
         stream = None
         try:
             self._detector = self._make_detector(SAMPLE_RATE, BLOCK)
-            stream = self._open(self._callback)
+            stream = self._open(self._callback, self.source)
             self._last_block = self._clock()
             stream.start()
         except Exception as e:
@@ -157,3 +183,4 @@ class AudioPulse:
         if stream is not None:
             self._run(lambda: self._close(stream))
         self.level = 0.0
+        self._bars = None
