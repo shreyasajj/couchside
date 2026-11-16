@@ -228,3 +228,14 @@ def test_settings_change_during_backoff_restarts_at_once(tmp_path):
     started = time.monotonic()
     supervise(argv, tmp_path / "out.log", restart_delay=30.0, poll=0.1, control_file=control)
     assert seen.read_text() == "ok," and time.monotonic() - started < 5
+
+
+def test_argv_plays_to_a_chosen_pipewire_output():
+    argv = build_daemon_argv(AppSettings(sendspin_audio_device="sink:alsa_output.hdmi"), Path("/x"))
+    assert argv[:3] == ["env", "PULSE_SINK=alsa_output.hdmi", sys.executable]
+    assert argv[-2:] == ["--audio-device", "pulse"]
+
+
+def test_argv_direct_device_is_passed_by_name():
+    argv = build_daemon_argv(AppSettings(sendspin_audio_device="HDMI 1 (hw:0,7)"), Path("/x"))
+    assert argv[0] == sys.executable and argv[-2:] == ["--audio-device", "HDMI 1 (hw:0,7)"]

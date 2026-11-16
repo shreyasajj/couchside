@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import IO, Callable
 
+from couchside.core.audio_devices import SINK_PREFIX
 from couchside.core.paths import sendspin_settings_dir, state_dir
 from couchside.core.settings import AppSettings, load_settings
 
@@ -34,8 +35,13 @@ def build_daemon_argv(settings: AppSettings, sendspin_dir: Path) -> list[str]:
     argv = [sys.executable, "-c", DAEMON_ENTRY, "daemon",
             "--settings-dir", str(sendspin_dir), "--port", str(settings.sendspin_port),
             "--name", settings.player_name]
-    if settings.sendspin_audio_device:
-        argv += ["--audio-device", settings.sendspin_audio_device]
+    device = settings.sendspin_audio_device
+    if device and device.startswith(SINK_PREFIX):
+        # a PipeWire output: play through the pulse device, routed to that output (the
+        # variable rides in the command, so changing it restarts the daemon like any option)
+        argv = ["env", f"PULSE_SINK={device[len(SINK_PREFIX):]}"] + argv + ["--audio-device", "pulse"]
+    elif device:
+        argv += ["--audio-device", device]
     if settings.sendspin_delay_ms:
         argv += ["--output-delay-ms", str(int(settings.sendspin_delay_ms))]
     return argv

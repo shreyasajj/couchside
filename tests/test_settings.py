@@ -141,3 +141,18 @@ def test_secret_file_is_private(tmp_path, monkeypatch):
     assert load_secret("deepl_key") == "abc:fx"
     mode = (tmp_path / "couchside" / "deepl_key").stat().st_mode
     assert stat.S_IMODE(mode) == 0o600
+
+
+def test_visualizer_and_look_settings(tmp_path):
+    from couchside.core.settings import AppSettings, load_settings
+    s = AppSettings()
+    assert (s.visualizer_source, s.visualizer_intensity, s.visualizer_mode, s.accent) == (
+        None, 1.0, "radial", "teal-pink")
+    p = tmp_path / "settings.json"
+    p.write_text('{"visualizer_intensity": 2}')
+    got = load_settings(p).visualizer_intensity
+    assert got == 2.0 and isinstance(got, float)
+    p.write_text('{"visualizer_intensity": "x", "visualizer_mode": 3}')
+    assert load_settings(p).visualizer_intensity == 1.0 and load_settings(p).visualizer_mode == "radial"
+    p.write_text('{"visualizer_intensity": true}')
+    assert load_settings(p).visualizer_intensity == 1.0
