@@ -40,7 +40,7 @@ FocusScope {
     }
     Binding { target: app; property: "queueVisible"   // Up Next shows on Now Playing and in Party too
               value: shell.screen === "now" || shell.screen === "queue"
-                     || (shell.screen === "visualizer" && app.visualizerMode === "party") }
+                     || (shell.screen === "visualizer" && app !== null && app.visualizerMode === "party") }
 
     // --- progress, ticked locally between server updates ---------------------------------
     property real position: 0

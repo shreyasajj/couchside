@@ -253,6 +253,8 @@ async def test_with_lyrics_the_song_floats_top_left_and_up_next_stays_right(ui):
     assert x0 < 200 and y0 < 200                       # the top-left corner
     assert apart(card, words) and apart(words, up_next) and apart(card, up_next)
     assert box(words)[2] <= box(up_next)[0]            # the words end before Up Next
+    left, _t, right, _b = box(words)
+    assert abs((left + right) / 2 - 960) < 2           # centred on the screen
     assert ctl.vizVisible is True
     press(view, Qt.Key.Key_Right, 2)                   # the volume button is still there
     assert "lyricsButton" not in focus_path(view) and view.activeFocusItem() is not None
@@ -280,6 +282,8 @@ async def test_party_puts_the_song_top_left_lyrics_in_the_middle_and_up_next_rig
     assert card.property("visible") is True
     assert apart(card, words) and apart(words, up_next) and apart(card, up_next)
     assert box(card)[0] < 200 and box(card)[1] < 200
+    left, _t, right, _b = box(words)
+    assert abs((left + right) / 2 - 960) < 2           # centred on the screen
     assert up_next.property("activeFocusOnTab") is False   # only to look at
     assert ctl.queueVisible is True                     # the queue loads for Up Next
     ctl.visualizerMode = "bars"

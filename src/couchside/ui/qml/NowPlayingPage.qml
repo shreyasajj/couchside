@@ -134,13 +134,14 @@ FocusScope {
         width: Math.min(implicitWidth, (upNext.visible ? upNext.x : page.width) - x - 40 * page.u)
     }
 
-    // --- the words: between the corner card and Up Next, above the controls -------------
+    // --- the words: centred under the corner card, clear of Up Next, above the controls --
     Item {
         id: words
         objectName: "words"
-        anchors { left: parent.left; top: songCard.bottom; bottom: block.top
-                  leftMargin: Theme.margin * page.u; topMargin: 32 * page.u; bottomMargin: 20 * page.u }
-        width: (upNext.visible ? upNext.x - 48 * page.u : page.width - Theme.margin * page.u) - x
+        anchors { horizontalCenter: parent.horizontalCenter; top: songCard.bottom; bottom: block.top
+                  topMargin: 32 * page.u; bottomMargin: 20 * page.u }
+        // centred on the screen: as much room on the left as Up Next takes on the right
+        width: parent.width - 2 * (upNext.visible ? parent.width - upNext.x + 48 * page.u : Theme.margin * page.u)
         visible: page.showLyrics
         LyricsView {
             anchors.fill: parent

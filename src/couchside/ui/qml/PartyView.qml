@@ -56,14 +56,14 @@ Item {
         maxRows: party.qrBottom > 0 ? 3 : 4
     }
 
-    // the words: between the corner card and Up Next, as large as Now Playing's
+    // the words: centred on the screen, clear of Up Next, as large as Now Playing's
     Item {
         id: words
         objectName: "partyWords"
-        anchors { left: parent.left; top: parent.top; bottom: parent.bottom
-                  leftMargin: Theme.margin * party.u; topMargin: party.topInset + card.height + 48 * party.u
-                  bottomMargin: 110 * party.u }
-        width: (upNext.visible ? upNext.x - 48 * party.u : parent.width - Theme.margin * party.u) - x
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; bottom: parent.bottom
+                  topMargin: party.topInset + card.height + 48 * party.u; bottomMargin: 110 * party.u }
+        // centred on the screen: as much room on the left as Up Next takes on the right
+        width: parent.width - 2 * (upNext.visible ? parent.width - upNext.x + 48 * party.u : Theme.margin * party.u)
         visible: party.hasLyrics
         scale: 1.0 + 0.03 * party.kick
         LyricsView {
