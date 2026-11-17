@@ -7,7 +7,7 @@ import uuid
 from dbus_next.aio import MessageBus
 from dbus_next import Message, MessageType
 from dbus_next.constants import NameFlag, RequestNameReply
-from dbus_next.service import ServiceInterface, method
+from dbus_next.service import ServiceInterface, method, signal as dbus_signal
 from PySide6.QtCore import QObject, Signal, Slot
 
 from couchside.core import library
@@ -39,6 +39,10 @@ class Endpoint(ServiceInterface):
                 return json.dumps({"id": request_id, "ok": False,
                                    "error": {"code": "internal_error", "message": "UI operation failed"}})
 
+    @dbus_signal()
+    def StateChanged(self):
+        """Tell listeners to re-read the state; the signal itself carries nothing."""
+
 
 class UiControl(QObject):
     navigationRequested = Signal(str, str, str)
@@ -46,6 +50,8 @@ class UiControl(QObject):
     def __init__(self):
         super().__init__()
         self.bus = None
+        self.endpoint = None
+        self.announced = None
         self.controller = None
         self.ready = asyncio.Event()
         self.pending = {}
@@ -57,7 +63,8 @@ class UiControl(QObject):
         self.bus = await MessageBus().connect()
         reply = await self.bus.request_name(BUS_NAME, NameFlag.DO_NOT_QUEUE)
         if reply == RequestNameReply.PRIMARY_OWNER:
-            self.bus.export(OBJECT_PATH, Endpoint(self))
+            self.endpoint = Endpoint(self)
+            self.bus.export(OBJECT_PATH, self.endpoint)
             return True
         # Only the primary creates a controller, QML window or Sendspin helper.
         request = {"id": str(uuid.uuid4()), "command": "focus"}
@@ -71,6 +78,18 @@ class UiControl(QObject):
     def attach(self, controller):
         self.controller = controller
         self.ready.set()
+        # The controller's general change signal covers Music Assistant connection
+        # and local-player changes; announce() drops everything that left the state alone.
+        controller.changed.connect(self.announce)
+        self.announce()
+
+    @Slot()
+    def announce(self):
+        state = self.snapshot()
+        if state != self.announced:
+            self.announced = state
+            if self.endpoint:
+                self.endpoint.StateChanged()
 
     def snapshot(self):
         c = self.controller
@@ -127,6 +146,7 @@ class UiControl(QObject):
                 raise ControlError("navigation_failed", "QML could not open the requested view")
             if kind != "focus":
                 self.view = {"type": kind, "id": value}
+                self.announce()
             return self.snapshot()
         except TimeoutError as exc:
             raise ControlError("navigation_failed", "QML did not acknowledge navigation") from exc

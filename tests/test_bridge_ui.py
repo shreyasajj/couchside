@@ -59,3 +59,19 @@ async def test_missing_sendspin_identity_never_matches_another_player(ui, monkey
     monkeypatch.setattr(controller, "_get_client_id", lambda: None)
     controller.conn.client.players = [NS(player_id="another-speaker", output_protocols=[NS()])]
     assert control.snapshot()["ma_player_id"] is None
+
+
+async def test_state_changes_are_announced_once(ui):
+    control, controller = ui
+    emitted = []
+    control.endpoint = NS(StateChanged=lambda: emitted.append(True))
+    controller.conn.client.music.get_item_by_uri = AsyncMock(return_value=NS(
+        uri="library://album/1", media_type="album", name="Album", artist_str="Artist", image=None))
+    await control.execute(dict(id="item", command="navigate", content_type="album", content_id="library://album/1"))
+    assert len(emitted) == 1
+    controller.changed.emit()  # unrelated UI churn leaves the published state alone
+    await control.execute(dict(id="focus", command="focus"))
+    assert len(emitted) == 1
+    controller.conn.state = ConnState.RECONNECTING
+    controller.changed.emit()
+    assert len(emitted) == 2
