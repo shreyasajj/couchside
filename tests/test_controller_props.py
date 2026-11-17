@@ -1291,3 +1291,78 @@ async def test_close_stops_the_visualizer_timer(pulse_ctl):
     assert ctl._pulse_timer.isActive()
     await ctl.close()
     assert not ctl._pulse_timer.isActive()
+
+
+# --- something broke: the warning button and the Logs screen ----------------------------------
+
+@pytest.fixture
+def health_ctl(ctl, tmp_path):
+    from couchside.core.connection import ConnState
+    from couchside.sendspin.runner import build_id
+    state = {"status": {"state": "running", "build": build_id()}, "running": True, "now": 1000.0,
+             "starts": 0, "restarts": 0}
+    ctl._sendspin_status = lambda: state["status"]
+    ctl._sendspin_running = lambda: state["running"]
+    ctl._clock = lambda: state["now"]
+    ctl._start_local_sendspin = lambda: state.__setitem__("starts", state["starts"] + 1)
+
+    async def restart():
+        state["restarts"] += 1
+    ctl._restart_sendspin = restart
+    ctl.conn.state = ConnState.CONNECTED
+    ctl.playback.local_player_found = True
+    return ctl, state
+
+
+async def test_a_crashing_speaker_shows_a_problem_at_once(health_ctl):
+    ctl, state = health_ctl
+    seen = []
+    ctl.healthChanged.connect(lambda: seen.append(ctl.problem))
+    ctl._check_health()
+    assert ctl.problem == "" and ctl.problems == []
+    state["status"] = {**state["status"], "state": "restarting", "exit_code": 1}
+    ctl._check_health()
+    assert ctl.problem == "This TV's speaker keeps stopping (exit code 1)" and seen
+    state["status"] = {**state["status"], "state": "running"}
+    ctl._check_health()
+    assert ctl.problem == ""
+
+
+async def test_an_outdated_supervisor_is_restarted_once(health_ctl):
+    import asyncio
+    ctl, state = health_ctl
+    state["status"] = {"state": "running", "build": "old"}
+    ctl._check_health()
+    ctl._check_health()                       # still the old one: not asked twice in a row
+    await asyncio.sleep(0)
+    assert state["restarts"] == 1
+
+
+async def test_a_stopped_speaker_is_started_and_reported_if_it_stays_down(health_ctl):
+    ctl, state = health_ctl
+    state["running"] = False
+    ctl._check_health()
+    assert state["starts"] == 1 and ctl.problem == ""     # give it a moment
+    state["now"] += 10
+    ctl._check_health()
+    assert state["starts"] == 1                            # not again within 30 s
+    state["now"] += 25
+    ctl._check_health()
+    assert state["starts"] == 2 and ctl.problem == "This TV's speaker isn't running"
+
+
+def test_logs_show_the_sendspin_log_tail_and_the_apps_lines(ctl, tmp_path, monkeypatch):
+    import logging
+    from couchside.core import logbuffer
+    path = tmp_path / "sendspin.log"
+    path.write_text("".join(f"line {i}\n" for i in range(1000)))
+    monkeypatch.setattr("couchside.ui.controller.log_path", lambda: path)
+    logbuffer.install()
+    logging.getLogger("couchside.test").warning("hello from the app")
+    ctl.loadLogs()
+    lines = ctl.sendspinLog.splitlines()
+    assert lines[-1] == "line 999" and len(lines) == 300
+    assert "hello from the app" in ctl.appLog
+    path.unlink()
+    ctl.loadLogs()
+    assert ctl.sendspinLog == "(no Sendspin log yet)"

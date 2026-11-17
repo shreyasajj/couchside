@@ -17,7 +17,7 @@ from couchside.core.playback import NowPlaying  # noqa: E402
 from couchside.core.settings import AppSettings  # noqa: E402
 
 SHELL = Path(__file__).parents[1] / "src/couchside/ui/qml/Shell.qml"
-SCREENS = ["now", "search", "queue", "visualizer", "speakers", "guests", "settings"]
+SCREENS = ["now", "search", "queue", "visualizer", "speakers", "guests", "settings", "logs"]
 BAD = re.compile(r"ReferenceError|TypeError|is not defined|Unable to assign|Cannot assign|"
                  r"non-existent property|is not a type|Binding loop|Cannot read property|Cannot call")
 SHOTS = os.environ.get("COUCHSIDE_SHOTS")   # a directory: save a picture of every screen there
@@ -304,3 +304,42 @@ async def test_typing_on_now_playing_opens_search_with_the_letters(ui):
     QTest.keyClick(view, Qt.Key.Key_A)
     pump(0.2)
     assert screen(view) == "search" and problems(_messages) == []
+
+
+async def test_the_warning_button_opens_the_logs(ui):
+    from couchside.core.health import Problem
+    view, ctl, messages = ui
+    chip = named(view, "problemChip")
+    assert chip.property("visible") is False
+    ctl._problems = [Problem("speaker-crashing", "This TV's speaker keeps stopping (exit code 1)")]
+    ctl.healthChanged.emit()
+    pump(0.2)
+    assert chip.property("visible") is True
+    go(view, "now")
+    press(view, Qt.Key.Key_Up)                 # the bar: Left to the warning, first in line
+    press(view, Qt.Key.Key_Left, 3)
+    assert "problemChip" in focus_path(view)
+    press(view, Qt.Key.Key_Return)
+    pump(0.3)
+    assert screen(view) == "logs" and "restartSpeaker" in focus_path(view)
+    press(view, Qt.Key.Key_Down)
+    assert "logPanel" in focus_path(view)
+    press(view, Qt.Key.Key_Up)
+    assert "restartSpeaker" in focus_path(view)
+    if SHOTS:
+        view.grabWindow().save(str(Path(SHOTS) / "logs.png"))
+    back(view)
+    assert screen(view) == "now"
+    assert problems(messages) == []
+
+
+async def test_the_tabs_sit_in_the_middle_of_the_screen(ui):
+    view, ctl, _messages = ui
+    row = named(view, "tabRow")
+    from PySide6.QtCore import QPointF
+    centre = row.mapToScene(QPointF(row.property("width") / 2, 0)).x()
+    assert abs(centre - view.width() / 2) < 2
+    ctl.toggleGuestMode()                      # the QR card doesn't push them aside
+    pump(0.3)
+    centre = row.mapToScene(QPointF(row.property("width") / 2, 0)).x()
+    assert abs(centre - view.width() / 2) < 2

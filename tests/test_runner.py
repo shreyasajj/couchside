@@ -239,3 +239,39 @@ def test_argv_plays_to_a_chosen_pipewire_output():
 def test_argv_direct_device_is_passed_by_name():
     argv = build_daemon_argv(AppSettings(sendspin_audio_device="HDMI 1 (hw:0,7)"), Path("/x"))
     assert argv[0] == sys.executable and argv[-2:] == ["--audio-device", "HDMI 1 (hw:0,7)"]
+
+
+def test_supervise_reports_running_and_restarting(tmp_path):
+    seen = []
+    supervise([sys.executable, "-c", FAIL_N_TIMES, str(tmp_path / "c"), "2"], tmp_path / "out.log",
+              restart_delay=0, on_state=lambda state, rc: seen.append((state, rc)))
+    assert seen == [("running", None), ("restarting", 1), ("running", None), ("restarting", 1),
+                    ("running", None)]
+
+
+def test_status_file_round_trip(tmp_path):
+    from couchside.sendspin.runner import read_status, write_status
+    path = tmp_path / "sendspin.status"
+    assert read_status(path) is None                      # never written
+    write_status(path, "restarting", 1, build="abc", pid=42, now=1000.0)
+    assert read_status(path) == {"state": "restarting", "exit_code": 1, "build": "abc",
+                                 "pid": 42, "updated": 1000.0}
+    path.write_text("not json")
+    assert read_status(path) is None
+
+
+def test_build_id_is_stable_and_short():
+    from couchside.sendspin.runner import build_id
+    assert build_id() == build_id() and len(build_id()) == 12
+
+
+def test_supervisor_running_follows_the_lock(tmp_path):
+    from couchside.sendspin.runner import acquire_lock, supervisor_running
+    lock = tmp_path / "sendspin.lock"
+    assert supervisor_running(lock) is False
+    held = acquire_lock(lock)
+    try:
+        assert supervisor_running(lock) is True
+    finally:
+        held.close()
+    assert supervisor_running(lock) is False

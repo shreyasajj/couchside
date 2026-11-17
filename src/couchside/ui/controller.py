@@ -10,6 +10,8 @@ from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
 from couchside.core import audio_devices
 from couchside.core.beat import TempoTracker
+from couchside.core import logbuffer
+from couchside.core.health import Problem, ProblemWatch, diagnose, supervisor_outdated
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
@@ -38,9 +40,13 @@ from couchside.sendspin.pairing import PairingEvent
 from couchside.sendspin.runner import (
     AUDIO_DEVICES_ARGV,
     acquire_lock,
+    build_id,
     lock_path,
+    log_path,
     parse_audio_devices,
+    read_status,
     request_exit,
+    supervisor_running,
 )
 
 log = logging.getLogger(__name__)
@@ -90,6 +96,8 @@ class AppController(QObject):
     accentChanged = Signal()
     beatChanged = Signal()        # beatHue (party mode's colour turns on every beat)
     qrChanged = Signal()
+    healthChanged = Signal()      # problem, problems (the warning button)
+    logsChanged = Signal()        # sendspinLog, appLog (the Logs screen)
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -147,6 +155,13 @@ class AppController(QObject):
         self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
         self._beat_hue = 0.55
         self._tempo = TempoTracker()
+        self._health = ProblemWatch(hold=15.0)
+        self._problems: list[Problem] = []
+        self._health_timer: QTimer | None = None
+        self._last_start = float("-inf")       # when we last started the supervisor
+        self._restarting_old: str | None = None  # the old build being replaced
+        self._sendspin_log = ""
+        self._app_log = ""
         self._light, self._shown_light = 0.0, 0.0  # the edge lights' slower pulse
         self._pulse_timer = QTimer(self)
         self._pulse_timer.setInterval(50)  # 20 updates a second while listening
@@ -1337,6 +1352,90 @@ class AppController(QObject):
     def _start_local_sendspin(self) -> None:
         from PySide6.QtCore import QProcess
         QProcess.startDetached("couchside-sendspin", [])  # single instance via its lock
+
+    # --- something broke: the warning button and the Logs screen ------------------------
+    def _sendspin_status(self) -> dict | None:
+        return read_status()
+
+    def _sendspin_running(self) -> bool:
+        return supervisor_running()
+
+    @Slot()
+    def startHealthChecks(self) -> None:
+        """From the app (not in tests): look every 5 s, first after 3 s."""
+        if self._health_timer is None:
+            self._health_timer = QTimer(self)
+            self._health_timer.setInterval(5000)
+            self._health_timer.timeout.connect(self._check_health)
+            self._health_timer.start()
+            QTimer.singleShot(3000, self._check_health)
+
+    def _check_health(self) -> None:
+        status, running, now = self._sendspin_status(), self._sendspin_running(), self._clock()
+        if supervisor_outdated(status, running, build_id()):
+            old = (status or {}).get("build") or "unknown"
+            if self._restarting_old != old:   # once per old build, not every 5 s
+                self._restarting_old = old
+                log.info("Sendspin supervisor is from another build (%s); restarting it", old)
+                self._spawn(self._restart_sendspin())
+        elif not running and now - self._last_start >= 30.0:
+            self._last_start = now
+            self._start_local_sendspin()
+        found = diagnose(status=status, running=running, conn=self.conn.state,
+                         local_player=self.playback.local_player_found,
+                         has_token=load_token() is not None)
+        shown = self._health.update(found, now)
+        if shown != self._problems:
+            for p in shown:
+                if p not in self._problems:
+                    log.warning("problem: %s", p.message)
+            self._problems = shown
+            self.healthChanged.emit()
+
+    @Property(str, notify=healthChanged)
+    def problem(self) -> str:
+        """The worst thing wrong right now, or "" (the top bar's warning button)."""
+        return self._problems[0].message if self._problems else ""
+
+    @Property("QVariantList", notify=healthChanged)
+    def problems(self) -> list[str]:
+        return [p.message for p in self._problems]
+
+    async def _restart_sendspin(self) -> None:
+        request_exit()
+        if not await self._wait_sendspin_stopped(15):
+            log.warning("the Sendspin supervisor didn't stop in time")
+        self._last_start = self._clock()
+        self._start_local_sendspin()
+
+    @Slot()
+    def restartSpeaker(self) -> None:
+        self._set_toast("Restarting this TV's speaker…")
+        self._spawn(self._restart_sendspin())
+
+    @Slot()
+    def loadLogs(self) -> None:
+        """Read the logs for the Logs screen: the end of Sendspin's file and the app's
+        recent lines."""
+        try:
+            with open(log_path(), "rb") as fh:
+                fh.seek(0, 2)
+                fh.seek(max(0, fh.tell() - 128_000))
+                text = fh.read().decode(errors="replace")
+            lines = text.splitlines()[-300:]
+            self._sendspin_log = "\n".join(lines) if lines else "(the Sendspin log is empty)"
+        except OSError:
+            self._sendspin_log = "(no Sendspin log yet)"
+        self._app_log = "\n".join(logbuffer.recent()[-300:]) or "(nothing logged yet)"
+        self.logsChanged.emit()
+
+    @Property(str, notify=logsChanged)
+    def sendspinLog(self) -> str:
+        return self._sendspin_log
+
+    @Property(str, notify=logsChanged)
+    def appLog(self) -> str:
+        return self._app_log
 
     # --- visualizer and party mode ---------------------------------------------------
     @Property(bool, notify=pulseChanged)

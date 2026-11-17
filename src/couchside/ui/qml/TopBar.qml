@@ -3,7 +3,8 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import "nav.js" as Nav
 
-// The bar across the top of every screen: the name, the tabs, then the speaker in use,
+// The bar across the top of every screen: the name (and a warning when something is
+// broken: OK opens the logs), the tabs in the middle of the screen, then the speaker in use,
 // Guest and Settings. Left/Right move along it (no wrap-around), OK opens, Down goes back
 // to the screen (leaveDown). With guest mode on, the QR card takes the Guest button's
 // place in the corner and opens the guest list.
@@ -17,6 +18,7 @@ FocusScope {
     property var qrRows: []
     property string qrCaption: ""
     property string guestUrl: ""
+    property string problem: ""          // something broke: the warning button shows
     property bool dimmed: false          // the visualizer fades the bar out while nobody presses a key
     signal go(string screen)
     signal toggleGuest()
@@ -29,6 +31,7 @@ FocusScope {
 
     function order() {
         var list = []
+        if (problemChip.visible) list.push(problemChip)
         for (var i = 0; i < tabRepeater.count; i++) list.push(tabRepeater.itemAt(i))
         list.push(speakerChip)
         if (guestChip.visible) list.push(guestChip)
@@ -39,7 +42,8 @@ FocusScope {
     function focusCurrent() {
         for (var i = 0; i < tabRepeater.count; i++)
             if (tabRepeater.itemAt(i).name === screen) { tabRepeater.itemAt(i).forceActiveFocus(); return }
-        var other = { speakers: speakerChip, settings: settingsChip, guests: guestMode ? qrCard : guestChip }[screen]
+        var other = { speakers: speakerChip, settings: settingsChip, guests: guestMode ? qrCard : guestChip,
+                      logs: problemChip }[screen]
         if (other && other.visible) other.forceActiveFocus()
         else if (tabRepeater.count > 0) tabRepeater.itemAt(0).forceActiveFocus()
     }
@@ -95,62 +99,18 @@ FocusScope {
             }
         }
 
-        Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Row {
-                id: tabRow
-                objectName: "tabRow"
-                anchors.centerIn: parent
-                spacing: 4 * bar.u
-                Repeater {
-                    id: tabRepeater
-                    model: bar.tabs
-                    delegate: QQC2.AbstractButton {
-                        id: tab
-                        required property string modelData
-                        readonly property string name: modelData
-                        readonly property bool current: bar.screen === name
-                        objectName: "tab-" + name
-                        text: Nav.label(name)
-                        focusPolicy: Qt.StrongFocus
-                        leftPadding: 18 * bar.u
-                        rightPadding: 18 * bar.u
-                        topPadding: 14 * bar.u
-                        bottomPadding: 18 * bar.u
-                        Accessible.name: text
-                        onClicked: bar.go(name)
-                        Keys.onReturnPressed: clicked()
-                        Keys.onEnterPressed: clicked()
-                        Keys.onPressed: (event) => {
-                            if (event.key === Qt.Key_Select) { clicked(); event.accepted = true }
-                        }
-                        background: Item {
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 14 * bar.u
-                                color: tab.activeFocus ? Theme.surfaceHigh : "transparent"
-                            }
-                            FocusRing { anchors.fill: parent; u: bar.u; radius: 14 * bar.u; shown: tab.activeFocus }
-                            GradientFill {  // the current tab's underline
-                                visible: tab.current
-                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom
-                                          leftMargin: 18 * bar.u; rightMargin: 18 * bar.u; bottomMargin: 6 * bar.u }
-                                height: 4 * bar.u
-                                radius: height / 2
-                            }
-                        }
-                        contentItem: Text {
-                            textFormat: Text.PlainText
-                            text: tab.text
-                            color: tab.current || tab.activeFocus ? Theme.text : Theme.textFaint
-                            font.pixelSize: Theme.tab * bar.u
-                            font.weight: Font.Bold
-                        }
-                    }
-                }
-            }
+        Chip {   // something broke: OK opens the logs
+            id: problemChip
+            objectName: "problemChip"
+            u: bar.u
+            warn: true
+            visible: bar.problem !== ""
+            iconName: "warning"
+            text: "Something's wrong"
+            Accessible.name: "Something's wrong: " + bar.problem + ". Show the logs"
+            onClicked: bar.go("logs")
         }
+        Item { Layout.fillWidth: true; Layout.fillHeight: true }
 
         Row {
             id: rightRow
@@ -184,6 +144,59 @@ FocusScope {
                 active: bar.screen === "settings"
                 Accessible.name: "Settings"
                 onClicked: bar.go("settings")
+            }
+        }
+    }
+
+    Row {
+        id: tabRow
+        objectName: "tabRow"
+        anchors.centerIn: parent   // the middle of the screen, whatever is beside it
+        spacing: 4 * bar.u
+        Repeater {
+            id: tabRepeater
+            model: bar.tabs
+            delegate: QQC2.AbstractButton {
+                id: tab
+                required property string modelData
+                readonly property string name: modelData
+                readonly property bool current: bar.screen === name
+                objectName: "tab-" + name
+                text: Nav.label(name)
+                focusPolicy: Qt.StrongFocus
+                leftPadding: 18 * bar.u
+                rightPadding: 18 * bar.u
+                topPadding: 14 * bar.u
+                bottomPadding: 18 * bar.u
+                Accessible.name: text
+                onClicked: bar.go(name)
+                Keys.onReturnPressed: clicked()
+                Keys.onEnterPressed: clicked()
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_Select) { clicked(); event.accepted = true }
+                }
+                background: Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 14 * bar.u
+                        color: tab.activeFocus ? Theme.surfaceHigh : "transparent"
+                    }
+                    FocusRing { anchors.fill: parent; u: bar.u; radius: 14 * bar.u; shown: tab.activeFocus }
+                    GradientFill {  // the current tab's underline
+                        visible: tab.current
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom
+                                  leftMargin: 18 * bar.u; rightMargin: 18 * bar.u; bottomMargin: 6 * bar.u }
+                        height: 4 * bar.u
+                        radius: height / 2
+                    }
+                }
+                contentItem: Text {
+                    textFormat: Text.PlainText
+                    text: tab.text
+                    color: tab.current || tab.activeFocus ? Theme.text : Theme.textFaint
+                    font.pixelSize: Theme.tab * bar.u
+                    font.weight: Font.Bold
+                }
             }
         }
     }

@@ -218,7 +218,7 @@ FocusScope {
             active: shell.screen !== "now"
             sourceComponent: ({ search: searchScreen, queue: queueScreen,
                                 visualizer: visualizerScreen, speakers: speakersScreen,
-                                guests: guestsScreen, settings: settingsScreen,
+                                guests: guestsScreen, settings: settingsScreen, logs: logsScreen,
                                 content: contentScreen })[shell.screen] || null
         }
     }
@@ -237,8 +237,9 @@ FocusScope {
     Component {
         id: settingsScreen
         SetupPage { u: shell.u; sheet: actionSheet; topInset: topBar.height; qrWidth: topBar.qrWidth; qrBottom: topBar.qrBottom
-                    onDone: shell.goBack(); onOpenGuests: shell.go("guests") }
+                    onDone: shell.goBack(); onOpenGuests: shell.go("guests"); onOpenLogs: shell.go("logs") }
     }
+    Component { id: logsScreen; LogsPage { u: shell.u; topInset: topBar.height; qrWidth: topBar.qrWidth } }
     Component { id: contentScreen; ContentPage { u: shell.u; sheet: actionSheet; item: shell.contentData; topInset: topBar.height } }
 
     // --- the bar -------------------------------------------------------------------------
@@ -255,6 +256,7 @@ FocusScope {
         qrRows: app.qrRows
         qrCaption: app.qrCaption
         guestUrl: app.guestUrl
+        problem: app.problem
         // the visualizer hides it while nobody presses a key; it comes back with focus
         readonly property bool hiddenByScreen: !activeFocus && loader.item !== null && loader.item.chromeHidden === true
         opacity: hiddenByScreen ? 0 : 1

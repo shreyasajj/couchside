@@ -20,6 +20,7 @@ FocusScope {
     property Item returnTo: null
     signal done()
     signal openGuests()
+    signal openLogs()
 
     function focusDefault() {
         if (returnTo && returnTo.visible) { returnTo.forceActiveFocus(); returnTo = null; return }
@@ -444,6 +445,13 @@ FocusScope {
                     value: app.sendspinDelay === 0 ? "Off" : app.sendspinDelay + " ms"
                     hint: "Delay this TV's sound to line up with other speakers"
                     onActivated: app.cycleSendspinDelay()
+                }
+                SettingRow {
+                    objectName: "logsRow"
+                    label: "Logs"
+                    value: app.problem !== "" ? "Something's wrong" : "Show"
+                    hint: "What this TV's speaker and Couchside said lately, and a way to restart the speaker"
+                    onActivated: page.openLogs()
                 }
             }
 

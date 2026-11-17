@@ -28,6 +28,8 @@ async def _ensure_sendspin(settings) -> None:
 
 def main() -> int:
     logging.basicConfig(level=os.environ.get("COUCHSIDE_LOG", "INFO"))
+    from couchside.core import logbuffer
+    logbuffer.install()   # recent lines for the Logs screen (after basicConfig: it adds stderr)
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuickControls2 import QQuickStyle
@@ -70,6 +72,7 @@ def main() -> int:
     engine.rootContext().setContextProperty("app", controller)
     engine.rootContext().setContextProperty("bridgeControl", control)
     engine.load(str(Path(__file__).parent / "qml" / "Main.qml"))
+    controller.startHealthChecks()   # the warning button; replaces a supervisor from an older build
     if not engine.rootObjects():
         control.close()
         loop.close()

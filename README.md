@@ -181,6 +181,15 @@ shows **Default**, then every PipeWire output by name (HDMI, analog, …), then 
 hardware devices under "Direct (visualizer can't listen)" — those bypass PipeWire, so the
 visualizer hears nothing through them. Changing it restarts the speaker for a moment.
 
+**When something breaks.** A **Something's wrong** button appears next to the name in the
+top bar when this TV's speaker keeps stopping or isn't running, when Music Assistant can't
+be reached or refuses the token, or when this TV's speaker is missing from Music
+Assistant (the last few only after they last 15 seconds, so a short reconnect doesn't
+count). OK on it opens **Logs**: what is wrong, **Restart this TV's speaker**, and the
+recent speaker (Sendspin) and Couchside logs (Up/Down scroll). Logs are also in Settings →
+This speaker. The app also replaces a speaker supervisor left running from an older
+version of the app (it lives on across app updates), so a fix in an update takes effect.
+
 **Colours** (Settings → Look): four colour pairs for focus, progress and the visualizer.
 
 **Keyboard on the remote:** just type. On Now Playing, typing opens Search with what you
@@ -214,7 +223,7 @@ with other speakers). Changes restart the speaker within a couple of seconds.
 ## Develop
 
 `flatpak run io.github.shreyasajj.Couchside --screen=queue` starts on a screen (`now`,
-`search`, `queue`, `visualizer`, `speakers`, `guests`, `settings`).
+`search`, `queue`, `visualizer`, `speakers`, `guests`, `settings`, `logs`).
 `COUCHSIDE_SHOTS=<dir> pytest tests/test_shell_qml.py` loads the whole UI offscreen and
 saves a picture of every screen (blur and glow effects don't draw offscreen). The design
 mockup the look follows is in `docs/design/`.

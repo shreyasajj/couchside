@@ -7,6 +7,7 @@ QQC2.AbstractButton {
     id: chip
     property real u: 1
     property bool active: false          // "on": outlined and written in the first accent
+    property bool warn: false            // something is wrong: outlined and written in amber
     property bool dot: false
     property color dotColor: Theme.a1
     property string iconName: ""
@@ -29,9 +30,10 @@ QQC2.AbstractButton {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: chip.active ? Theme.tint(Theme.a1, 0.12) : (chip.activeFocus ? Theme.surfaceHigh : Theme.surface)
+            color: chip.warn ? Theme.tint(Theme.warn, chip.activeFocus ? 0.28 : 0.16)
+                   : chip.active ? Theme.tint(Theme.a1, 0.12) : (chip.activeFocus ? Theme.surfaceHigh : Theme.surface)
             border.width: Math.max(1, chip.u)
-            border.color: chip.active ? Theme.a1 : Theme.border
+            border.color: chip.warn ? Theme.warn : chip.active ? Theme.a1 : Theme.border
         }
         FocusRing { anchors.fill: parent; u: chip.u; radius: height / 2; shown: chip.activeFocus }
     }
@@ -48,7 +50,7 @@ QQC2.AbstractButton {
             anchors.verticalCenter: parent.verticalCenter
             name: chip.iconName
             size: 28 * chip.u
-            color: chip.active ? Theme.a1 : Theme.text
+            color: chip.warn ? Theme.warn : chip.active ? Theme.a1 : Theme.text
         }
         Text {
             visible: chip.text !== ""
@@ -57,7 +59,7 @@ QQC2.AbstractButton {
             text: chip.text
             width: Math.min(implicitWidth, chip.maxTextWidth)
             elide: Text.ElideRight
-            color: chip.active ? Theme.a1 : (chip.activeFocus ? Theme.text : Theme.textDim)
+            color: chip.warn ? Theme.warn : chip.active ? Theme.a1 : (chip.activeFocus ? Theme.text : Theme.textDim)
             font.pixelSize: Theme.label * chip.u
             font.weight: Font.Bold
         }

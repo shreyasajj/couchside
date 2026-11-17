@@ -5,7 +5,7 @@
 
 var ALL_TABS = ["now", "search", "queue"]
 var LABELS = { now: "Now Playing", search: "Search", queue: "Queue" }
-var SCREENS = ALL_TABS.concat(["visualizer", "speakers", "guests", "settings", "content"])
+var SCREENS = ALL_TABS.concat(["visualizer", "speakers", "guests", "settings", "logs", "content"])
 
 function tabs() { return ALL_TABS }
 
