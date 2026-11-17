@@ -11,7 +11,9 @@ from dbus_next.service import ServiceInterface, method, signal as dbus_signal
 from PySide6.QtCore import QObject, Signal, Slot
 
 from couchside.core import library
-from couchside.core.bridge_control import BUS_NAME, OBJECT_PATH, CONTENT_TYPES, ControlError, Dispatcher
+from couchside.core.bridge_control import (
+    BROWSE_PATHS, BUS_NAME, OBJECT_PATH, CONTENT_TYPES, ControlError, Dispatcher, validate_browse, validate_content,
+)
 from couchside.core.connection import ConnState
 from couchside.core.playback import find_local_player
 
@@ -98,11 +100,41 @@ class UiControl(QObject):
         local = find_local_player(list(client.players), identity) if client and identity else None
         return {"protocol": 1, "ready": self.ready.is_set(),
                 "music_assistant_ready": bool(c and c.conn.state is ConnState.CONNECTED),
-                "content_types": list(CONTENT_TYPES),
+                "content_types": list(CONTENT_TYPES), "browse": True,
                 "playback_owner": "music_assistant", "ma_player_id": local.player_id if local else None,
                 "view": self.view}
 
+    async def browse(self, request):
+        """List the Music Assistant library read-only; nothing here navigates or plays."""
+        path, offset, limit = validate_browse(request)
+        if path is None:
+            return {"items": [{"id": key, "name": name, "path": key, "content_type": None}
+                              for key, name in BROWSE_PATHS.items()], "next_offset": None}
+        c = self.controller
+        if c is None or c.conn.state is not ConnState.CONNECTED or c.conn.client is None:
+            raise ControlError("not_ready", "Music Assistant is not connected")
+        fetch = getattr(c.conn.client.music, f"get_library_{path}s")
+        try:
+            # One extra row tells whether another page exists without a count query.
+            found = await asyncio.wait_for(fetch(limit=limit + 1, offset=offset), 15)
+        except Exception as exc:
+            raise ControlError("browse_failed", "Music Assistant could not list this section") from exc
+        items = []
+        for item in list(found)[:limit]:
+            card = library.to_card(c.conn.client, item)
+            try:
+                if card is None or card.kind != path:
+                    continue
+                validate_content(path, card.uri)  # only offer what navigate will accept
+            except ControlError:
+                continue
+            items.append({"id": card.uri, "name": card.title[:512], "subtitle": card.subtitle[:512],
+                          "content_type": path, "path": None})
+        return {"items": items, "next_offset": offset + limit if len(found) > limit else None}
+
     async def execute(self, request):
+        if request.get("command") == "browse":
+            return await self.browse(request)
         try:
             await asyncio.wait_for(self.ready.wait(), 10)
         except TimeoutError as exc:

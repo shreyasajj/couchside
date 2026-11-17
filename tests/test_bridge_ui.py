@@ -75,3 +75,32 @@ async def test_state_changes_are_announced_once(ui):
     controller.conn.state = ConnState.RECONNECTING
     controller.changed.emit()
     assert len(emitted) == 2
+
+
+async def test_browse_lists_library_without_navigating(ui):
+    control, controller = ui
+    root = await control.execute(dict(id="root", command="browse"))
+    assert [row["path"] for row in root["items"]] == ["playlist", "album", "artist", "track"]
+    rows = [NS(uri=f"library://album/{n}", media_type="album", name=f"Album {n}", artist_str="Artist", image=None)
+            for n in range(3)] + [NS(uri="not a uri", media_type="album", name="Broken", artist_str="", image=None)]
+    controller.conn.client.music.get_library_albums = AsyncMock(return_value=rows[:3])
+    page = await control.execute(dict(id="page", command="browse", path="album", offset=4, limit=2))
+    controller.conn.client.music.get_library_albums.assert_awaited_once_with(limit=3, offset=4)
+    assert [row["id"] for row in page["items"]] == ["library://album/0", "library://album/1"]
+    assert page["next_offset"] == 6 and page["items"][0]["content_type"] == "album"
+    controller.conn.client.music.get_library_albums = AsyncMock(return_value=rows[3:])
+    assert (await control.execute(dict(id="bad", command="browse", path="album")))["items"] == []
+    assert control.view == {"type": "now_playing", "id": ""}
+    controller.conn.state = ConnState.RECONNECTING
+    with pytest.raises(ControlError, match="not connected"):
+        await control.execute(dict(id="down", command="browse", path="album"))
+
+
+async def test_browse_requests_are_validated_by_the_dispatcher(ui):
+    import json
+    control, _ = ui
+    for extra in (dict(path="radio"), dict(limit=51), dict(offset=-1), dict(content_id="x")):
+        reply = json.loads(await control.dispatcher.handle(json.dumps(dict(id=str(extra), command="browse", **extra))))
+        assert reply["error"]["code"] == "invalid_request"
+    reply = json.loads(await control.dispatcher.handle(json.dumps(dict(id="ok", command="browse"))))
+    assert reply["ok"] and len(reply["result"]["items"]) == 4
