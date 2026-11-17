@@ -71,6 +71,7 @@ FocusScope {
     }
 
     RowLayout {
+        id: barRow
         anchors { fill: parent; leftMargin: 48 * bar.u; rightMargin: 48 * bar.u + (bar.guestMode ? qrCard.width + 24 * bar.u : 0) }
         spacing: 24 * bar.u
 
@@ -110,6 +111,7 @@ FocusScope {
             Accessible.name: "Something's wrong: " + bar.problem + ". Show the logs"
             onClicked: bar.go("logs")
         }
+        Item { id: nameEnd; Layout.fillWidth: false; Layout.preferredWidth: 0; Layout.fillHeight: true }
         Item { Layout.fillWidth: true; Layout.fillHeight: true }
 
         Row {
@@ -151,7 +153,11 @@ FocusScope {
     Row {
         id: tabRow
         objectName: "tabRow"
-        anchors.centerIn: parent   // the middle of the screen, whatever is beside it
+        // the middle of the screen, unless a long speaker name (or the guest QR) needs that
+        // room: then just left of the speaker button, never over the name
+        anchors.verticalCenter: parent.verticalCenter
+        x: Math.max(barRow.x + nameEnd.x + nameEnd.width + 24 * bar.u,
+                    Math.min((bar.width - width) / 2, barRow.x + rightRow.x - 24 * bar.u - width))
         spacing: 4 * bar.u
         Repeater {
             id: tabRepeater

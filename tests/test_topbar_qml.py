@@ -133,3 +133,15 @@ def test_a_very_long_speaker_name_does_not_push_the_bar_off_screen(view, guest):
     assert tabs_right <= right_left
     limit = 1920 - (named(view, "qrCard").width() + 48 if guest else 0)
     assert right_right <= limit
+
+
+def test_tabs_move_left_rather_than_under_a_long_speaker_name(view):
+    bar = named(view, "bar")
+    view.rootObject().setProperty("width", 1500)   # less room than a TV: centring would collide
+    bar.setProperty("speakerName", "The Downstairs Living Room And Kitchen Speaker Group Number Two")
+    bar.setProperty("guestMode", True)
+    bar.setProperty("qrRows", ["101", "010", "101"])
+    pump()
+    tabs, right = named(view, "tabRow"), named(view, "rightRow")
+    assert tabs.mapToItem(bar, tabs.width(), 0).x() <= right.mapToItem(bar, 0, 0).x()
+    assert tabs.mapToItem(bar, 0, 0).x() >= 0
