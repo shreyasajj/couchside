@@ -71,10 +71,12 @@ activates. On the volume button, OK opens a volume bar: Left/Right change it by 
 Back closes it. **Up Next** (top right) lists the next songs; OK on it opens the Queue.
 Media keys (play/pause, next, previous) work anywhere.
 
-**Lyrics.** The Lyrics button on Now Playing moves the cover down beside the title and
-puts the song's time-synced lyrics where it was: the line being sung large and in colour,
-the others fading away above and below, scrolling with the music. The visualizer moves
-behind the words (Settings → Lyrics → Visualizer behind the lyrics; off shows the blurred
+**Lyrics.** The Lyrics button on Now Playing moves the song into the top-left corner
+(a small cover with the title and artist, floating gently) and puts its time-synced lyrics
+in the middle: the line being sung large and in colour, the others fading away above and
+below, scrolling with the music. Up Next stays on the right and the controls (volume too)
+stay at the bottom. The visualizer moves behind the words, dimmed, with its edge lights at
+full strength (Settings → Lyrics → Visualizer behind the lyrics; off shows the blurred
 cover). The button again brings the cover back; the choice is remembered. Songs without
 synced lyrics say so. Lyrics come from the
 track's own metadata in Music Assistant when present, otherwise from
@@ -147,19 +149,21 @@ The other screens:
 music full-screen. Left/Right on the row at
 the bottom change the picture: **Radial Pulse** (turning spokes that send a ring out on
 every beat), **Flow Lines**, **Bars** (the spectrum), **Edge Lights** (the spectrum growing in from
-all four edges of the screen round a rim of light that flashes on the beat; the colours run
-round the frame once every eight beats, so they speed up and slow down with the song's
+all four edges of the screen over a rim of light; each piece of the edge glows as bright as
+its own part of the music is loud, so bass lights up one corner and voices and cymbals
+light up further along; the colours run round the frame once every eight beats, so they speed up and slow down with the song's
 tempo, and LED strips that follow the screen move with it), and **Party**. Top left: what it listens to (OK
 picks another source), **BEAT**, how hard the picture hits on each beat (Left/Right), and
 **Colours**: the theme's two colours, the whole rainbow, or a new colour on every beat,
 and **Edge lights** (OK switches): the Edge Lights border over Radial, Flow and Bars too. After a few seconds without a key the controls and the top bar fade away;
 any key brings them back.
 
-**Party** mode: the lyrics fill the screen,
-bouncing with the music over a glow; songs without lyrics show their cover bouncing
-instead. **Party lights** (Settings → Visualizer, on by default) add colour along all
-four screen edges that jumps on every beat and changes colour with it, so LED strips that
-follow the screen dance with the music.
+**Party** mode: laid out like Now Playing with its lyrics on, without the controls. The
+song floats small in the top-left corner (once the controls fade away), the lyrics fill the
+middle and bounce with the music over a glow, and Up Next sits on the right. Songs without
+lyrics show their cover bouncing instead. **Party lights** (Settings → Visualizer, on by
+default) put the Edge Lights round it, so LED strips that follow the screen dance with the
+music.
 
 Settings → **Visualizer**:
 
@@ -170,7 +174,7 @@ Settings → **Visualizer**:
 | Beat intensity | 0–2.4, how hard the Visualizer hits on a beat |
 | Colours | Theme colours, Rainbow, or Changes on the beat |
 | Edge lights on every picture | The Edge Lights border over the other pictures too (off by default) |
-| Party lights | Colour along the screen edges in Party mode |
+| Party lights | The Edge Lights round Party mode |
 
 Couchside listens through PipeWire; nothing is recorded or sent anywhere. It listens only
 while Now Playing (with the beat pulse on, or with the lyrics over the visualizer) or the
@@ -180,6 +184,12 @@ Visualizer is on screen and music plays. A chosen source that is unplugged falls
 shows **Default**, then every PipeWire output by name (HDMI, analog, …), then the
 hardware devices under "Direct (visualizer can't listen)" — those bypass PipeWire, so the
 visualizer hears nothing through them. Changing it restarts the speaker for a moment.
+
+**Crossfade** (Settings → This speaker, read from Music Assistant): **Crossfade** on or
+off for the speaker in use, its **style** (Music Assistant's default, Standard, or Smart:
+beat-matched, picking its own length) and the standard crossfade's **length** (1–15 s,
+Left/Right). The length is Music Assistant's own setting for every speaker (the number
+Home Assistant shows); the rows hide when Music Assistant can't be reached.
 
 **When something breaks.** A **Something's wrong** button appears next to the name in the
 top bar when this TV's speaker keeps stopping or isn't running, when Music Assistant can't

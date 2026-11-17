@@ -3,16 +3,19 @@ import QtQuick.Layouts
 
 // The Visualizer (opened from Now Playing): the music drawn full-screen. Modes along the
 // bottom (Left/Right change it): Radial Pulse, Flow Lines, Bars, Edge Lights, and Party
-// (lyrics and edge lights). Top left: where the beat comes from (OK picks another source),
-// how hard it hits (Left/Right), its colours (OK picks) and whether
-// the edge lights lie over the picture (OK switches). After a few seconds without a key the controls and the top bar fade
-// away; the next key only brings them back.
+// (the song floating in the corner, lyrics, Up Next, over the edge lights). Top left:
+// where the beat comes from (OK picks another source), how hard it hits (Left/Right), its
+// colours (OK picks) and whether the edge lights lie over the picture (OK switches). After
+// a few seconds without a key the controls and the top bar fade away; the next key only
+// brings them back.
 FocusScope {
     id: page
+    objectName: "visualizerPage"
     property real u: 1
     property var sheet: null
     property real position: 0
     property real topInset: 104 * u
+    property real qrBottom: 0            // where the guest QR card ends (0: not showing)
     property bool active: true           // the app is in front
     property bool chromeHidden: false    // the shell hides the top bar with it
 
@@ -65,10 +68,13 @@ FocusScope {
 
     Rectangle { anchors.fill: parent; color: "#050507" }
 
+    // Party draws the edge lights (when they're on in Settings) behind its words
     VizScene {
+        id: scene
         anchors.fill: parent
-        visible: !page.party
-        running: page.visible && page.active && !page.party
+        visible: !page.party || app.partyLights
+        mode: page.party ? "edge" : app.visualizerMode
+        running: visible && page.visible && page.active
     }
 
     PartyView {
@@ -76,6 +82,10 @@ FocusScope {
         visible: page.party
         u: page.u
         position: page.position
+        topInset: page.topInset
+        qrBottom: page.qrBottom
+        running: page.visible && page.active
+        cardShown: page.chromeHidden   // the controls above use that corner while they show
     }
 
     Text {

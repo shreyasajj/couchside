@@ -38,7 +38,9 @@ FocusScope {
         target: app; property: "vizVisible"
         value: shell.appActive && (shell.screen === "visualizer" || (shell.screen === "now" && nowPage.vizBehind))
     }
-    Binding { target: app; property: "queueVisible"; value: shell.screen === "now" || shell.screen === "queue" }
+    Binding { target: app; property: "queueVisible"   // Up Next shows on Now Playing and in Party too
+              value: shell.screen === "now" || shell.screen === "queue"
+                     || (shell.screen === "visualizer" && app.visualizerMode === "party") }
 
     // --- progress, ticked locally between server updates ---------------------------------
     property real position: 0
@@ -226,7 +228,7 @@ FocusScope {
     Component { id: queueScreen; QueuePage { u: shell.u; sheet: actionSheet; topInset: topBar.height; qrWidth: topBar.qrWidth; qrBottom: topBar.qrBottom } }
     Component {
         id: visualizerScreen
-        VisualizerPage { u: shell.u; sheet: actionSheet; position: shell.position; topInset: topBar.height
+        VisualizerPage { u: shell.u; sheet: actionSheet; position: shell.position; topInset: topBar.height; qrBottom: topBar.qrBottom
                          active: shell.appActive }
     }
     Component {

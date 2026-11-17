@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
 import "typing.js" as Typing
+import "queue.js" as Queue
 
 // Now Playing: blurred artwork behind, the cover in the middle, then the song, its
 // progress and one row of controls. Up Next sits top-right (under the guest QR when that
-// is showing). The Lyrics button moves the cover down beside the title and puts the words
-// where it was, with the visualizer moving behind them.
+// is showing). The Lyrics button moves the song up into the top-left corner (small,
+// floating) and puts the words in the middle, with the visualizer moving behind them;
+// Up Next and the controls stay.
 FocusScope {
     id: page
     property real u: 1
@@ -44,20 +46,12 @@ FocusScope {
     Component.onCompleted: updateWords()
 
     // the songs after the one playing, for the Up Next card
-    readonly property var upcoming: {
-        var rows = app.queueRows, at = -1
-        for (var i = 0; i < rows.length; i++) if (rows[i].current) { at = i; break }
-        var out = []
-        for (var j = at + 1; j < rows.length; j++)
-            out.push({ title: rows[j].title, subtitle: rows[j].subtitle, imageUrl: rows[j].imageUrl,
-                       trailing: rows[j].duration > 0 ? app.formatTime(rows[j].duration) : "" })
-        if (out.length === 0 && app.nextTitle !== "")   // the queue isn't loaded yet
-            out.push({ title: app.nextTitle, subtitle: app.nextArtist, imageUrl: app.nextArtUrl, trailing: "" })
-        return out
-    }
+    readonly property var upcoming: Queue.upcoming(app.queueRows,
+        { title: app.nextTitle, artist: app.nextArtist, imageUrl: app.nextArtUrl }, function(s) { return app.formatTime(s) })
 
-    // behind the words: the visualizer (Edge Lights stands in for Party here), dimmed so
-    // the words stay the brightest thing, and darker still under the controls
+    // behind the words: the visualizer (Edge Lights stands in for Party here). Its
+    // pictures are dimmed so the words stay the brightest thing, and darker still under the
+    // controls; the edge lights keep their full strength.
     Loader {
         anchors.fill: parent
         z: -1
@@ -65,18 +59,12 @@ FocusScope {
         sourceComponent: Item {
             Rectangle { anchors.fill: parent; color: "#050507" }
             VizScene {
+                objectName: "lyricsViz"
                 anchors.fill: parent
-                opacity: 0.6
+                dim: 0.6
+                shade: true
                 mode: app.visualizerMode === "party" ? "edge" : app.visualizerMode
                 running: page.visible && page.active
-            }
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                height: parent.height * 0.45
-                gradient: Gradient {
-                    GradientStop { position: 0; color: "#00050507" }
-                    GradientStop { position: 0.7; color: "#cc050507" }
-                }
             }
         }
     }
@@ -89,6 +77,7 @@ FocusScope {
 
     // --- status (reconnecting, no speaker, …) ----------------------------------------
     Text {
+        id: statusLine
         textFormat: Text.PlainText
         anchors { left: parent.left; top: parent.top; leftMargin: Theme.margin * page.u; topMargin: page.topInset + 12 * page.u }
         width: parent.width * 0.3
@@ -100,19 +89,18 @@ FocusScope {
         wrapMode: Text.WordWrap
     }
 
-    // --- the cover -----------------------------------------------------------------------
+    // --- the cover (it makes way for the words) ------------------------------------------
     Item {
         id: artCard
         readonly property real topY: page.topInset + 28 * page.u
-        readonly property real big: Math.max(120 * page.u, Math.min(560 * page.u, block.y - topY - 36 * page.u))
-        readonly property real small: 150 * page.u   // beside the title while the words show
-        readonly property real side: page.showLyrics ? small : big
+        readonly property real side: Math.max(120 * page.u, Math.min(560 * page.u, block.y - topY - 36 * page.u))
         width: side
         height: side
-        x: page.showLyrics ? block.x : (parent.width - width) / 2
-        y: page.showLyrics ? block.y : topY + (block.y - topY - 36 * page.u - big) / 2
-        Behavior on x { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-        Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+        x: (parent.width - width) / 2
+        y: topY + (block.y - topY - 36 * page.u - side) / 2
+        opacity: page.showLyrics ? 0 : 1
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 220 } }
         // the beat: a slight swell (a transform only: nothing is drawn again)
         scale: app.visualizerEnabled && !page.showLyrics ? 1 + 0.028 * app.audioPulse : 1
 
@@ -127,18 +115,32 @@ FocusScope {
         }
         Cover {
             anchors.fill: parent
-            radius: (page.showLyrics ? 16 : 28) * page.u
+            radius: 28 * page.u
             source: app.artUrl
         }
     }
 
-    // --- the words, where the cover was -------------------------------------------------
+    // --- with the lyrics: the song, small and floating, in the top-left corner -------------
+    SongCard {
+        id: songCard
+        objectName: "songCard"
+        u: page.u
+        opacity: page.showLyrics ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 220 } }
+        running: page.visible && page.active
+        x: Theme.margin * page.u
+        y: statusLine.visible ? statusLine.y + statusLine.height + 16 * page.u : page.topInset + 24 * page.u
+        width: Math.min(implicitWidth, (upNext.visible ? upNext.x : page.width) - x - 40 * page.u)
+    }
+
+    // --- the words: between the corner card and Up Next, above the controls -------------
     Item {
         id: words
         objectName: "words"
-        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: block.top
-                  topMargin: page.topInset; bottomMargin: 20 * page.u
-                  leftMargin: 180 * page.u; rightMargin: page.qrBottom > 0 ? 420 * page.u : 180 * page.u }
+        anchors { left: parent.left; top: songCard.bottom; bottom: block.top
+                  leftMargin: Theme.margin * page.u; topMargin: 32 * page.u; bottomMargin: 20 * page.u }
+        width: (upNext.visible ? upNext.x - 48 * page.u : page.width - Theme.margin * page.u) - x
         visible: page.showLyrics
         LyricsView {
             anchors.fill: parent
@@ -164,11 +166,12 @@ FocusScope {
     // --- up next (top-right; under the guest QR when that is showing) ------------------
     UpNext {
         id: upNext
+        objectName: "upNext"
         u: page.u
         anchors { right: parent.right; rightMargin: 48 * page.u }
         y: page.qrBottom > 0 ? page.qrBottom + 16 * page.u : page.topInset + 20 * page.u
         rows: page.upcoming
-        visible: rows.length > 0 && !page.showLyrics   // the words take the whole width
+        visible: rows.length > 0
         maxRows: page.qrBottom > 0 ? 3 : 4
         onActivated: page.openPage("queue")
         Keys.onDownPressed: partyButton.forceActiveFocus()
@@ -181,22 +184,22 @@ FocusScope {
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 50 * page.u }
         width: Math.min(1360 * page.u, parent.width - 2 * Theme.margin * page.u)
 
-        readonly property real inset: page.showLyrics ? artCard.small + 32 * page.u : 0
+        // the song's name (in the corner card instead while the lyrics show)
         Text {
             textFormat: Text.PlainText
-            x: block.inset
-            width: parent.width - block.inset
+            width: parent.width
+            visible: !page.showLyrics
             text: page.hasMedia ? app.title : (app.hasLocalPlayer ? "Nothing playing" : "")
             color: Theme.text
-            font.pixelSize: (page.showLyrics ? 60 : Theme.display) * page.u
+            font.pixelSize: Theme.display * page.u
             font.weight: Font.ExtraBold
             font.letterSpacing: -1.5 * page.u
             elide: Text.ElideRight
         }
         Text {
             textFormat: Text.PlainText
-            x: block.inset
-            width: parent.width - block.inset
+            width: parent.width
+            visible: !page.showLyrics
             topPadding: 4 * page.u
             text: page.hasMedia ? [app.artist, app.album].filter(s => s !== "").join(" — ")
                                 : "Play something from Music Assistant"
@@ -207,21 +210,16 @@ FocusScope {
         }
         Text {
             textFormat: Text.PlainText
-            x: block.inset
-            width: parent.width - block.inset
+            width: parent.width
             topPadding: 6 * page.u
-            visible: page.hasMedia && app.nowPlayingCredit !== ""
+            visible: page.hasMedia && app.nowPlayingCredit !== "" && !page.showLyrics
             text: "Added by " + app.nowPlayingCredit
             color: Theme.a1
             font.pixelSize: Theme.label * page.u
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
-        Item {   // the small cover stands beside the lines above: never end before it does
-            id: gap
-            width: 1
-            height: Math.max(30 * page.u, page.showLyrics ? artCard.small + 30 * page.u - gap.y : 0)
-        }
+        Item { width: 1; height: 30 * page.u }
         TrackProgress {
             width: parent.width
             u: page.u

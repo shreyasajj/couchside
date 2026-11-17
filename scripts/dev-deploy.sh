@@ -19,7 +19,7 @@ if [[ "${1:-}" == "--run" ]]; then
   # Launch inside the logged-in graphical session (environment taken from plasmashell).
   ssh "$TV" "bash -s" <<REMOTE
 set -e
-pkill -f 'couchside.ui.app|bin/couchside\$' || true
+pkill -f 'couchside.ui.app|bin/couchside( |\$)' || true
 PID=\$(pgrep -u "\$USER" -x plasmashell | head -1)
 [ -n "\$PID" ] || { echo "no plasmashell running"; exit 1; }
 while IFS= read -r -d '' kv; do

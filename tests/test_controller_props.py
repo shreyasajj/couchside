@@ -1366,3 +1366,87 @@ def test_logs_show_the_sendspin_log_tail_and_the_apps_lines(ctl, tmp_path, monke
     path.unlink()
     ctl.loadLogs()
     assert ctl.sendspinLog == "(no Sendspin log yet)"
+
+
+# --- crossfade (Music Assistant's settings, from Settings → This speaker) ---------------
+async def test_crossfade_loads_and_changes_through_music_assistant(ctl, monkeypatch):
+    from couchside.core.crossfade import Crossfade
+    wire(ctl)
+    monkeypatch.setattr(ctl, "_queue_id", lambda: "q")
+    state = {"now": Crossfade(enabled=True, mode="global", server_mode="smart_crossfade", seconds=8)}
+    calls = []
+
+    async def fake_load(client, qid):
+        return state["now"]
+
+    async def fake_enabled(client, qid, on):
+        calls.append(("enabled", qid, on))
+        state["now"] = Crossfade(on, state["now"].mode, state["now"].server_mode, state["now"].seconds)
+        return True
+
+    async def fake_mode(client, qid, mode):
+        calls.append(("mode", qid, mode))
+        state["now"] = Crossfade(state["now"].enabled, mode, state["now"].server_mode, state["now"].seconds)
+        return True
+
+    async def fake_seconds(client, seconds):
+        calls.append(("seconds", seconds))
+        state["now"] = Crossfade(state["now"].enabled, state["now"].mode, state["now"].server_mode, seconds)
+        return True
+    monkeypatch.setattr("couchside.ui.controller.crossfade.load", fake_load)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_enabled", fake_enabled)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_mode", fake_mode)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_seconds", fake_seconds)
+
+    assert ctl.crossfadeKnown is False
+    ctl.loadCrossfade()
+    await settle()
+    assert ctl.crossfadeKnown is True and ctl.crossfadeEnabled is True
+    assert ctl.crossfadeModeLabel == "Music Assistant's default (Smart (beat-matched))"
+    assert ctl.crossfadeSeconds == 8 and ctl.crossfadeLengthApplies is False
+    assert [c["id"] for c in ctl.crossfadeModes] == ["global", "standard_crossfade", "smart_crossfade"]
+    assert [c["current"] for c in ctl.crossfadeModes] == [True, False, False]
+
+    ctl.toggleCrossfade()
+    await settle()
+    assert calls[-1] == ("enabled", "q", False) and ctl.crossfadeEnabled is False
+
+    ctl.setCrossfadeMode("standard_crossfade")
+    await settle()
+    assert calls[-1] == ("mode", "q", "standard_crossfade")
+    assert ctl.crossfadeModeLabel == "Standard" and ctl.crossfadeLengthApplies is True
+
+    ctl.stepCrossfadeSeconds(1)
+    await settle()
+    assert calls[-1] == ("seconds", 9) and ctl.crossfadeSeconds == 9
+    state["now"] = Crossfade(False, "standard_crossfade", "smart_crossfade", 15)
+    ctl.loadCrossfade()
+    await settle()
+    ctl.stepCrossfadeSeconds(1)                # already the longest
+    await settle()
+    assert calls[-1] == ("seconds", 9)
+
+
+async def test_crossfade_change_that_fails_says_so(ctl, monkeypatch):
+    from couchside.core.crossfade import Crossfade
+    wire(ctl)
+    monkeypatch.setattr(ctl, "_queue_id", lambda: "q")
+
+    async def fake_load(client, qid):
+        return Crossfade(True, "global", "smart_crossfade", 8)
+
+    async def nope(*_a):
+        return False
+    monkeypatch.setattr("couchside.ui.controller.crossfade.load", fake_load)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_enabled", nope)
+    ctl.loadCrossfade()
+    await settle()
+    ctl.toggleCrossfade()
+    await settle()
+    assert ctl.toast == "Couldn't change the crossfade" and ctl.crossfadeEnabled is True
+
+
+async def test_no_crossfade_rows_without_a_server(ctl):
+    ctl.loadCrossfade()
+    await settle()
+    assert ctl.crossfadeKnown is False

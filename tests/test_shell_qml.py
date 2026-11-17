@@ -1,6 +1,7 @@
 """The whole UI (Shell.qml) with the real controller, offscreen: every screen loads
 without QML errors, and the remote's rules hold (Up to the bar, Back, tabs that vanish)."""
 
+import asyncio
 import os
 import re
 import time
@@ -216,6 +217,79 @@ async def test_the_lyrics_button_swaps_the_cover_for_the_words_over_the_visualiz
     assert problems(messages) == []
 
 
+def give_words_and_a_queue(ctl):
+    from couchside.core.lyrics import LyricLine
+    ctl._raw_lyrics = [LyricLine(float(t), f"Line number {t}") for t in range(0, 200, 4)]
+    ctl._rebuild_lyrics()
+    ctl._queue_rows = [{"itemId": str(i), "title": f"Song {i}", "subtitle": "Someone", "imageUrl": "",
+                        "duration": 200, "current": i == 0, "addedBy": ""} for i in range(5)]
+    ctl.queueChanged.emit()
+    pump(0.2)
+
+
+def box(item):
+    from PySide6.QtCore import QPointF
+    top_left = item.mapToScene(QPointF(0, 0))
+    return top_left.x(), top_left.y(), top_left.x() + item.width(), top_left.y() + item.height()
+
+
+def apart(a, b):
+    """The two items' boxes on screen don't overlap."""
+    ax0, ay0, ax1, ay1 = box(a)
+    bx0, by0, bx1, by1 = box(b)
+    return ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0
+
+
+async def test_with_lyrics_the_song_floats_top_left_and_up_next_stays_right(ui):
+    view, ctl, messages = ui
+    give_words_and_a_queue(ctl)
+    ctl.lyricsShown = True
+    go(view, "now")
+    pump(0.4)
+    card, words = named(view, "songCard"), named(view, "words")
+    up_next = named(view, "upNext")
+    assert card.property("visible") is True and up_next.property("visible") is True
+    x0, y0, _x1, _y1 = box(card)
+    assert x0 < 200 and y0 < 200                       # the top-left corner
+    assert apart(card, words) and apart(words, up_next) and apart(card, up_next)
+    assert box(words)[2] <= box(up_next)[0]            # the words end before Up Next
+    assert ctl.vizVisible is True
+    press(view, Qt.Key.Key_Right, 2)                   # the volume button is still there
+    assert "lyricsButton" not in focus_path(view) and view.activeFocusItem() is not None
+    if SHOTS:
+        for mode in ("edge", "radial"):
+            ctl.visualizerMode = mode
+            pump(0.3)
+            view.grabWindow().save(str(Path(SHOTS) / f"now-lyrics-layout-{mode}.png"))
+    ctl.lyricsShown = False
+    pump(0.4)
+    assert card.property("visible") is False
+    assert problems(messages) == []
+
+
+async def test_party_puts_the_song_top_left_lyrics_in_the_middle_and_up_next_right(ui):
+    view, ctl, messages = ui
+    give_words_and_a_queue(ctl)
+    ctl.visualizerMode = "party"
+    go(view, "visualizer")
+    card, words, up_next = named(view, "partyCard"), named(view, "partyWords"), named(view, "partyUpNext")
+    assert words.property("visible") is True and up_next.property("visible") is True
+    assert card.property("visible") is False           # the controls use that corner while they show
+    named(view, "visualizerPage").setProperty("chromeHidden", True)   # the controls fade away
+    pump(0.5)
+    assert card.property("visible") is True
+    assert apart(card, words) and apart(words, up_next) and apart(card, up_next)
+    assert box(card)[0] < 200 and box(card)[1] < 200
+    assert up_next.property("activeFocusOnTab") is False   # only to look at
+    assert ctl.queueVisible is True                     # the queue loads for Up Next
+    ctl.visualizerMode = "bars"
+    pump(0.1)
+    assert ctl.queueVisible is False
+    if SHOTS:
+        view.grabWindow().save(str(Path(SHOTS) / "visualizer-party-layout.png"))
+    assert problems(messages) == []
+
+
 async def test_switching_lyrics_off_hides_the_button_and_the_words(ui):
     view, ctl, messages = ui
     ctl.lyricsShown = True
@@ -343,3 +417,42 @@ async def test_the_tabs_sit_in_the_middle_of_the_screen(ui):
     pump(0.3)
     centre = row.mapToScene(QPointF(row.property("width") / 2, 0)).x()
     assert abs(centre - view.width() / 2) < 2
+
+
+async def test_settings_change_music_assistants_crossfade(ui, monkeypatch):
+    view, ctl, messages = ui
+    from couchside.core.crossfade import Crossfade
+    sent = []
+
+    async def fake_load(client, qid):
+        return Crossfade(True, "standard_crossfade", "smart_crossfade", 8)
+
+    async def fake_seconds(client, seconds):
+        sent.append(seconds)
+        return True
+    monkeypatch.setattr("couchside.ui.controller.crossfade.load", fake_load)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_seconds", fake_seconds)
+    monkeypatch.setattr(ctl, "_queue_id", lambda: "q")
+    async def settle():
+        for _ in range(5):
+            await asyncio.sleep(0)
+        pump(0.1)
+    go(view, "settings")
+    await settle()
+    named(view, "setupPage").setProperty("category", 2)      # This speaker
+    pump(0.1)
+    row = named(view, "crossfadeLengthRow")
+    assert row.property("visible") is True
+    assert ctl.crossfadeKnown is True and row.property("value") == "8 s"
+    row.forceActiveFocus()
+    press(view, Qt.Key.Key_Right)
+    await settle()
+    assert sent == [9] and row.property("value") == "9 s"
+    press(view, Qt.Key.Key_Left)
+    await settle()
+    press(view, Qt.Key.Key_Left)
+    await settle()
+    assert sent == [9, 8, 7] and "crossfadeLengthRow" in focus_path(view)   # Left adjusts, stays put
+    press(view, Qt.Key.Key_Up, 2)
+    assert "crossfadeRow" in focus_path(view)
+    assert problems(messages) == []

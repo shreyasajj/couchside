@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import time
 
@@ -15,7 +16,7 @@ from couchside.core.health import Problem, ProblemWatch, diagnose, supervisor_ou
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
-from couchside.core import library, queue, speakers, updates
+from couchside.core import crossfade, library, queue, speakers, updates
 from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
 from couchside.core.guest_server import PORT as GUEST_PORT
@@ -98,6 +99,7 @@ class AppController(QObject):
     qrChanged = Signal()
     healthChanged = Signal()      # problem, problems (the warning button)
     logsChanged = Signal()        # sendspinLog, appLog (the Logs screen)
+    crossfadeChanged = Signal()   # Music Assistant's crossfade settings (Settings)
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -155,6 +157,7 @@ class AppController(QObject):
         self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
         self._beat_hue = 0.55
         self._tempo = TempoTracker()
+        self._crossfade: crossfade.Crossfade | None = None   # read when Settings opens
         self._health = ProblemWatch(hold=15.0)
         self._problems: list[Problem] = []
         self._health_timer: QTimer | None = None
@@ -1134,6 +1137,81 @@ class AppController(QObject):
         save_settings(self._settings)  # the Sendspin supervisor restarts the speaker
         self._apply_capture_source()   # "what this TV is playing" moves with the output
         self.sendspinChanged.emit()
+
+    # --- crossfade (kept by Music Assistant: on/off and style per queue, length per server) ---
+    @Slot()
+    def loadCrossfade(self) -> None:
+        client, qid = self.conn.client, self._queue_id()
+
+        async def run():
+            self._crossfade = await crossfade.load(client, qid)
+            self.crossfadeChanged.emit()
+        self._spawn(run())
+
+    def _change_crossfade(self, coro, updated: "crossfade.Crossfade") -> None:
+        async def run():
+            if await coro:
+                self._crossfade = updated
+            else:
+                self._set_toast("Couldn't change the crossfade")
+            self.crossfadeChanged.emit()
+        self._spawn(run())
+
+    @Property(bool, notify=crossfadeChanged)
+    def crossfadeKnown(self) -> bool:
+        return self._crossfade is not None
+
+    @Property(bool, notify=crossfadeChanged)
+    def crossfadeEnabled(self) -> bool:
+        return bool(self._crossfade and self._crossfade.enabled)
+
+    @Property(str, notify=crossfadeChanged)
+    def crossfadeModeLabel(self) -> str:
+        cf = self._crossfade
+        if cf is None:
+            return ""
+        text = crossfade.label(cf.mode)
+        return f"{text} ({crossfade.label(cf.server_mode)})" if cf.mode == "global" else text
+
+    @Property("QVariantList", notify=crossfadeChanged)
+    def crossfadeModes(self) -> list[dict]:
+        mode = self._crossfade.mode if self._crossfade else ""
+        return [{"id": m, "label": text, "current": m == mode} for m, text in crossfade.MODES]
+
+    @Property(int, notify=crossfadeChanged)
+    def crossfadeSeconds(self) -> int:
+        return self._crossfade.seconds if self._crossfade else 0
+
+    @Property(bool, notify=crossfadeChanged)
+    def crossfadeLengthApplies(self) -> bool:
+        return bool(self._crossfade and self._crossfade.length_applies)
+
+    @Slot()
+    def toggleCrossfade(self) -> None:
+        cf, qid = self._crossfade, self._queue_id()
+        if cf is None or qid is None:
+            return
+        self._change_crossfade(crossfade.set_enabled(self.conn.client, qid, not cf.enabled),
+                               dataclasses.replace(cf, enabled=not cf.enabled))
+
+    @Slot(str)
+    def setCrossfadeMode(self, mode: str) -> None:
+        cf, qid = self._crossfade, self._queue_id()
+        if cf is None or qid is None or mode == cf.mode:
+            return
+        self._change_crossfade(crossfade.set_mode(self.conn.client, qid, mode),
+                               dataclasses.replace(cf, mode=mode))
+
+    @Slot(int)
+    def stepCrossfadeSeconds(self, direction: int) -> None:
+        cf = self._crossfade
+        if cf is None:
+            return
+        seconds = max(crossfade.MIN_SECONDS, min(crossfade.MAX_SECONDS, cf.seconds + (1 if direction > 0 else -1)))
+        if seconds == cf.seconds:
+            return
+        self._change_crossfade(crossfade.set_seconds(self.conn.client, seconds),
+                               dataclasses.replace(cf, seconds=seconds))
 
     # --- what the visualizer listens to ---
     def _source_choices(self) -> list:

@@ -115,3 +115,10 @@ def test_perimeter_goes_round_bottom_right_top_left(js):
     assert js("perimeter('top', 0)") == pytest.approx(0.5)
     assert js("perimeter('left', 0)") == pytest.approx(0.82)
     assert js("perimeter('left', 1)") == pytest.approx(1.0)
+
+
+def test_glow_follows_how_loud_that_part_of_the_music_is(js):
+    assert js("glow(0)") == pytest.approx(0.1)                    # quiet: a faint light, never off
+    assert js("glow(0.4)") == pytest.approx(0.55)
+    assert js("glow(0.8)") == pytest.approx(1.0) and js("glow(1.5)") == pytest.approx(1.0)
+    assert js("glow(0.2)") < js("glow(0.3)") < js("glow(0.6)")

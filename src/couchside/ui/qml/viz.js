@@ -69,6 +69,11 @@ function barHeight(value, beat) { return Math.max(0.012, value * (0.75 + 0.25 * 
 // fifth of the spectrum is nearly always empty, so the edge uses the rest).
 function edgeBin(i, n) { return Math.min(BARS - 1, Math.floor(i * (BARS * 0.8) / n)) }
 
+// Edge Lights: how bright one piece of the edge glows for its bar's value (0..1): faint
+// when that part of the music is quiet, full at four-fifths, so each side lights up with
+// its own notes (bass in the corners, voices further along).
+function glow(value) { return 0.1 + 0.9 * Math.min(1, Math.max(0, value) * 1.25) }
+
 // Edge Lights' chase: colour running round the screen, one lap every eight beats, so it
 // speeds up and slows down with the song. `bpm` comes from the controller's tempo.
 function chaseStep(phase, dt, bpm) { return (phase + dt * bpm / 60 / 8) % 1 }

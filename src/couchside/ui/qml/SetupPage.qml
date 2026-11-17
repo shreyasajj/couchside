@@ -11,6 +11,7 @@ import "typing.js" as Typing
 // Bigscreen's on-screen keyboard takes the arrow keys while a field is being edited;
 // the keyboard's Enter or Back stops editing.
 FocusScope {
+    objectName: "setupPage"
     id: page
     property real u: 1
     property var sheet: null
@@ -60,6 +61,7 @@ FocusScope {
         publicUrlField.text = app.guestPublicUrl
         playerNameField.text = app.playerName
         app.loadAudioDevices()
+        app.loadCrossfade()
         focusDefault()
     }
     // Back while a field is being edited: stop editing and keep what was typed (the same as
@@ -445,6 +447,37 @@ FocusScope {
                     value: app.sendspinDelay === 0 ? "Off" : app.sendspinDelay + " ms"
                     hint: "Delay this TV's sound to line up with other speakers"
                     onActivated: app.cycleSendspinDelay()
+                }
+                // Crossfade lives in Music Assistant (Home Assistant shows the same length)
+                SettingRow {
+                    objectName: "crossfadeRow"
+                    visible: app.crossfadeKnown
+                    label: "Crossfade"
+                    value: app.crossfadeEnabled ? "On" : "Off"
+                    hint: "Songs overlap at the end instead of stopping · for the speaker in use"
+                    onActivated: app.toggleCrossfade()
+                }
+                SettingRow {
+                    id: crossfadeStyleRow
+                    objectName: "crossfadeStyleRow"
+                    visible: app.crossfadeKnown
+                    label: "Crossfade style"
+                    value: app.crossfadeModeLabel
+                    hint: "Smart crossfade beat-matches the two songs and picks its own length"
+                    onActivated: page.pick("Crossfade style", app.crossfadeModes, crossfadeStyleRow,
+                                           function(id) { app.setCrossfadeMode(id) })
+                }
+                SettingRow {
+                    objectName: "crossfadeLengthRow"
+                    visible: app.crossfadeKnown
+                    label: "Crossfade length"
+                    value: app.crossfadeSeconds + " s"
+                    hint: app.crossfadeLengthApplies
+                          ? "Left and Right change it · every speaker on this Music Assistant"
+                          : "Used by the Standard style only · Left and Right change it"
+                    adjust: true
+                    onAdjusted: (direction) => app.stepCrossfadeSeconds(direction)
+                    onActivated: app.stepCrossfadeSeconds(1)
                 }
                 SettingRow {
                     objectName: "logsRow"
