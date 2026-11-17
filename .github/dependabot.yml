@@ -1,11 +1,9 @@
 version: 2
 updates:
+  # What the Flatpak bundles (Sendspin, MA client, …): a pip-compile lock, so Dependabot
+  # re-resolves the whole tree. The only pip entry: a root entry also picked up flatpak/
+  # and opened duplicate PRs (pyproject.toml uses minimum versions only).
   - package-ecosystem: pip
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
-  - package-ecosystem: pip       # what the Flatpak bundles (Sendspin, MA client, …)
     directory: /flatpak
     schedule:
       interval: daily

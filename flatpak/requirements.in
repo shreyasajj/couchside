@@ -1,0 +1,12 @@
+# What Couchside uses directly in the Flatpak (PySide6 comes from the PySide BaseApp).
+# requirements.txt is compiled from this file, dependencies included:
+#   pip-compile --strip-extras --output-file=requirements.txt requirements.in
+# (run inside org.kde.Sdk//6.11 so it resolves for the Flatpak's Python 3.13).
+# Dependabot updates both, so a bump only lands when the whole tree fits together.
+music-assistant-client==1.8.0
+sendspin==9.1.0
+zeroconf==0.154.0
+qasync==0.28.0
+anyascii==0.3.3
+segno==1.6.6
+dbus-next==0.2.3

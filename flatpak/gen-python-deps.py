@@ -16,6 +16,8 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -25,9 +27,26 @@ OUTPUT = HERE / "python-deps.json"
 EXCLUDE = {"pyside6", "pyside6-essentials", "pyside6-addons", "shiboken6"}
 
 
+def _get_json(url: str):
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        return json.load(resp)
+
+
+def fetch_json(url: str, get=_get_json, sleep=time.sleep, attempts: int = 5):
+    """PyPI's JSON API, retried with backoff: CI runners see the odd dropped connection
+    (e.g. SSL UNEXPECTED_EOF) and one blip shouldn't fail a 40-package release."""
+    for attempt in range(attempts):
+        try:
+            return get(url)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            if attempt == attempts - 1:
+                raise
+            print(f"  retrying {url}: {e}", file=sys.stderr)
+            sleep(2 ** (attempt + 1))
+
+
 def pypi_url(filename: str, name: str, version: str) -> str:
-    with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/{version}/json") as resp:
-        data = json.load(resp)
+    data = fetch_json(f"https://pypi.org/pypi/{name}/{version}/json")
     for f in data["urls"]:
         if f["filename"] == filename:
             return f["url"]
@@ -49,7 +68,8 @@ def name_version(filename: str) -> tuple[str, str]:
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(
-            [sys.executable, "-m", "pip", "download", "--dest", tmp, "-r", str(REQUIREMENTS)],
+            [sys.executable, "-m", "pip", "download", "--retries", "5", "--timeout", "30",
+             "--dest", tmp, "-r", str(REQUIREMENTS)],
             check=True,
         )
         sources = []
