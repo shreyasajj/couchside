@@ -6,6 +6,8 @@ import re
 BUS_NAME = "io.github.shreyasajj.Couchside.Control"
 OBJECT_PATH = "/io/github/shreyasajj/Couchside/Control"
 CONTENT_TYPES = ("now_playing", "search", "track", "album", "artist", "playlist")
+# Library sections a controller may list; each is also a navigable content type.
+BROWSE_PATHS = {"playlist": "Playlists", "album": "Albums", "artist": "Artists", "track": "Tracks"}
 
 
 class ControlError(Exception):
@@ -28,6 +30,15 @@ def validate_content(kind, value):
     elif not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}://" + kind + r"/[^\s?#]{1,1536}", value):
         raise ControlError("invalid_request", "Use a Music Assistant URI matching the content type")
     return kind, value
+
+
+def validate_browse(request):
+    path, offset, limit = request.get("path"), request.get("offset", 0), request.get("limit", 50)
+    if path is not None and path not in BROWSE_PATHS:
+        raise ControlError("invalid_request", "Unknown library section")
+    if type(offset) is not int or not 0 <= offset <= 1000000 or type(limit) is not int or not 1 <= limit <= 50:
+        raise ControlError("invalid_request", "Invalid page bounds")
+    return path, offset, limit
 
 
 class Dispatcher:
@@ -59,6 +70,9 @@ class Dispatcher:
             if command == "navigate":
                 allowed |= {"content_type", "content_id"}
                 validate_content(request.get("content_type"), request.get("content_id"))
+            elif command == "browse":
+                allowed |= {"path", "offset", "limit"}
+                validate_browse(request)
             elif command not in ("get_state", "focus"):
                 raise ControlError("unsupported", "Only UI commands are supported")
             if request.keys() - allowed:
