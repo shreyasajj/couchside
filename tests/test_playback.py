@@ -318,3 +318,23 @@ def test_controlled_speaker_falls_back_when_gone():
     pb.user_player_id = "deleted-group"                    # removed while selected
     conn.fire_event()
     assert pb.active_player_id == CID and pb.user_player_id is None
+
+
+# --- up next ---------------------------------------------------------------------------
+
+def test_next_song_read_from_the_queue():
+    q = queue()
+    q.next_item = NS(queue_item_id="n1", name="Bolier - Luna",
+                     media_item=NS(name="Luna", artist_str="Bolier",
+                                   image=NS(proxy_id=None, path="http://img/luna.jpg",
+                                            remotely_accessible=True)))
+    np = make_playing(queue=q)
+    assert (np.next_title, np.next_artist, np.next_image_url) == ("Luna", "Bolier", "http://img/luna.jpg")
+
+
+def test_no_next_song_is_empty():
+    np = make_playing(queue=queue())
+    assert (np.next_title, np.next_artist, np.next_image_url) == ("", "", None)
+    q = queue()
+    q.next_item = NS(queue_item_id="n2", name="Radio stream", media_item=None, image=None)
+    assert make_playing(queue=q).next_title == "Radio stream"

@@ -19,13 +19,13 @@ if [[ "${1:-}" == "--run" ]]; then
   # Launch inside the logged-in graphical session (environment taken from plasmashell).
   ssh "$TV" "bash -s" <<REMOTE
 set -e
-pkill -f 'couchside.ui.app|bin/couchside\$' || true
+pkill -f 'couchside.ui.app|bin/couchside( |\$)' || true
 PID=\$(pgrep -u "\$USER" -x plasmashell | head -1)
 [ -n "\$PID" ] || { echo "no plasmashell running"; exit 1; }
 while IFS= read -r -d '' kv; do
   case "\$kv" in WAYLAND_DISPLAY=*|DISPLAY=*|XDG_RUNTIME_DIR=*|DBUS_SESSION_BUS_ADDRESS=*|XDG_SESSION_TYPE=*|XDG_CURRENT_DESKTOP=*|QT_*) export "\$kv";; esac
 done < /proc/\$PID/environ
-nohup flatpak run $APP_ID > ~/couchside-run.log 2>&1 &
+nohup flatpak run $APP_ID ${COUCHSIDE_ARGS:-} > ~/couchside-run.log 2>&1 &
 sleep 6
 tail -n 40 ~/couchside-run.log
 REMOTE

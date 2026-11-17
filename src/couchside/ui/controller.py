@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import time
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
+from couchside.core import audio_devices
+from couchside.core.beat import TempoTracker
+from couchside.core import logbuffer
+from couchside.core.health import Problem, ProblemWatch, diagnose, supervisor_outdated
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
-from couchside.core import library, queue, speakers, updates
+from couchside.core import crossfade, library, queue, speakers, updates
 from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
 from couchside.core.guest_server import PORT as GUEST_PORT
@@ -36,9 +41,13 @@ from couchside.sendspin.pairing import PairingEvent
 from couchside.sendspin.runner import (
     AUDIO_DEVICES_ARGV,
     acquire_lock,
+    build_id,
     lock_path,
+    log_path,
     parse_audio_devices,
+    read_status,
     request_exit,
+    supervisor_running,
 )
 
 log = logging.getLogger(__name__)
@@ -52,6 +61,17 @@ _FAIL_TEXT = {
     "create_group": "Couldn't create the group", "edit_group": "Couldn't change the group",
     "delete_group": "Couldn't delete the group",
 }
+# colour pairs for the look (Settings → Look): id, name, first and second accent
+ACCENTS = (
+    ("teal-pink", "Teal and pink", "#00e0c6", "#ff3da6"),
+    ("sky-coral", "Sky and coral", "#36d6ff", "#ff5d3d"),
+    ("violet", "Violet", "#7c5cff", "#b14dff"),
+    ("gold-green", "Gold and green", "#ffd23d", "#23d18b"),
+)
+VISUALIZER_MODES = ("radial", "flow", "bars", "edge", "party")
+# what the visualizer is painted with: the look's two colours, the whole colour wheel, or
+# one colour family that takes a step round the wheel on every beat
+VISUALIZER_COLOURS = (("accent", "Theme colours"), ("rainbow", "Rainbow"), ("beat", "Changes on the beat"))
 _QUEUE_EVENTS = {"queue_items_updated", "queue_updated"}
 _PLAYER_EVENTS = {"player_added", "player_updated", "player_removed"}
 
@@ -73,8 +93,13 @@ class AppController(QObject):
     updateChanged = Signal()
     pulseChanged = Signal()       # visualizer on/off, page shown
     levelChanged = Signal()       # audioPulse (up to 20 a second while listening)
-    partyChanged = Signal()
+    spectrumChanged = Signal()    # spectrum, vizBeat, vizEnergy (30 a second on the Visualizer screen)
+    accentChanged = Signal()
+    beatChanged = Signal()        # beatHue (party mode's colour turns on every beat)
     qrChanged = Signal()
+    healthChanged = Signal()      # problem, problems (the warning button)
+    logsChanged = Signal()        # sendspinLog, appLog (the Logs screen)
+    crossfadeChanged = Signal()   # Music Assistant's crossfade settings (Settings)
 
     def __init__(self, settings: AppSettings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -93,6 +118,7 @@ class AppController(QObject):
         self._library_error = ""
         self._library_busy = False
         self._search_gen = 0
+        self._search_cache: dict[str, list] = {}  # finished searches, newest last
         self._queue_rows: list[dict] = []
         self._queue_visible = False
         self._toast = ""
@@ -113,7 +139,9 @@ class AppController(QObject):
         self._raw_english = False
         self._translation: list[str] | None = None
         self._translations: dict[tuple[str, str], list[str]] = {}  # (song, service)
-        self._audio_devices: list[str] = []
+        self._audio_devices: list[str] = []      # Sendspin's own (direct ALSA) devices
+        self._sinks: list[audio_devices.AudioChoice] = []     # PipeWire outputs
+        self._sources: list[audio_devices.AudioChoice] = []   # what the visualizer can listen to
         self._sendspin_latest: str | None = None
         self._sendspin_checked = False
         self._updater = None
@@ -121,10 +149,23 @@ class AppController(QObject):
         self._update_percent = 0
         self._newer_installed = False  # the portal saw a newer build already on disk
         from couchside.core.audio_capture import AudioPulse
-        self._pulse = AudioPulse()
-        self._pulse_visible = False   # Now Playing (or party mode) on screen, app in front
-        self._party = False
+        self._pulse = AudioPulse(source=audio_devices.capture_source(
+            self._settings.visualizer_source, self._settings.sendspin_audio_device))
+        self._pulse_visible = False   # Now Playing on screen, app in front
+        self._viz_visible = False     # the Visualizer screen on screen, app in front
+        self._viz_beat = 0.0
         self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
+        self._beat_hue = 0.55
+        self._tempo = TempoTracker()
+        self._crossfade: crossfade.Crossfade | None = None   # read when Settings opens
+        self._health = ProblemWatch(hold=15.0)
+        self._problems: list[Problem] = []
+        self._health_timer: QTimer | None = None
+        self._last_start = float("-inf")       # when we last started the supervisor
+        self._restarting_old: str | None = None  # the old build being replaced
+        self._sendspin_log = ""
+        self._app_log = ""
+        self._light, self._shown_light = 0.0, 0.0  # the edge lights' slower pulse
         self._pulse_timer = QTimer(self)
         self._pulse_timer.setInterval(50)  # 20 updates a second while listening
         self._pulse_timer.timeout.connect(self._poll_pulse)
@@ -159,6 +200,7 @@ class AppController(QObject):
         """Release network resources on shutdown."""
         if self._guest_server is not None:
             await self._guest_server.stop()
+        self._pulse_timer.stop()   # it would keep calling into a controller being torn down
         self._pulse.stop()
         if self._updater is not None and hasattr(self._updater, "close"):
             await self._updater.close()
@@ -336,6 +378,30 @@ class AppController(QObject):
     def lyricsEnabled(self) -> bool:
         return self._settings.lyrics_enabled
 
+    @Property(bool, notify=lyricsChanged)
+    def lyricsShown(self) -> bool:
+        """Now Playing shows the words in place of the cover (its Lyrics button)."""
+        return self._settings.lyrics_shown
+
+    @lyricsShown.setter
+    def lyricsShown(self, shown: bool) -> None:
+        if bool(shown) != self._settings.lyrics_shown:
+            self._settings.lyrics_shown = bool(shown)
+            save_settings(self._settings)
+            self.lyricsChanged.emit()
+
+    @Property(bool, notify=lyricsChanged)
+    def lyricsVisualizer(self) -> bool:
+        """The visualizer moves behind the words on Now Playing."""
+        return self._settings.lyrics_visualizer
+
+    @lyricsVisualizer.setter
+    def lyricsVisualizer(self, on: bool) -> None:
+        if bool(on) != self._settings.lyrics_visualizer:
+            self._settings.lyrics_visualizer = bool(on)
+            save_settings(self._settings)
+            self.lyricsChanged.emit()
+
     _LYRICS_SIZES = ("small", "medium", "large")
 
     @Property(str, notify=lyricsChanged)
@@ -485,6 +551,19 @@ class AppController(QObject):
     def artUrl(self) -> str:
         return art_url(self._np("image_url", None), 600)
 
+    # "Up next" on Now Playing
+    @Property(str, notify=changed)
+    def nextTitle(self) -> str:
+        return self._np("next_title")
+
+    @Property(str, notify=changed)
+    def nextArtist(self) -> str:
+        return self._np("next_artist")
+
+    @Property(str, notify=changed)
+    def nextArtUrl(self) -> str:
+        return art_url(self._np("next_image_url", None), 256)
+
     @Property(str, notify=changed)
     def artUrlLarge(self) -> str:
         return art_url(self._np("image_url", None), 1024)
@@ -607,24 +686,46 @@ class AppController(QObject):
 
     @Slot(str)
     def search(self, query: str) -> None:
+        """Results as fast as they can be had: a search done before is answered from
+        memory; otherwise the library's own matches show first (a fraction of a second)
+        and the full results, streaming services included, replace them when they arrive."""
         self._search_gen += 1
         gen = self._search_gen
-        if not query.strip():
+        key = query.strip().lower()
+        if not key:
             self.loadRecents()
+            return
+        if key in self._search_cache:
+            self._set_library(self._search_cache[key])
             return
         self._library_busy = True
         self.libraryChanged.emit()
+        client = self.conn.client
+        done = {"full": False}
 
-        async def run():
-            client = self.conn.client
+        async def quick():
+            out = await library.search(client, query, library_only=True)
+            if gen == self._search_gen and not done["full"] and out.rows:
+                self._set_library(out.rows, busy=True)   # still searching the services
+
+        async def full():
             out = await library.search(client, query) if client is not None else \
                 library.SearchOutcome(error=library.SEARCH_ERROR)
+            done["full"] = True
+            if not out.error:
+                self._search_cache.pop(key, None)
+                self._search_cache[key] = out.rows
+                while len(self._search_cache) > 30:
+                    self._search_cache.pop(next(iter(self._search_cache)))
             if gen == self._search_gen:  # a newer search wins
                 self._set_library(out.rows, out.error)
-        self._spawn(run())
+        if client is not None:
+            self._spawn(quick())
+        self._spawn(full())
 
     @Slot()
     def loadRecents(self) -> None:
+        self._search_cache.clear()  # the Search page was opened or emptied: start fresh
         self._search_gen += 1
         gen = self._search_gen
         self._library_busy = True
@@ -1011,19 +1112,140 @@ class AppController(QObject):
         save_settings(self._settings)  # the Sendspin supervisor restarts the speaker
         self.sendspinChanged.emit()
 
+    @staticmethod
+    def _choice_rows(choices: list, current: str) -> list[dict]:
+        return [{"id": c.id, "label": c.label, "section": c.section, "current": c.id == current}
+                for c in choices]
+
+    def _output_choices(self) -> list:
+        return audio_devices.output_choices(self._sinks, self._audio_devices,
+                                            self._settings.sendspin_audio_device)
+
+    @Property("QVariantList", notify=sendspinChanged)
+    def audioOutputs(self) -> list[dict]:
+        """Where Sendspin can play: Default, the PipeWire outputs, then the direct devices."""
+        return self._choice_rows(self._output_choices(), self._settings.sendspin_audio_device or "")
+
     @Property(str, notify=sendspinChanged)
-    def audioDevice(self) -> str:
-        return self._settings.sendspin_audio_device or "Default"
+    def audioOutputLabel(self) -> str:
+        current = self._settings.sendspin_audio_device or ""
+        return next((c.label for c in self._output_choices() if c.id == current), "Default")
+
+    @Slot(str)
+    def setAudioOutput(self, choice: str) -> None:
+        self._settings.sendspin_audio_device = choice or None
+        save_settings(self._settings)  # the Sendspin supervisor restarts the speaker
+        self._apply_capture_source()   # "what this TV is playing" moves with the output
+        self.sendspinChanged.emit()
+
+    # --- crossfade (kept by Music Assistant: on/off and style per queue, length per server) ---
+    @Slot()
+    def loadCrossfade(self) -> None:
+        client, qid = self.conn.client, self._queue_id()
+
+        async def run():
+            self._crossfade = await crossfade.load(client, qid)
+            self.crossfadeChanged.emit()
+        self._spawn(run())
+
+    def _change_crossfade(self, coro, updated: "crossfade.Crossfade") -> None:
+        async def run():
+            if await coro:
+                self._crossfade = updated
+            else:
+                self._set_toast("Couldn't change the crossfade")
+            self.crossfadeChanged.emit()
+        self._spawn(run())
+
+    @Property(bool, notify=crossfadeChanged)
+    def crossfadeKnown(self) -> bool:
+        return self._crossfade is not None
+
+    @Property(bool, notify=crossfadeChanged)
+    def crossfadeEnabled(self) -> bool:
+        return bool(self._crossfade and self._crossfade.enabled)
+
+    @Property(str, notify=crossfadeChanged)
+    def crossfadeModeLabel(self) -> str:
+        cf = self._crossfade
+        if cf is None:
+            return ""
+        text = crossfade.label(cf.mode)
+        return f"{text} ({crossfade.label(cf.server_mode)})" if cf.mode == "global" else text
+
+    @Property("QVariantList", notify=crossfadeChanged)
+    def crossfadeModes(self) -> list[dict]:
+        mode = self._crossfade.mode if self._crossfade else ""
+        return [{"id": m, "label": text, "current": m == mode} for m, text in crossfade.MODES]
+
+    @Property(int, notify=crossfadeChanged)
+    def crossfadeSeconds(self) -> int:
+        return self._crossfade.seconds if self._crossfade else 0
+
+    @Property(bool, notify=crossfadeChanged)
+    def crossfadeLengthApplies(self) -> bool:
+        return bool(self._crossfade and self._crossfade.length_applies)
 
     @Slot()
-    def cycleAudioDevice(self) -> None:
-        choices: list[str | None] = [None] + self._audio_devices
-        cur = self._settings.sendspin_audio_device
-        if cur not in choices:
-            choices.append(cur)  # a saved device that isn't plugged in right now
-        self._settings.sendspin_audio_device = choices[(choices.index(cur) + 1) % len(choices)]
+    def toggleCrossfade(self) -> None:
+        cf, qid = self._crossfade, self._queue_id()
+        if cf is None or qid is None:
+            return
+        self._change_crossfade(crossfade.set_enabled(self.conn.client, qid, not cf.enabled),
+                               dataclasses.replace(cf, enabled=not cf.enabled))
+
+    @Slot(str)
+    def setCrossfadeMode(self, mode: str) -> None:
+        cf, qid = self._crossfade, self._queue_id()
+        if cf is None or qid is None or mode == cf.mode:
+            return
+        self._change_crossfade(crossfade.set_mode(self.conn.client, qid, mode),
+                               dataclasses.replace(cf, mode=mode))
+
+    @Slot(int)
+    def stepCrossfadeSeconds(self, direction: int) -> None:
+        cf = self._crossfade
+        if cf is None:
+            return
+        seconds = max(crossfade.MIN_SECONDS, min(crossfade.MAX_SECONDS, cf.seconds + (1 if direction > 0 else -1)))
+        if seconds == cf.seconds:
+            return
+        self._change_crossfade(crossfade.set_seconds(self.conn.client, seconds),
+                               dataclasses.replace(cf, seconds=seconds))
+
+    # --- what the visualizer listens to ---
+    def _source_choices(self) -> list:
+        return audio_devices.source_choices(self._sources, self._settings.visualizer_source)
+
+    @Property("QVariantList", notify=pulseChanged)
+    def beatSources(self) -> list[dict]:
+        return self._choice_rows(self._source_choices(), self._settings.visualizer_source or "")
+
+    @Property(str, notify=pulseChanged)
+    def beatSourceLabel(self) -> str:
+        current = self._settings.visualizer_source or ""
+        return next((c.label for c in self._source_choices() if c.id == current),
+                    "What this TV is playing")
+
+    @Slot(str)
+    def setBeatSource(self, choice: str) -> None:
+        self._settings.visualizer_source = choice or None
         save_settings(self._settings)
-        self.sendspinChanged.emit()
+        self._apply_capture_source()
+        self.pulseChanged.emit()
+
+    def _apply_capture_source(self, announce: bool = False) -> None:
+        """Point the listener at the chosen source; one that is gone (unplugged) falls back
+        to what this TV plays, and `announce` says so."""
+        saved = self._settings.visualizer_source
+        known = self._sources or None   # no list (no pactl): trust the setting
+        source = audio_devices.capture_source(saved, self._settings.sendspin_audio_device, known)
+        self._pulse.set_source(source)
+        if announce and saved and source != saved:
+            self._set_toast(f"{saved} isn't connected — listening to what this TV plays")
+
+    async def _pactl(self, kind: str) -> str:
+        return await audio_devices.pactl_json(kind)
 
     async def _list_audio_devices(self) -> list[str]:
         proc = await asyncio.create_subprocess_exec(*AUDIO_DEVICES_ARGV, stdout=asyncio.subprocess.PIPE,
@@ -1038,11 +1260,18 @@ class AppController(QObject):
     @Slot()
     def loadAudioDevices(self) -> None:
         async def run():
-            try:
-                self._audio_devices = await self._list_audio_devices()
-            except Exception as e:
-                log.warning("listing audio devices failed: %s", e)
+            direct, sinks, sources = await asyncio.gather(
+                self._list_audio_devices(), self._pactl("sinks"), self._pactl("sources"),
+                return_exceptions=True)
+            if isinstance(direct, BaseException):
+                log.warning("listing audio devices failed: %s", direct)
+            else:
+                self._audio_devices = direct
+            self._sinks = audio_devices.parse_sinks(sinks if isinstance(sinks, str) else "")
+            self._sources = audio_devices.parse_sources(sources if isinstance(sources, str) else "")
+            self._apply_capture_source(announce=True)
             self.sendspinChanged.emit()
+            self.pulseChanged.emit()
         self._spawn(run())
 
     @Property(int, notify=sendspinChanged)
@@ -1202,6 +1431,90 @@ class AppController(QObject):
         from PySide6.QtCore import QProcess
         QProcess.startDetached("couchside-sendspin", [])  # single instance via its lock
 
+    # --- something broke: the warning button and the Logs screen ------------------------
+    def _sendspin_status(self) -> dict | None:
+        return read_status()
+
+    def _sendspin_running(self) -> bool:
+        return supervisor_running()
+
+    @Slot()
+    def startHealthChecks(self) -> None:
+        """From the app (not in tests): look every 5 s, first after 3 s."""
+        if self._health_timer is None:
+            self._health_timer = QTimer(self)
+            self._health_timer.setInterval(5000)
+            self._health_timer.timeout.connect(self._check_health)
+            self._health_timer.start()
+            QTimer.singleShot(3000, self._check_health)
+
+    def _check_health(self) -> None:
+        status, running, now = self._sendspin_status(), self._sendspin_running(), self._clock()
+        if supervisor_outdated(status, running, build_id()):
+            old = (status or {}).get("build") or "unknown"
+            if self._restarting_old != old:   # once per old build, not every 5 s
+                self._restarting_old = old
+                log.info("Sendspin supervisor is from another build (%s); restarting it", old)
+                self._spawn(self._restart_sendspin())
+        elif not running and now - self._last_start >= 30.0:
+            self._last_start = now
+            self._start_local_sendspin()
+        found = diagnose(status=status, running=running, conn=self.conn.state,
+                         local_player=self.playback.local_player_found,
+                         has_token=load_token() is not None)
+        shown = self._health.update(found, now)
+        if shown != self._problems:
+            for p in shown:
+                if p not in self._problems:
+                    log.warning("problem: %s", p.message)
+            self._problems = shown
+            self.healthChanged.emit()
+
+    @Property(str, notify=healthChanged)
+    def problem(self) -> str:
+        """The worst thing wrong right now, or "" (the top bar's warning button)."""
+        return self._problems[0].message if self._problems else ""
+
+    @Property("QVariantList", notify=healthChanged)
+    def problems(self) -> list[str]:
+        return [p.message for p in self._problems]
+
+    async def _restart_sendspin(self) -> None:
+        request_exit()
+        if not await self._wait_sendspin_stopped(15):
+            log.warning("the Sendspin supervisor didn't stop in time")
+        self._last_start = self._clock()
+        self._start_local_sendspin()
+
+    @Slot()
+    def restartSpeaker(self) -> None:
+        self._set_toast("Restarting this TV's speaker…")
+        self._spawn(self._restart_sendspin())
+
+    @Slot()
+    def loadLogs(self) -> None:
+        """Read the logs for the Logs screen: the end of Sendspin's file and the app's
+        recent lines."""
+        try:
+            with open(log_path(), "rb") as fh:
+                fh.seek(0, 2)
+                fh.seek(max(0, fh.tell() - 128_000))
+                text = fh.read().decode(errors="replace")
+            lines = text.splitlines()[-300:]
+            self._sendspin_log = "\n".join(lines) if lines else "(the Sendspin log is empty)"
+        except OSError:
+            self._sendspin_log = "(no Sendspin log yet)"
+        self._app_log = "\n".join(logbuffer.recent()[-300:]) or "(nothing logged yet)"
+        self.logsChanged.emit()
+
+    @Property(str, notify=logsChanged)
+    def sendspinLog(self) -> str:
+        return self._sendspin_log
+
+    @Property(str, notify=logsChanged)
+    def appLog(self) -> str:
+        return self._app_log
+
     # --- visualizer and party mode ---------------------------------------------------
     @Property(bool, notify=pulseChanged)
     def visualizerEnabled(self) -> bool:
@@ -1225,15 +1538,125 @@ class AppController(QObject):
             self._pulse_visible = bool(shown)
             self._update_listening()
 
-    @Property(bool, notify=partyChanged)
-    def partyMode(self) -> bool:
-        return self._party
+    @Property(bool, notify=pulseChanged)
+    def vizVisible(self) -> bool:
+        return self._viz_visible
 
-    @Slot()
-    def togglePartyMode(self) -> None:
-        self._party = not self._party
-        self._update_listening()
-        self.partyChanged.emit()
+    @vizVisible.setter
+    def vizVisible(self, shown: bool) -> None:
+        """QML: the Visualizer screen is on screen and the app is in front. It listens
+        whatever the "Beat pulse" setting says, and gets the spectrum 30 times a second."""
+        if bool(shown) != self._viz_visible:
+            self._viz_visible = bool(shown)
+            self._pulse_timer.setInterval(33 if self._viz_visible else 50)
+            self._update_listening()
+            self.spectrumChanged.emit()
+
+    @Property("QVariantList", notify=spectrumChanged)
+    def spectrum(self) -> list[float]:
+        """64 bars, low to high, 0..1.15; all zero while nothing is heard."""
+        return self._pulse.bars if self._pulse.running else [0.0] * 64
+
+    @Property(float, notify=spectrumChanged)
+    def vizBeat(self) -> float:
+        """1 on a beat, falling by a quarter per frame."""
+        return self._viz_beat
+
+    @Property(float, notify=spectrumChanged)
+    def vizEnergy(self) -> float:
+        return self._pulse.level if self._pulse.running else 0.0
+
+    def _clock(self) -> float:
+        """Seconds for the tempo (tests swap it; never time.monotonic itself: asyncio uses it)."""
+        return time.monotonic()
+
+    @Property(float, notify=spectrumChanged)
+    def vizTempo(self) -> float:
+        """The song's beats per minute while listening (slow and steady in silence): how
+        fast the edge lights run round the screen."""
+        return self._tempo.bpm(self._clock())
+
+    @Property(bool, notify=pulseChanged)
+    def visualizerEdges(self) -> bool:
+        """Edge lights over every visualizer picture, not only in their own mode."""
+        return self._settings.visualizer_edges
+
+    @visualizerEdges.setter
+    def visualizerEdges(self, on: bool) -> None:
+        if bool(on) != self._settings.visualizer_edges:
+            self._settings.visualizer_edges = bool(on)
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
+    @Property(float, notify=pulseChanged)
+    def visualizerIntensity(self) -> float:
+        return self._settings.visualizer_intensity
+
+    @visualizerIntensity.setter
+    def visualizerIntensity(self, value: float) -> None:
+        value = round(round(max(0.0, min(2.4, float(value))) * 20) / 20, 2)  # steps of 0.05
+        if value != self._settings.visualizer_intensity:
+            self._settings.visualizer_intensity = value
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
+    @Property(str, notify=pulseChanged)
+    def visualizerMode(self) -> str:
+        mode = self._settings.visualizer_mode
+        return mode if mode in VISUALIZER_MODES else VISUALIZER_MODES[0]
+
+    @visualizerMode.setter
+    def visualizerMode(self, mode: str) -> None:
+        if mode in VISUALIZER_MODES and mode != self._settings.visualizer_mode:
+            self._settings.visualizer_mode = mode
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
+    @Property(str, notify=pulseChanged)
+    def visualizerColours(self) -> str:
+        saved = self._settings.visualizer_colours
+        return saved if any(c[0] == saved for c in VISUALIZER_COLOURS) else VISUALIZER_COLOURS[0][0]
+
+    @Property(str, notify=pulseChanged)
+    def visualizerColoursLabel(self) -> str:
+        return next(label for i, label in VISUALIZER_COLOURS if i == self.visualizerColours)
+
+    @Property("QVariantList", notify=pulseChanged)
+    def visualizerColourChoices(self) -> list[dict]:
+        current = self.visualizerColours
+        return [{"id": i, "label": label, "current": i == current} for i, label in VISUALIZER_COLOURS]
+
+    @Slot(str)
+    def setVisualizerColours(self, colours: str) -> None:
+        if any(c[0] == colours for c in VISUALIZER_COLOURS) and colours != self._settings.visualizer_colours:
+            self._settings.visualizer_colours = colours
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
+    # --- look ---
+    def _accent(self) -> tuple:
+        return next((a for a in ACCENTS if a[0] == self._settings.accent), ACCENTS[0])
+
+    @Property(str, notify=accentChanged)
+    def accent1(self) -> str:
+        return self._accent()[2]
+
+    @Property(str, notify=accentChanged)
+    def accent2(self) -> str:
+        return self._accent()[3]
+
+    @Property("QVariantList", notify=accentChanged)
+    def accents(self) -> list[dict]:
+        current = self._accent()[0]
+        return [{"id": i, "label": label, "a1": a1, "a2": a2, "current": i == current}
+                for i, label, a1, a2 in ACCENTS]
+
+    @Slot(str)
+    def setAccent(self, accent: str) -> None:
+        if any(a[0] == accent for a in ACCENTS):
+            self._settings.accent = accent
+            save_settings(self._settings)
+            self.accentChanged.emit()
 
     @Property(float, notify=levelChanged)
     def audioPulse(self) -> float:
@@ -1243,24 +1666,50 @@ class AppController(QObject):
         screen all the time)."""
         return self._shown_level
 
-    def _update_listening(self) -> None:
-        """Listen only while something on screen pulses and music plays (no CPU otherwise)."""
+    @Property(bool, notify=pulseChanged)
+    def partyLights(self) -> bool:
+        return self._settings.party_lights
+
+    @partyLights.setter
+    def partyLights(self, on: bool) -> None:
+        self._settings.party_lights = bool(on)
+        save_settings(self._settings)
+        self.pulseChanged.emit()
+
+    @Property(float, notify=levelChanged)
+    def lightPulse(self) -> float:
+        """0..1 for party mode's edge lights: full on each beat, then falling over about
+        half a second. Slower than audioPulse on purpose: lights that copy the screen
+        smooth what they see, and a shorter flash never reaches them."""
+        return self._shown_light
+
+    @Property(float, notify=beatChanged)
+    def beatHue(self) -> float:
+        """0..1: a colour that takes a step round the colour wheel on every beat. Party
+        mode paints the screen edges with it, so lights that follow the screen dance too."""
+        return self._beat_hue
+
+    def _want_listening(self) -> bool:
+        """Listen only while something on screen moves with the music and music plays."""
         np = self.playback.now_playing
         playing = np is not None and np.state == "playing"
-        want = self._pulse_visible and playing and (self._settings.visualizer_enabled or self._party)
+        return playing and (self._viz_visible
+                            or (self._pulse_visible and self._settings.visualizer_enabled))
+
+    def _update_listening(self) -> None:
+        want = self._want_listening()
         if want and not self._pulse.running:
             if self._pulse.start():
                 self._pulse_timer.start()
         elif not want and self._pulse.running:
+            self._tempo.reset()
             self._pulse.stop()
             self._pulse_timer.stop()
             self._kick = 0.0
             self._poll_pulse()  # settle at rest
 
     def _update_listening_restart(self) -> None:
-        np = self.playback.now_playing
-        playing = np is not None and np.state == "playing"
-        if self._pulse_visible and playing and (self._settings.visualizer_enabled or self._party):
+        if self._want_listening():
             self._pulse.start()
         else:
             self._pulse_timer.stop()
@@ -1275,13 +1724,26 @@ class AppController(QObject):
         if self._pulse.beats != self._seen_beats:
             self._seen_beats = self._pulse.beats
             self._kick = 1.0
+            self._light = 1.0
+            self._viz_beat = 1.0
+            self._beat_hue = round((self._beat_hue + 0.17) % 1.0, 2)  # a clearly different colour
+            self._tempo.beat(self._clock())
+            self.beatChanged.emit()
         else:
             self._kick = self._kick * 0.55 if self._kick > 0.05 else 0.0
+            self._light = self._light * 0.82 if self._light > 0.05 else 0.0
+            self._viz_beat = self._viz_beat * 0.75 if self._viz_beat > 0.02 else 0.0
+        if not self._pulse.running:
+            self._light = 0.0
+            self._viz_beat = 0.0
+        if self._viz_visible:
+            self.spectrumChanged.emit()
         pulse = max(0.6 * self._pulse.level, self._kick)
+        light = max(0.5 * self._pulse.level, self._light)
         # in steps of 0.05: every change costs binding work and a redraw
-        pulse = round(pulse * 20) / 20
-        if pulse != self._shown_level:
-            self._shown_level = pulse
+        pulse, light = round(pulse * 20) / 20, round(light * 20) / 20
+        if pulse != self._shown_level or light != self._shown_light:
+            self._shown_level, self._shown_light = pulse, light
             self.levelChanged.emit()
 
     # --- toast -----------------------------------------------------------------

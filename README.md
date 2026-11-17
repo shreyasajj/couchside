@@ -58,14 +58,27 @@ Settings live in the Flatpak's sandbox:
 
 From the Couchside tile, or `flatpak run io.github.shreyasajj.Couchside`.
 
-Remote: Left/Right move along the control bar (shuffle, previous, play/pause, next,
-repeat, volume, settings), OK activates, Back goes back (on Now Playing it asks before
-exiting). On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
-Back closes it. Media keys (play/pause, next, previous) work anywhere.
+**Getting around.** A bar across the top of every screen has the tabs — Now Playing,
+Search, Queue — and, on the right, the speaker in use (opens
+Speakers), Guest, and Settings. Up from the top of any screen reaches the bar; Left/Right
+move along it, OK opens, Down goes back to where you were. Back goes to Now Playing (from
+the Visualizer, Speakers, Guests or Settings: to the tab you came from); on Now Playing it asks before
+exiting.
 
-**Lyrics.** When a song has time-synced lyrics, Now Playing switches to the lyrics
-layout: centered, the line being sung large, the next one smaller, scrolling with the
-music. Songs without synced lyrics keep the big-artwork layout. Lyrics come from the
+**Now Playing.** The cover, the song, its progress, and one row of controls: shuffle,
+repeat, previous, play/pause, next, volume, lyrics, visualizer. Left/Right move along the row, OK
+activates. On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
+Back closes it. **Up Next** (top right) lists the next songs; OK on it opens the Queue.
+Media keys (play/pause, next, previous) work anywhere.
+
+**Lyrics.** The Lyrics button on Now Playing moves the song into the top-left corner
+(a small cover with the title and artist, floating gently) and puts its time-synced lyrics
+in the middle: the line being sung large and in colour, the others fading away above and
+below, scrolling with the music. Up Next stays on the right and the controls (volume too)
+stay at the bottom. The visualizer moves behind the words, dimmed, with its edge lights at
+full strength (Settings → Lyrics → Visualizer behind the lyrics; off shows the blurred
+cover). The button again brings the cover back; the choice is remembered. Songs without
+synced lyrics say so. Lyrics come from the
 track's own metadata in Music Assistant when present, otherwise from
 [LRCLIB](https://lrclib.net) (Couchside sends the song's title, first artist, album and
 length — nothing else).
@@ -83,8 +96,9 @@ Settings → **Lyrics**:
 With English underneath on, the playing song's lyrics are sent to the chosen service.
 Romanization is rule-based and approximate (Japanese kanji get Chinese readings).
 
-**Guest mode.** Settings → Guest mode → On shows a QR code (with your caption) in the
-top-right of Now Playing. Guests scan it, enter a name, and can search and add songs,
+**Guest mode.** **Guest** in the top bar (or Settings → Guest mode → On) shows a QR code
+on a white card (with your caption) in the top-right corner of every screen. OK on the
+card opens the guest list, where guest mode is also turned off. Guests scan it, enter a name, and can search and add songs,
 skip the playing song and boost one of their own songs to play next, within the limits
 you set (skips and boosts per guest, songs waiting per guest, wait between adds). Their
 songs play first come, first served, right after the current song (ahead of Music
@@ -93,8 +107,8 @@ volume, shuffle, reorder, remove others' songs or switch speakers. Turning guest
 and on makes a new QR code (old links stop working); guest mode is off when the app
 starts.
 
-**Admins.** While guest mode is on, Settings → Guest mode → **Guests and admins** lists
-the guests who joined. Make someone an admin either way:
+**Admins.** While guest mode is on, the QR card (or Settings → Guest mode → **Guests and
+admins**) opens the list of guests who joined. Make someone an admin either way:
 
 - **Admin code:** "Show an admin code" puts a 6-digit code on the TV. On their phone the
   guest taps "Have an admin code from the host?" and enters it. It works once, for 10
@@ -117,13 +131,13 @@ network). For HTTPS or access from outside, put a reverse proxy in front of it a
 **Guest page public URL**; the proxy must pass WebSocket upgrades (`/g/<token>/api/ws`)
 — if it doesn't, phones fall back to polling every 3 s.
 
-The buttons at the right of the bar open:
+The other screens:
 
 - **Search**: OK on the search box starts typing (Bigscreen's on-screen keyboard opens);
-  its Enter, or Back, runs the search and jumps to the results. Up/Down move between
-  rows (Tracks, Albums, Artists, Playlists, Radio), Left/Right along a row, OK offers
-  Play now / Play next / Add to queue. With nothing typed it shows Recently played and
-  Recently added.
+  its Enter, or Back, runs the search and jumps to the results: a row of covers per kind
+  (Tracks, Albums, Artists, Playlists, Radio). Up/Down change row, Left/Right move along
+  it, OK offers Play now / Play
+  next / Add to queue. With nothing typed it shows Recently played and Recently added.
 - **Queue**: what is still to play. OK on a song: Play this now, Play next, Move up/down,
   Remove.
 - **Speakers**: every speaker and group, which one you control, what each is playing.
@@ -131,16 +145,62 @@ The buttons at the right of the bar open:
   speaker / Stop syncing; groups also have Edit members and Delete group. "New group"
   makes a synced group from two or more speakers. Couchside always starts on this TV.
 
-**Party mode** (the button left of Search): the controls go away and the lyrics fill the
-screen, bouncing with the music over a glow in the artwork's colours; songs without lyrics
-show their artwork bouncing instead. The guest QR code stays if guest mode is on. Back
-leaves party mode; media keys keep working.
+**Visualizer.** The sparkle button on Now Playing opens the Visualizer, which draws the
+music full-screen. Left/Right on the row at
+the bottom change the picture: **Radial Pulse** (turning spokes that send a ring out on
+every beat), **Flow Lines**, **Bars** (the spectrum), **Edge Lights** (the spectrum growing in from
+all four edges of the screen over a rim of light; each piece of the edge glows as bright as
+its own part of the music is loud, so bass lights up one corner and voices and cymbals
+light up further along; the colours run round the frame once every eight beats, so they speed up and slow down with the song's
+tempo, and LED strips that follow the screen move with it), and **Party**. Top left: what it listens to (OK
+picks another source), **BEAT**, how hard the picture hits on each beat (Left/Right), and
+**Colours**: the theme's two colours, the whole rainbow, or a new colour on every beat,
+and **Edge lights** (OK switches): the Edge Lights border over Radial, Flow and Bars too. After a few seconds without a key the controls and the top bar fade away;
+any key brings them back.
 
-**Visualizer** (Settings → Visualizer → Beat pulse, on by default): a glow behind the
-artwork that pulses with the beat. Couchside listens to this TV's own sound output
-(PipeWire), so it pulses only when this TV is the speaker playing; nothing is recorded
-or sent anywhere. It listens only while Now Playing is on screen and music plays, and
-costs about as much CPU as Now Playing without it.
+**Party** mode: laid out like Now Playing with its lyrics on, without the controls. The
+song floats small in the top-left corner (once the controls fade away), the lyrics fill the
+middle and bounce with the music over a glow, and Up Next sits on the right. Songs without
+lyrics show their cover bouncing instead. **Party lights** (Settings → Visualizer, on by
+default) put the Edge Lights round it, so LED strips that follow the screen dance with the
+music.
+
+Settings → **Visualizer**:
+
+| Setting | What it does |
+|---|---|
+| Beat pulse on Now Playing | The cover and a glow behind it move with the beat (on by default) |
+| Beat source | **What this TV is playing** (default: the output chosen under This speaker, or the default output), one specific output, or an input such as a microphone |
+| Beat intensity | 0–2.4, how hard the Visualizer hits on a beat |
+| Colours | Theme colours, Rainbow, or Changes on the beat |
+| Edge lights on every picture | The Edge Lights border over the other pictures too (off by default) |
+| Party lights | The Edge Lights round Party mode |
+
+Couchside listens through PipeWire; nothing is recorded or sent anywhere. It listens only
+while Now Playing (with the beat pulse on, or with the lyrics over the visualizer) or the
+Visualizer is on screen and music plays. A chosen source that is unplugged falls back to what this TV plays.
+
+**Audio output** (Settings → This speaker): where this TV's music comes out. The list
+shows **Default**, then every PipeWire output by name (HDMI, analog, …), then the
+hardware devices under "Direct (visualizer can't listen)" — those bypass PipeWire, so the
+visualizer hears nothing through them. Changing it restarts the speaker for a moment.
+
+**Crossfade** (Settings → This speaker, read from Music Assistant): **Crossfade** on or
+off for the speaker in use, its **style** (Music Assistant's default, Standard, or Smart:
+beat-matched, picking its own length) and the standard crossfade's **length** (1–15 s,
+Left/Right). The length is Music Assistant's own setting for every speaker (the number
+Home Assistant shows); the rows hide when Music Assistant can't be reached.
+
+**When something breaks.** A **Something's wrong** button appears next to the name in the
+top bar when this TV's speaker keeps stopping or isn't running, when Music Assistant can't
+be reached or refuses the token, or when this TV's speaker is missing from Music
+Assistant (the last few only after they last 15 seconds, so a short reconnect doesn't
+count). OK on it opens **Logs**: what is wrong, **Restart this TV's speaker**, and the
+recent speaker (Sendspin) and Couchside logs (Up/Down scroll). Logs are also in Settings →
+This speaker. The app also replaces a speaker supervisor left running from an older
+version of the app (it lives on across app updates), so a fix in an update takes effect.
+
+**Colours** (Settings → Look): four colour pairs for focus, progress and the visualizer.
 
 **Keyboard on the remote:** just type. On Now Playing, typing opens Search with what you
 typed; on Search it goes into the search box; in Settings into the highlighted text box.
@@ -171,6 +231,12 @@ audio output (Default or a device Sendspin reports) and sync delay (to line this
 with other speakers). Changes restart the speaker within a couple of seconds.
 
 ## Develop
+
+`flatpak run io.github.shreyasajj.Couchside --screen=queue` starts on a screen (`now`,
+`search`, `queue`, `visualizer`, `speakers`, `guests`, `settings`, `logs`).
+`COUCHSIDE_SHOTS=<dir> pytest tests/test_shell_qml.py` loads the whole UI offscreen and
+saves a picture of every screen (blur and glow effects don't draw offscreen). The design
+mockup the look follows is in `docs/design/`.
 
 - **Unit tests** (any machine; PySide6-Essentials comes with the `test` extra for the
   controller tests):

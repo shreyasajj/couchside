@@ -32,6 +32,9 @@ class NowPlaying:
     palette_dark: tuple[int, int, int] | None = None
     queue_id: str | None = None
     uri: str | None = None  # identifies the track (lyrics lookup, change detection)
+    next_title: str = ""    # the song after this one ("Up next"); empty when unknown
+    next_artist: str = ""
+    next_image_url: str | None = None
 
 
 def position_at(np: NowPlaying, now: float) -> float:
@@ -157,6 +160,8 @@ class Playback:
         dark = getattr(getattr(media, "palette", None), "background_dark", None)
         palette = tuple(dark) if isinstance(dark, (tuple, list)) and len(dark) == 3 else None
 
+        next_title, next_artist, next_image = self._next_song(client, queue)
+
         return NowPlaying(
             title=media.title or "",
             artist=media.artist or "",
@@ -172,7 +177,26 @@ class Playback:
             palette_dark=palette,  # type: ignore[arg-type]
             queue_id=getattr(queue, "queue_id", None),
             uri=getattr(media, "uri", None) or None,
+            next_title=next_title,
+            next_artist=next_artist,
+            next_image_url=next_image,
         )
+
+    @staticmethod
+    def _next_song(client: Any, queue: Any) -> tuple[str, str, str | None]:
+        """Title, artist and artwork of the queue's next item ("", "", None when unknown)."""
+        item = getattr(queue, "next_item", None)
+        if item is None:
+            return "", "", None
+        from couchside.core.library import image_url
+        media = getattr(item, "media_item", None)
+        title = getattr(media, "name", None) or getattr(item, "name", "") or ""
+        artist = getattr(media, "artist_str", None) or ""
+        try:
+            art = image_url(client, media if media is not None else item)
+        except Exception:
+            art = None
+        return str(title), str(artist), art
 
     def _ready(self) -> bool:
         return (self._conn.client is not None and self.active_player_id is not None

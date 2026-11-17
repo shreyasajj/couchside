@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
 
 // Pick the speakers in a group. open(groupId or "", memberIds, opener).
 // OK toggles a speaker; Save creates or updates the group (needs two or more).
@@ -13,7 +12,7 @@ Rectangle {
     signal focusLost()  // opener destroyed while open (see ActionSheet)
 
     anchors.fill: parent
-    color: "#b3000000"
+    color: Theme.scrim
     visible: false
     z: 200
 
@@ -51,28 +50,27 @@ Rectangle {
         anchors.centerIn: parent
         width: Math.min(parent.width * 0.55, 1000 * editor.u)
         height: column.implicitHeight + 64 * editor.u
-        radius: 20 * editor.u
-        color: "#1d1840"
+        radius: 24 * editor.u
+        color: Theme.panel
+        border.width: Math.max(1, editor.u)
+        border.color: Theme.border
 
         ColumnLayout {
             id: column
             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 32 * editor.u }
             spacing: 20 * editor.u
-
-            QQC2.Label {
-
+            Text {
                 textFormat: Text.PlainText
                 text: editor.groupId === "" ? "New group" : "Edit group"
-                color: "#ffffff"
-                font.pixelSize: 40 * editor.u
-                font.weight: Font.Bold
+                color: Theme.text
+                font.pixelSize: Theme.heading * editor.u
+                font.weight: Font.ExtraBold
             }
-            QQC2.Label {
+            Text {
                 textFormat: Text.PlainText
                 text: "Pick two or more speakers to play in sync"
-                color: "#ffffff"
-                opacity: 0.75
-                font.pixelSize: 28 * editor.u
+                color: Theme.textDim
+                font.pixelSize: Theme.label * editor.u
             }
             ListView {
                 id: list
@@ -86,43 +84,46 @@ Rectangle {
                     if (currentIndex >= count - 1) saveButton.forceActiveFocus()
                     else incrementCurrentIndex()
                 }
-                delegate: Rectangle {
+                delegate: Item {
                     id: option
                     required property var modelData
                     readonly property bool on: editor.chosen.indexOf(modelData.playerId) >= 0
                     readonly property bool lit: ListView.isCurrentItem && list.activeFocus
                     width: ListView.view.width
                     height: 84 * editor.u
-                    radius: 12 * editor.u
-                    color: lit ? "#ffffff" : "#26ffffff"
-                    border.width: lit ? 5 * editor.u : 0
-                    border.color: "#4fc3f7"
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 3 * editor.u   // room for the outline inside the clipped list
+                        radius: 16 * editor.u
+                        color: option.lit ? Theme.tint(Theme.a1, 0.22) : Theme.surface
+                        border.width: (option.lit ? 3 : 1) * editor.u
+                        border.color: option.lit ? Theme.a1 : Theme.border
+                    }
                     RowLayout {
-                        anchors { fill: parent; leftMargin: 24 * editor.u; rightMargin: 24 * editor.u }
+                        anchors { fill: parent; leftMargin: 28 * editor.u; rightMargin: 28 * editor.u }
                         spacing: 20 * editor.u
                         Rectangle {
-                            width: 36 * editor.u
-                            height: width
-                            radius: 8 * editor.u
-                            color: option.on ? "#4fc3f7" : "transparent"
+                            Layout.preferredWidth: 38 * editor.u
+                            Layout.preferredHeight: 38 * editor.u
+                            radius: 10 * editor.u
+                            color: option.on ? Theme.a1 : "transparent"
                             border.width: 3 * editor.u
-                            border.color: option.lit ? "#000000" : "#ffffff"
-                            QQC2.Label {
-                                textFormat: Text.PlainText
+                            border.color: option.on ? Theme.a1 : Theme.textDim
+                            Icon {
                                 anchors.centerIn: parent
                                 visible: option.on
-                                text: "✓"
-                                color: "#000000"
-                                font.pixelSize: 28 * editor.u
-                                font.weight: Font.Bold
+                                name: "check"
+                                size: 28 * editor.u
+                                color: Theme.ink
                             }
                         }
-                        QQC2.Label {
+                        Text {
                             textFormat: Text.PlainText
                             Layout.fillWidth: true
                             text: option.modelData.name
-                            color: option.lit ? "#000000" : "#ffffff"
-                            font.pixelSize: 32 * editor.u
+                            color: Theme.text
+                            font.pixelSize: Theme.body * editor.u
+                            font.weight: option.on ? Font.Bold : Font.Medium
                             elide: Text.ElideRight
                         }
                     }
@@ -136,43 +137,25 @@ Rectangle {
             }
             RowLayout {
                 spacing: 24 * editor.u
-                EditorButton {
+                PillButton {
                     id: saveButton
+                    u: editor.u
+                    strong: editor.chosen.length >= 2
+                    dim: editor.chosen.length < 2
                     text: editor.chosen.length < 2 ? "Pick at least two" : "Save"
                     KeyNavigation.right: cancelButton
                     Keys.onUpPressed: list.forceActiveFocus()
                     onClicked: editor.save()
                 }
-                EditorButton {
+                PillButton {
                     id: cancelButton
+                    u: editor.u
                     text: "Cancel"
                     KeyNavigation.left: saveButton
                     Keys.onUpPressed: list.forceActiveFocus()
                     onClicked: editor.close()
                 }
             }
-        }
-    }
-
-    component EditorButton: QQC2.Button {
-        id: btn
-        font.pixelSize: 32 * editor.u
-        padding: 22 * editor.u
-        focusPolicy: Qt.StrongFocus
-        Keys.onReturnPressed: if (enabled) clicked()
-        Keys.onEnterPressed: if (enabled) clicked()
-        background: Rectangle {
-            radius: 12 * editor.u
-            color: btn.activeFocus ? "#ffffff" : "#33ffffff"
-            opacity: btn.enabled ? 1 : 0.6
-            border.width: btn.activeFocus ? 6 * editor.u : 0
-            border.color: "#4fc3f7"
-        }
-        contentItem: QQC2.Label {
-            text: btn.text
-            font: btn.font
-            color: btn.activeFocus ? "#000000" : "#ffffff"
-            horizontalAlignment: Text.AlignHCenter
         }
     }
 }

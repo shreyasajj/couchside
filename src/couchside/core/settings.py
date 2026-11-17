@@ -21,6 +21,7 @@ class AppSettings:
     qr_caption: str = "Scan to add songs"
     lyrics_enabled: bool = True
     visualizer_enabled: bool = True
+    party_lights: bool = True  # party mode: colour along the screen edges
     lyrics_size: str = "medium"  # small | medium | large
     lyrics_language: str = "romanized"  # romanized | original | english_only
     lyrics_translate: bool = False  # English translation under each line
@@ -36,6 +37,14 @@ class AppSettings:
     sendspin_port: int = 8937
     sendspin_audio_device: str | None = None   # None = Sendspin's default output
     sendspin_delay_ms: int = 0
+    visualizer_source: str | None = None       # None = what this TV is playing
+    visualizer_intensity: float = 1.0          # 0..2.4: how hard the visualizer hits on a beat
+    visualizer_mode: str = "radial"            # radial | flow | bars | edge | party
+    visualizer_colours: str = "accent"         # accent | rainbow | beat (a new colour on each beat)
+    visualizer_edges: bool = False             # edge lights over every picture, not only their own mode
+    lyrics_shown: bool = False                 # Now Playing shows the words in place of the cover
+    lyrics_visualizer: bool = True             # ...with the visualizer moving behind them
+    accent: str = "teal-pink"                  # colour pair (see the controller's ACCENTS)
 
 
 def _settings_path() -> Path:
@@ -66,6 +75,9 @@ def load_settings(path: Path | None = None) -> AppSettings:
         default = getattr(defaults, f.name)
         if isinstance(default, bool):
             ok = isinstance(value, bool)
+        elif isinstance(default, float):
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+            value = float(value) if ok else value
         elif default is None:
             ok = value is None or isinstance(value, str)
         else:

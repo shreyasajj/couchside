@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #07070b; height: 100%; overflow: hidden; }
+  input::placeholder { color: rgba(255,255,255,.32); }
+  @keyframes bsj-spin { to { transform: rotate(360deg); } }
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:relative; width:1920px; height:1080px; background:#07070b; color:#fff; font-family:'Noto Sans', system-ui, -apple-system, sans-serif; overflow:hidden; --a1:#00e0c6; --a2:#ff3da6; --beat:1; user-select:none;">
+
+  <!-- ======================= TAB BAR ======================= -->
+  <div style="position:absolute; top:0; left:0; right:0; height:104px; display:flex; align-items:center; gap:40px; padding:0 56px; z-index:60; background:linear-gradient(to bottom, rgba(7,7,11,.92), rgba(7,7,11,0));">
+    <div style="display:flex; align-items:center; gap:15px; width:330px;">
+      <div style="width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--a1),var(--a2)); box-shadow:0 0 22px rgba(0,224,198,.5);"></div>
+      <div style="font-size:26px; font-weight:800; letter-spacing:.3px;">Bigscreen <span style="background:linear-gradient(90deg,var(--a1),var(--a2)); -webkit-background-clip:text; background-clip:text; color:transparent;">Jukebox</span></div>
+    </div>
+
+    <div style="flex:1; display:flex; justify-content:center; gap:6px;">
+      <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="4">
+        <button onClick="{{ tab.onClick }}" style="{{ tab.style }}">
+          {{ tab.label }}
+          <sc-if value="{{ tab.active }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; left:24px; right:24px; bottom:5px; height:4px; border-radius:3px; background:linear-gradient(90deg,var(--a1),var(--a2));"></div>
+          </sc-if>
+        </button>
+      </sc-for>
+    </div>
+
+    <div ref="{{ topRightRef }}" style="min-width:330px; display:flex; justify-content:flex-end; align-items:center; gap:16px;">
+      <sc-if value="{{ isNow }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <button onClick="{{ togglePlayer }}" style="display:flex; align-items:center; gap:11px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); outline:none; border-radius:40px; padding:11px 22px; color:rgba(255,255,255,.78); font-size:23px; font-family:inherit; cursor:pointer;">
+            <span style="width:9px; height:9px; border-radius:50%; background:var(--a1); box-shadow:0 0 10px var(--a1);"></span>
+            Playing on&nbsp;<b style="color:#fff; font-weight:700;">{{ player }}</b>&nbsp;▾
+          </button>
+          <sc-if value="{{ playerOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; top:62px; right:0; background:rgba(15,15,21,.97); backdrop-filter:blur(18px); border:1px solid rgba(255,255,255,.1); border-radius:18px; padding:9px; width:300px; box-shadow:0 24px 60px rgba(0,0,0,.6); z-index:80;">
+              <sc-for list="{{ players }}" as="p" hint-placeholder-count="4">
+                <button onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</button>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{ qrOff }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ toggleQR }}" style="{{ qrBtnStyle }}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h7v7H3V3zm2 2v3h3V5H5zM3 14h7v7H3v-7zm2 2v3h3v-3H5zM14 3h7v7h-7V3zm2 2v3h3V5h-3zM14 14h3v3h-3v-3zm5 0h2v2h-2v-2zm-5 5h3v2h-3v-2zm5 1h2v1h-2v-1z"></path></svg>
+          Guest
+        </button>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- ======================= NOW PLAYING ======================= -->
+  <sc-if value="{{ isNow }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute; inset:0;">
+      <div ref="{{ bgRef }}" style="{{ artBgStyle }}"></div>
+      <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(7,7,11,.35) 0%, rgba(7,7,11,.42) 38%, rgba(7,7,11,.8) 70%, rgba(7,7,11,.98) 100%);"></div>
+
+      <!-- Up Next queue -->
+      <div ref="{{ queueRef }}" style="{{ queueStyle }}">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px;">
+          <span style="font-size:27px; font-weight:800; letter-spacing:.2px;">Up Next</span>
+          <span style="font-size:19px; color:rgba(255,255,255,.5); font-weight:600;">{{ queueCount }} songs</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <sc-for list="{{ queue }}" as="q" hint-placeholder-count="5">
+            <div onClick="{{ q.onClick }}" style="display:flex; align-items:center; gap:15px; padding:9px 10px; border-radius:14px; cursor:pointer;" style-hover="background:rgba(255,255,255,.07)">
+              <div style="{{ q.thumbStyle }}"></div>
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:23px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ q.title }}</div>
+                <div style="font-size:18px; color:rgba(255,255,255,.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ q.artist }}</div>
+              </div>
+              <span style="font-size:18px; color:rgba(255,255,255,.45); font-variant-numeric:tabular-nums; flex:0 0 auto;">{{ q.dur }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="position:absolute; top:150px; left:0; right:0; display:flex; justify-content:center;">
+        <div ref="{{ artRef }}" style="{{ artStyle }}"></div>
+      </div>
+
+      <div style="position:absolute; left:50%; transform:translateX(-50%); bottom:50px; width:1180px;">
+        <div style="font-size:84px; font-weight:800; letter-spacing:-1.5px; line-height:1;">{{ trackTitle }}</div>
+        <div style="margin-top:12px; font-size:38px; color:rgba(255,255,255,.62); font-weight:500;">{{ trackSub }}</div>
+
+        <div style="margin-top:36px; display:flex; align-items:center; gap:24px;">
+          <span ref="{{ elapsedRef }}" style="font-size:28px; font-variant-numeric:tabular-nums; color:rgba(255,255,255,.72); width:90px;">0:00</span>
+          <div style="flex:1; height:8px; border-radius:6px; background:rgba(255,255,255,.16); position:relative; overflow:hidden;">
+            <div ref="{{ fillRef }}" style="position:absolute; top:0; bottom:0; left:0; width:0%; background:linear-gradient(90deg,var(--a1),var(--a2)); border-radius:6px;"></div>
+          </div>
+          <span style="font-size:28px; font-variant-numeric:tabular-nums; color:rgba(255,255,255,.72); width:90px; text-align:right;">{{ trackTotal }}</span>
+        </div>
+
+        <div style="margin-top:34px; display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
+          <div></div>
+          <div style="display:flex; align-items:center; gap:48px; justify-content:center;">
+            <button onClick="{{ prevTrack }}" style="background:none; border:none; outline:none; cursor:pointer; padding:8px; display:flex; color:rgba(255,255,255,.9);">
+              <svg width="54" height="54" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2.6v12H6zM20 6v12l-9.4-6z"></path></svg>
+            </button>
+            <button onClick="{{ togglePlay }}" style="width:116px; height:116px; border-radius:50%; border:none; outline:none; cursor:pointer; background:linear-gradient(135deg,var(--a1),var(--a2)); box-shadow:0 0 56px rgba(255,61,166,.4), 0 16px 40px rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; color:#06121a;">
+              <sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}">
+                <svg width="46" height="46" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.2" height="14" rx="1.3"></rect><rect x="13.8" y="5" width="4.2" height="14" rx="1.3"></rect></svg>
+              </sc-if>
+              <sc-if value="{{ paused }}" hint-placeholder-val="{{ false }}">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" style="margin-left:5px;"><path d="M7 5l13 7-13 7z"></path></svg>
+              </sc-if>
+            </button>
+            <button onClick="{{ nextTrack }}" style="background:none; border:none; outline:none; cursor:pointer; padding:8px; display:flex; color:rgba(255,255,255,.9);">
+              <svg width="54" height="54" viewBox="0 0 24 24" fill="currentColor"><path d="M18 6h-2.6v12H18zM4 6v12l9.4-6z"></path></svg>
+            </button>
+          </div>
+          <div style="display:flex; align-items:center; gap:16px; justify-content:flex-end;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M4 9v6h3.5L13 19V5L7.5 9H4z" fill="#fff"></path><path d="M16 8.5a4.5 4.5 0 010 7" stroke="rgba(255,255,255,.85)" stroke-width="2" stroke-linecap="round"></path><path d="M18.7 6a8 8 0 010 12" stroke="rgba(255,255,255,.45)" stroke-width="2" stroke-linecap="round"></path></svg>
+            <div style="width:170px; height:8px; border-radius:6px; background:rgba(255,255,255,.16); position:relative;"><div style="position:absolute; top:0; bottom:0; left:0; width:70%; background:linear-gradient(90deg,var(--a1),var(--a2)); border-radius:6px;"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======================= SEARCH ======================= -->
+  <sc-if value="{{ isSearch }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; inset:0; padding:148px 150px 50px;">
+      <div style="display:flex; align-items:center; gap:26px; background:rgba(255,255,255,.06); border:2px solid rgba(255,255,255,.12); border-radius:24px; padding:24px 34px;">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" style="flex:0 0 auto;"><circle cx="11" cy="11" r="7" stroke="rgba(255,255,255,.55)" stroke-width="2.2"></circle><path d="M21 21l-4.3-4.3" stroke="rgba(255,255,255,.55)" stroke-width="2.2" stroke-linecap="round"></path></svg>
+        <input ref="{{ searchRef }}" value="{{ query }}" onInput="{{ onSearch }}" placeholder="Search songs, artists, albums" style="flex:1; background:transparent; border:none; outline:none; color:#fff; font-size:44px; font-family:inherit; font-weight:600;">
+      </div>
+      <div style="margin-top:36px; display:flex; flex-direction:column; gap:14px;">
+        <sc-for list="{{ results }}" as="item" hint-placeholder-count="6">
+          <div onClick="{{ item.onClick }}" style="{{ item.style }}">
+            <div style="{{ item.thumbStyle }}"></div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:42px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ item.title }}</div>
+              <div style="margin-top:6px; font-size:28px; color:rgba(255,255,255,.55); font-weight:500;">{{ item.sub }}</div>
+            </div>
+            <sc-if value="{{ item.focused }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; align-items:center; gap:14px; flex:0 0 auto; color:var(--a1); font-size:24px; font-weight:700;">
+                PLAY
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="var(--a1)"><path d="M7 5l13 7-13 7z"></path></svg>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======================= LYRICS ======================= -->
+  <sc-if value="{{ isLyrics }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; inset:0; overflow:hidden;">
+      <div style="position:absolute; inset:0; background:radial-gradient(80% 60% at 50% 45%, rgba(0,224,198,.05), transparent 70%);"></div>
+      <div style="position:absolute; top:104px; left:0; right:0; bottom:0; overflow:hidden; -webkit-mask-image:linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent); mask-image:linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);">
+        <div ref="{{ lyricsRef }}" style="position:absolute; left:0; right:0; top:0; padding:0 180px; text-align:center; transition:transform .55s cubic-bezier(.22,1,.36,1); will-change:transform;">
+          <sc-for list="{{ lyrics }}" as="line" hint-placeholder-count="8">
+            <div style="height:120px; display:flex; align-items:center; justify-content:center;">
+              <span style="{{ line.style }}">{{ line.l }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======================= VISUALIZER ======================= -->
+  <sc-if value="{{ isViz }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; inset:0; background:#050507;">
+      <canvas ref="{{ canvasRef }}" width="1920" height="1080" style="position:absolute; inset:0; width:100%; height:100%; display:block;"></canvas>
+
+      <div style="position:absolute; top:128px; left:56px; display:flex; align-items:center; gap:14px; z-index:10;">
+        <div style="display:flex; align-items:center; gap:18px; background:rgba(10,10,16,.5); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,.08); border-radius:40px; padding:13px 26px;">
+          <span style="font-size:19px; font-weight:800; letter-spacing:3px; color:rgba(255,255,255,.55);">BEAT</span>
+          <input type="range" min="0" max="2.4" step="0.05" defaultValue="{{ intensityDefault }}" onInput="{{ onIntensity }}" style="width:210px; accent-color:#ff3da6;">
+        </div>
+        <button onClick="{{ toggleMic }}" style="{{ micBtnStyle }}" title="Beat source — click to use live mic audio">
+          <span style="width:11px; height:11px; border-radius:50%; background:{{ sourceDot }}; box-shadow:0 0 10px {{ sourceDot }};"></span>
+          {{ sourceLabel }}
+        </button>
+      </div>
+
+      <div style="position:absolute; bottom:48px; left:50%; transform:translateX(-50%); display:flex; gap:12px; background:rgba(10,10,16,.55); backdrop-filter:blur(16px); padding:12px; border-radius:50px; border:1px solid rgba(255,255,255,.08); z-index:10;">
+        <sc-for list="{{ modes }}" as="m" hint-placeholder-count="3">
+          <button onClick="{{ m.onClick }}" style="{{ m.style }}">{{ m.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======================= GUEST QR (large, floating) ======================= -->
+  <sc-if value="{{ showQR }}" hint-placeholder-val="{{ false }}">
+    <button onClick="{{ toggleQR }}" style="{{ qrBadgeStyle }}" title="Tap to turn guest mode off">
+      <canvas ref="{{ qrRef }}" width="180" height="180" style="width:176px; height:176px; border-radius:10px; background:#fff; display:block;"></canvas>
+      <div style="text-align:center;">
+        <div style="font-size:21px; font-weight:800; color:#14141a; line-height:1.15;">Scan to add songs</div>
+        <div style="font-size:16px; color:#0a8f80; font-weight:700; margin-top:4px; letter-spacing:.2px;">{{ guestUrl }}</div>
+      </div>
+    </button>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1920, &quot;height&quot;: 1080 },
+  &quot;accent1&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#00e0c6&quot;, &quot;options&quot;: [&quot;#00e0c6&quot;, &quot;#36d6ff&quot;, &quot;#7c5cff&quot;, &quot;#ffd23d&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;accent2&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#ff3da6&quot;, &quot;options&quot;: [&quot;#ff3da6&quot;, &quot;#ff5d3d&quot;, &quot;#b14dff&quot;, &quot;#23d18b&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;beatIntensity&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1, &quot;min&quot;: 0, &quot;max&quot;: 2.4, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Visualizer&quot; },
+  &quot;startScreen&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;now&quot;, &quot;options&quot;: [&quot;now&quot;, &quot;search&quot;, &quot;lyrics&quot;, &quot;visualizer&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;showGuestQR&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Guest&quot; },
+  &quot;guestUrl&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;jukebox.local/guest&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Guest&quot; }
+}">
+class Component extends DCLogic {
+  tracks = [
+    { title:'Neon Tide',     artist:'Marisol Vega',      album:'Afterglow',        dur:224, art:'radial-gradient(130% 130% at 24% 22%, var(--a2) 0%, transparent 56%), radial-gradient(120% 120% at 82% 78%, var(--a1) 0%, transparent 52%), linear-gradient(150deg,#2a1250 0%,#0b0a1f 72%)' },
+    { title:'Paper Skylines',artist:'The Lantern Hours',  album:'Cartography',      dur:198, art:'radial-gradient(130% 130% at 22% 20%, #ff8a3d 0%, transparent 55%), radial-gradient(120% 120% at 84% 80%, #7b2ff7 0%, transparent 52%), linear-gradient(150deg,#2a1030 0%,#0c0a1f 72%)' },
+    { title:'Slow Dissolve', artist:'Kaiso',             album:'Underwater Rooms', dur:251, art:'radial-gradient(130% 130% at 26% 20%, #36d6ff 0%, transparent 55%), radial-gradient(120% 120% at 82% 82%, #1f8a5b 0%, transparent 52%), linear-gradient(150deg,#0d2640 0%,#070d1a 72%)' },
+    { title:'Gold Static',   artist:'Faye Okonkwo',      album:'Signal Bloom',     dur:176, art:'radial-gradient(130% 130% at 24% 22%, #ffd23d 0%, transparent 54%), radial-gradient(120% 120% at 82% 80%, #ff3da6 0%, transparent 52%), linear-gradient(150deg,#3a1a22 0%,#100a14 72%)' },
+    { title:'Northbound',    artist:'Cassette Club',     album:'Long Way Home',    dur:233, art:'radial-gradient(130% 130% at 22% 22%, #23d18b 0%, transparent 55%), radial-gradient(120% 120% at 84% 80%, #2a6fdb 0%, transparent 52%), linear-gradient(150deg,#0c2a2a 0%,#070f12 72%)' },
+    { title:'Velvet Hour',   artist:'Marisol Vega',      album:'Afterglow',        dur:205, art:'radial-gradient(130% 130% at 24% 20%, #b14dff 0%, transparent 55%), radial-gradient(120% 120% at 82% 80%, #ff5d8a 0%, transparent 52%), linear-gradient(150deg,#2a0f3a 0%,#0c0a1f 72%)' },
+  ];
+
+  lyrics = [
+    { t:6,   l:'Lights spill soft across the floor' },
+    { t:15,  l:'Another midnight at the door' },
+    { t:24,  l:'We were running out of time' },
+    { t:33,  l:'Now the silence feels like mine' },
+    { t:44,  l:'Hold the echo, let it stay' },
+    { t:55,  l:'Neon tide will pull away' },
+    { t:66,  l:'Every color that we knew' },
+    { t:77,  l:'Fading slowly into blue' },
+    { t:90,  l:'So I wait here in the glow' },
+    { t:103, l:'Watching all the embers go' },
+    { t:116, l:'If you find me in the dark' },
+    { t:129, l:'Follow where the heartbeats spark' },
+    { t:143, l:'Carry me through afterglow' },
+    { t:157, l:'Where the quiet rivers flow' },
+    { t:171, l:'Lights spill soft across the floor' },
+    { t:185, l:'I will not ask for anymore' },
+  ];
+
+  state = {
+    screen: this.props.startScreen || 'now',
+    mode: 'radial',
+    playing: true,
+    playerOpen: false,
+    player: 'Living Room',
+    query: '',
+    focusIdx: 0,
+    showQR: !!this.props.showGuestQR,
+    track: this.tracks[0],
+    lineIdx: 0,
+    focusZone: 'content',
+    topIdx: Math.max(0, ['now','search','lyrics','visualizer'].indexOf(this.props.startScreen || 'now')),
+    audioSource: 'sim',
+  };
+
+  trackIdx = 0;
+  duration = this.tracks[0].dur;
+  elapsed = 38;
+
+  makeRef(name){
+    if(!this._refs) this._refs = {};
+    if(!this._cbs) this._cbs = {};
+    if(!this._cbs[name]) this._cbs[name] = (el)=>{ this._refs[name] = el; };
+    return this._cbs[name];
+  }
+
+  componentDidMount(){
+    this.vt = 0;
+    this.lastT = null;
+    this.beatMul = (this.props.beatIntensity != null) ? this.props.beatIntensity : 1;
+    this.spin = 0;
+    this._lyricIdx = null;
+    this._onKey = (e)=> this.handleKey(e);
+    window.addEventListener('keydown', this._onKey);
+    this._onResize = ()=> this.fitToViewport();
+    window.addEventListener('resize', this._onResize);
+    this.applyAccents();
+    this.fitToViewport();
+    if(this.state.showQR) this.drawQR();
+    this.applyQueueShift();
+    this._rings = [];
+    this._dt = 0.016;
+    // Backend / external API: drive the beat from analysed audio.
+    //   window.BigscreenJukebox.feed({ beat:0..1, energy:0..1, bars:[..] })  // per-frame
+    //   window.BigscreenJukebox.feedBeat(beat, energy)                       // shorthand
+    //   window.BigscreenJukebox.connectStream(mediaStream)                   // analyse a stream
+    //   window.BigscreenJukebox.connectElement(audioEl)                      // analyse an <audio>
+    //   window.BigscreenJukebox.useMic() / .simulate()
+    const self = this;
+    window.BigscreenJukebox = {
+      feed(d){ d = d || {}; self.liveData = { energy: d.energy != null ? d.energy : 0.6, beat: d.beat != null ? d.beat : 0, bars: d.bars }; self._extLive = performance.now(); if(!self.analyser && self.state.audioSource !== 'external') self.setState({ audioSource:'external' }); },
+      feedBeat(beat, energy){ this.feed({ beat: beat, energy: energy }); },
+      connectStream(stream){ self.connectStream(stream); },
+      connectElement(el){ self.connectElement(el); },
+      useMic(){ return self.useMic(); },
+      simulate(){ self.stopMic(); }
+    };
+    this._raf = requestAnimationFrame(this.loop);
+  }
+  componentWillUnmount(){
+    cancelAnimationFrame(this._raf);
+    window.removeEventListener('keydown', this._onKey);
+    window.removeEventListener('resize', this._onResize);
+    if(this._micStream){ this._micStream.getTracks().forEach(t=>t.stop()); }
+    if(this.audioCtx && this.audioCtx.close){ try{ this.audioCtx.close(); }catch(e){} }
+    if(window.BigscreenJukebox) try{ delete window.BigscreenJukebox; }catch(e){ window.BigscreenJukebox = null; }
+  }
+
+  // ---------- responsive scale (fills 1080p, 4K, anything) ----------
+  fitToViewport(){
+    const root = this._refs && this._refs.root;
+    if(!root) return;
+    const scale = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    this.rootScale = scale;
+    if(Math.abs(scale - 1) < 0.002){ root.style.transform = 'none'; return; }
+    root.style.transform = 'scale(' + scale + ')';
+    root.style.transformOrigin = 'top left';
+    root.style.position = 'absolute';
+    root.style.left = Math.max(0, (window.innerWidth  - 1920*scale)/2) + 'px';
+    root.style.top  = Math.max(0, (window.innerHeight - 1080*scale)/2) + 'px';
+  }
+  componentDidUpdate(){
+    this.applyAccents();
+    if(this.state.showQR) this.drawQR();
+    this.applyQueueShift();
+  }
+  // This element carries a stale !important position override from an earlier
+  // direct edit; inline !important margin-top wins, so push the queue down that way.
+  applyQueueShift(){
+    const on = this.state.showQR;
+    const q = this._refs && this._refs.queue;
+    if(q){
+      // counteract the stale !important override; when guest QR is up, stack the
+      // queue DOWN under the corner QR card (inline !important beats the override).
+      q.style.setProperty('margin-right', '0px', 'important');
+      q.style.setProperty('margin-top', on ? '212px' : '0px', 'important');
+    }
+    // shift the top-bar right cluster (player chip) left so it clears the corner QR
+    const tr = this._refs && this._refs.topright;
+    if(tr) tr.style.paddingRight = on ? '236px' : '0px';
+  }
+
+  // ---------- accents ----------
+  applyAccents(){
+    const root = this._refs && this._refs.root;
+    if(!root) return;
+    if(this.props.accent1) root.style.setProperty('--a1', this.props.accent1);
+    if(this.props.accent2) root.style.setProperty('--a2', this.props.accent2);
+    const cs = getComputedStyle(root);
+    this.col1 = this.parseColor(cs.getPropertyValue('--a1')) || {r:0,g:224,b:198};
+    this.col2 = this.parseColor(cs.getPropertyValue('--a2')) || {r:255,g:61,b:166};
+  }
+  parseColor(s){
+    if(!s) return null;
+    s = s.trim();
+    if(s[0] === '#'){
+      let h = s.slice(1);
+      if(h.length === 3) h = h.split('').map(c=>c+c).join('');
+      const n = parseInt(h,16);
+      return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+    }
+    const m = s.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+    if(m) return { r:+m[1], g:+m[2], b:+m[3] };
+    return null;
+  }
+  rgba(c,a){ return 'rgba('+c.r+','+c.g+','+c.b+','+a+')'; }
+  lerpCol(t){
+    const a=this.col1||{r:0,g:224,b:198}, b=this.col2||{r:255,g:61,b:166};
+    return { r:Math.round(a.r+(b.r-a.r)*t), g:Math.round(a.g+(b.g-a.g)*t), b:Math.round(a.b+(b.b-a.b)*t) };
+  }
+
+  // ---------- audio source (real analysis or simulation) ----------
+  sample(t){
+    const mul = (this.beatMul != null) ? this.beatMul : 1;
+    // Real audio (mic / <audio> element / backend feed) takes over when present.
+    if(this.liveData){
+      const d = this.liveData;
+      const energy = Math.max(0, Math.min(1.2, d.energy != null ? d.energy : 0.5));
+      const kick = Math.max(0, d.beat != null ? d.beat : 0);
+      const beat = kick * mul;
+      const bars = d.bars || this.simBars(t, energy, kick);
+      return { phase:0, kick, energy, beat, level: Math.min(1.4, beat*(0.5+energy*0.6)), bars };
+    }
+    // Simulated fallback (no audio connected).
+    const period = 60/120;
+    const phase = (t % period)/period;
+    const kick = Math.exp(-phase*7);
+    const energy = 0.5 + 0.32*Math.sin(t*0.22) + 0.12*Math.sin(t*0.6+1);
+    const beat = kick*mul;
+    const level = Math.min(1.4, beat*(0.5+energy*0.6));
+    const N = 64, bars = new Array(N);
+    for(let i=0;i<N;i++){
+      const f = i/N;
+      let v = 0.18 + 0.82*Math.abs(Math.sin(i*0.27 + t*1.6 + Math.sin(i*0.5 + t*0.4)));
+      v *= (1 - f*0.45);
+      v *= (0.55 + energy*0.55);
+      v += beat*0.4*Math.max(0, 1 - f*1.5);
+      bars[i] = Math.max(0.02, Math.min(1.15, v));
+    }
+    return { phase, kick, energy, beat, level, bars };
+  }
+
+  simBars(t, energy, beat){
+    const N = 64, bars = new Array(N);
+    for(let i=0;i<N;i++){
+      const f = i/N;
+      let v = 0.15 + 0.7*Math.abs(Math.sin(i*0.3 + t*1.5));
+      v *= (1 - f*0.4) * (0.5 + energy*0.6);
+      v += beat*0.3*Math.max(0, 1 - f*1.5);
+      bars[i] = Math.max(0.02, Math.min(1.1, v));
+    }
+    return bars;
+  }
+
+  // ---------- live audio analysis (Web Audio) ----------
+  toggleMic(){ if(this.state.audioSource==='mic'){ this.stopMic(); } else { this.useMic(); } }
+  async useMic(){
+    try{
+      if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no mic');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      this._micStream = stream;
+      this.connectStream(stream);
+      this.setState({ audioSource:'mic' });
+    }catch(err){ this.setState({ audioSource:'sim' }); }
+  }
+  stopMic(){
+    if(this._micStream){ this._micStream.getTracks().forEach(t=>t.stop()); this._micStream = null; }
+    this.analyser = null; this.liveData = null;
+    this.setState({ audioSource:'sim' });
+  }
+  ensureCtx(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!this.audioCtx) this.audioCtx = new Ctx();
+    if(this.audioCtx.state === 'suspended') this.audioCtx.resume();
+    return this.audioCtx;
+  }
+  connectStream(stream){
+    const ctx = this.ensureCtx();
+    this.setupAnalyser(ctx.createMediaStreamSource(stream));
+    if(this.state.audioSource === 'sim') this.setState({ audioSource:'mic' });
+  }
+  connectElement(el){
+    const ctx = this.ensureCtx();
+    const src = ctx.createMediaElementSource(el);
+    src.connect(ctx.destination);
+    this.setupAnalyser(src);
+    if(this.state.audioSource === 'sim') this.setState({ audioSource:'mic' });
+  }
+  setupAnalyser(src){
+    const an = this.audioCtx.createAnalyser();
+    an.fftSize = 1024; an.smoothingTimeConstant = 0.82;
+    src.connect(an);
+    this.analyser = an;
+    this.freq = new Uint8Array(an.frequencyBinCount);
+    this.energyAvg = 0; this.beatEnv = 0; this._lastBeat = 0;
+  }
+  analyzeAudio(dt){
+    const an = this.analyser; if(!an) return null;
+    an.getByteFrequencyData(this.freq);
+    const f = this.freq, N = f.length;
+    let sum = 0; for(let i=0;i<N;i++) sum += f[i];
+    const energy = sum / N / 255;
+    const bn = Math.max(4, Math.floor(N*0.08));
+    let bass = 0; for(let i=0;i<bn;i++) bass += f[i]; bass = bass/bn/255;
+    this.energyAvg = this.energyAvg*0.9 + bass*0.1;
+    const now = performance.now();
+    if(bass > this.energyAvg*1.3 + 0.06 && (now - (this._lastBeat||0)) > 170){ this._lastBeat = now; this.beatEnv = 1; }
+    this.beatEnv *= Math.pow(0.0008, dt);
+    const bars = new Array(64);
+    for(let i=0;i<64;i++){ const idx = Math.min(N-1, Math.floor(Math.pow(i/64, 1.7)*N*0.75)); bars[i] = Math.min(1.15, (f[idx]/255)*1.15); }
+    return { energy: Math.min(1.1, energy*1.5), beat: this.beatEnv, bars };
+  }
+
+  // ---------- main loop ----------
+  loop = (ms)=>{
+    const now = ms/1000;
+    if(this.lastT == null) this.lastT = now;
+    let dt = now - this.lastT; this.lastT = now;
+    if(dt > 0.1) dt = 0.1;
+    this._dt = dt;
+    this.vt += dt;
+    if(this.state.playing){
+      this.elapsed += dt;
+      if(this.elapsed > this.duration) this.elapsed = 0;
+    }
+    // pick the beat source: live analyser > backend feed > simulation
+    if(this.analyser){ this.liveData = this.analyzeAudio(dt); }
+    else if(this._extLive && (performance.now() - this._extLive) < 600){ /* keep backend-pushed liveData */ }
+    else { if(this.liveData) this.liveData = null; if(this.state.audioSource === 'external') this.setState({ audioSource:'sim' }); }
+    const a = this.sample(this.vt);
+    this.updateNow(a);
+    this.updateLyrics();
+    if(this.state.screen === 'visualizer') this.drawViz(a);
+    this._raf = requestAnimationFrame(this.loop);
+  };
+
+  fmt(sec){
+    sec = Math.max(0, Math.floor(sec));
+    const m = Math.floor(sec/60), s = sec%60;
+    return m + ':' + (s<10?'0':'') + s;
+  }
+
+  updateNow(a){
+    const r = this._refs || {};
+    if(r.fill) r.fill.style.width = (this.elapsed/this.duration*100).toFixed(2) + '%';
+    if(r.elapsed) r.elapsed.textContent = this.fmt(this.elapsed);
+    if(r.art){
+      const s = 1 + Math.min(0.028, a.level*0.024);
+      r.art.style.transform = 'scale(' + s.toFixed(3) + ')';
+    }
+  }
+
+  updateLyrics(){
+    const wrap = this._refs && this._refs.lyrics;
+    if(!wrap) return;
+    let idx = 0;
+    for(let i=0;i<this.lyrics.length;i++){ if(this.elapsed >= this.lyrics[i].t) idx = i; }
+    const step = 120, center = 488;
+    wrap.style.transform = 'translateY(' + (center - (idx*step + step/2)) + 'px)';
+    if(this.state.lineIdx !== idx) this.setState({ lineIdx: idx });
+  }
+
+  // ---------- visualizer ----------
+  rr(ctx,x,y,w,h,r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  drawViz(a){
+    const cv = this._refs && this._refs.canvas;
+    if(!cv) return;
+    const ts = Math.min(2, Math.max(1, this.rootScale || 1));
+    const bw = Math.round(1920*ts), bh = Math.round(1080*ts);
+    if(cv.width !== bw){ cv.width = bw; cv.height = bh; }
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(ts, 0, 0, ts, 0, 0);
+    const W = 1920, H = 1080;
+    const m = this.state.mode;
+    if(m === 'radial') this.vizRadial(ctx,W,H,a);
+    else if(m === 'flow') this.vizFlow(ctx,W,H,a);
+    else this.vizBars(ctx,W,H,a);
+  }
+
+  vizRadial(ctx,W,H,a){
+    ctx.fillStyle = 'rgba(5,5,8,0.30)';
+    ctx.fillRect(0,0,W,H);
+    const cx = W/2, cy = H/2;
+    const c1 = this.col1, c2 = this.col2;
+
+    this.spin += (0.12 + a.energy*1.3) * 0.016;
+    const spokes = 56;
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(this.spin);
+    for(let i=0;i<spokes;i++){
+      const ang = i/spokes*Math.PI*2;
+      const len = 200 + a.energy*170 + (i%2 ? a.beat*120 : 0);
+      ctx.strokeStyle = this.rgba(c1, 0.045 + a.energy*0.07);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang)*120, Math.sin(ang)*120);
+      ctx.lineTo(Math.cos(ang)*(120+len), Math.sin(ang)*(120+len));
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // expanding rings spawned on each detected beat (sim or live)
+    const dtr = this._dt || 0.016;
+    if(!this._rings) this._rings = [];
+    if(a.beat > 0.55 && (this._prevBeat||0) <= 0.55) this._rings.push({ r:130, a:1 });
+    this._prevBeat = a.beat;
+    for(let i=this._rings.length-1;i>=0;i--){
+      const R = this._rings[i];
+      R.r += dtr*820; R.a -= dtr*1.5;
+      if(R.a <= 0){ this._rings.splice(i,1); continue; }
+      const col = this.lerpCol(Math.min(1,(R.r-130)/560));
+      ctx.strokeStyle = this.rgba(col, R.a*0.6);
+      ctx.lineWidth = 6 + R.a*12;
+      ctx.beginPath();
+      ctx.arc(cx,cy,R.r,0,Math.PI*2);
+      ctx.stroke();
+    }
+
+    const orbR = 130 + a.level*120;
+    const g = ctx.createRadialGradient(cx,cy,0,cx,cy,orbR*1.7);
+    g.addColorStop(0, this.rgba(c2,0.95));
+    g.addColorStop(0.4, this.rgba(c1,0.78));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx,cy,orbR*1.7,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    ctx.arc(cx,cy,orbR*0.32,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  vizFlow(ctx,W,H,a){
+    ctx.fillStyle = 'rgba(5,5,8,0.20)';
+    ctx.fillRect(0,0,W,H);
+    const lines = 5;
+    for(let L=0;L<lines;L++){
+      const t = this.vt*1.2 + L*1.4;
+      const amp = 70 + a.level*270*(1-L*0.12) + a.energy*40;
+      const yBase = H/2 + (L-2)*72;
+      const col = this.lerpCol(L/(lines-1));
+      ctx.beginPath();
+      for(let x=0;x<=W;x+=10){
+        const k = x/W;
+        const y = yBase + Math.sin(k*6.5 + t)*amp*Math.sin(k*Math.PI) + Math.sin(k*15 + t*1.7)*amp*0.22;
+        if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = this.rgba(col, 0.92);
+      ctx.lineWidth = 4 + a.level*5;
+      ctx.shadowColor = this.rgba(col, 1);
+      ctx.shadowBlur = 24 + a.level*34;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  vizBars(ctx,W,H,a){
+    ctx.fillStyle = '#050507';
+    ctx.fillRect(0,0,W,H);
+    const bars = a.bars, N = bars.length;
+    const bw = W/N, gap = 7;
+    const baseY = H*0.80;
+    for(let i=0;i<N;i++){
+      const v = bars[i];
+      const h = v*H*0.6;
+      const x = i*bw;
+      const col = this.lerpCol(i/(N-1));
+      const grad = ctx.createLinearGradient(0, baseY-h, 0, baseY);
+      grad.addColorStop(0, this.rgba(col,1));
+      grad.addColorStop(1, this.rgba(this.col1,0.18));
+      ctx.fillStyle = grad;
+      this.rr(ctx, x+gap/2, baseY-h, bw-gap, h, 6);
+      ctx.fill();
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = this.rgba(col,1);
+      this.rr(ctx, x+gap/2, baseY+8, bw-gap, h*0.32, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  drawQR(){
+    const cv = this._refs && this._refs.qr;
+    if(!cv) return;
+    const ctx = cv.getContext('2d');
+    const S = 180, n = 25, cell = S/n;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,S,S);
+    ctx.fillStyle = '#0a0a0f';
+    let seed = 9;
+    const rnd = ()=>{ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; };
+    for(let y=0;y<n;y++) for(let x=0;x<n;x++){
+      if(rnd() > 0.52) ctx.fillRect(x*cell, y*cell, cell+0.6, cell+0.6);
+    }
+    const finder = (fx,fy)=>{
+      ctx.fillStyle = '#fff'; ctx.fillRect((fx-0.5)*cell,(fy-0.5)*cell,8*cell,8*cell);
+      ctx.fillStyle = '#0a0a0f'; ctx.fillRect(fx*cell,fy*cell,7*cell,7*cell);
+      ctx.fillStyle = '#fff'; ctx.fillRect((fx+1)*cell,(fy+1)*cell,5*cell,5*cell);
+      ctx.fillStyle = '#0a0a0f'; ctx.fillRect((fx+2)*cell,(fy+2)*cell,3*cell,3*cell);
+    };
+    finder(0,0); finder(n-7,0); finder(0,n-7);
+  }
+
+  // ---------- interaction ----------
+  go(screen){
+    if(screen === 'lyrics') this._lyricIdx = null;
+    this.setState({ screen, playerOpen:false });
+    if(screen === 'search') setTimeout(()=>{ if(this._refs && this._refs.search) this._refs.search.focus(); }, 30);
+  }
+  enterTopbar(){
+    const idx = ['now','search','lyrics','visualizer'].indexOf(this.state.screen);
+    this.setState({ focusZone:'topbar', topIdx: idx < 0 ? 0 : idx, playerOpen:false });
+  }
+  activateTop(){
+    const i = this.state.topIdx;
+    if(i < 4){ this.go(['now','search','lyrics','visualizer'][i]); this.setState({ focusZone:'content' }); }
+    else { this.toggleQR(); }
+  }
+  togglePlay(){ this.setState(s=>({ playing: !s.playing })); }
+  setTrack(i){
+    const n = this.tracks.length;
+    i = ((i % n) + n) % n;
+    this.trackIdx = i;
+    const t = this.tracks[i];
+    this.duration = t.dur;
+    this.elapsed = 0;
+    this._lyricIdx = null;
+    this.setState({ track: t });
+  }
+  nextTrack(){ this.setTrack(this.trackIdx + 1); }
+  prevTrack(){ this.setTrack(this.trackIdx - 1); }
+  setMode(mode){ this.setState({ mode }); }
+  cycleMode(d){
+    const order = ['radial','flow','bars'];
+    const i = order.indexOf(this.state.mode);
+    this.setState({ mode: order[(i + d + order.length) % order.length] });
+  }
+  toggleQR(){ this.setState(s=>({ showQR: !s.showQR })); }
+  togglePlayer(){ this.setState(s=>({ playerOpen: !s.playerOpen })); }
+  selectPlayer(name){ this.setState({ player: name, playerOpen: false }); }
+  onSearch(e){ this.setState({ query: e.target.value, focusIdx: 0 }); }
+  getFiltered(){
+    const q = (this.state.query || '').toLowerCase().trim();
+    if(!q) return this.tracks;
+    return this.tracks.filter(t => (t.title+' '+t.artist+' '+t.album).toLowerCase().includes(q));
+  }
+  moveFocus(d){
+    const len = (this._filtered || []).length;
+    if(!len) return;
+    this.setState(s=>({ focusIdx: Math.max(0, Math.min(len-1, s.focusIdx + d)) }));
+  }
+  loadResult(i){
+    const t = (this._filtered || [])[i];
+    if(!t) return;
+    const idx = this.tracks.indexOf(t);
+    this.setTrack(idx);
+    this.go('now');
+  }
+  onIntensity(e){ this.beatMul = parseFloat(e.target.value); }
+
+  handleKey(e){
+    const k = e.key;
+    const s = this.state;
+    const sc = s.screen;
+    // direct shortcuts (still handy)
+    if(k==='g' || k==='G'){ this.toggleQR(); return; }
+    if(k==='1'){ this.go('now'); return; }
+    if(k==='2'){ this.go('search'); return; }
+    if(k==='3'){ this.go('lyrics'); return; }
+    if(k==='4'){ this.go('visualizer'); return; }
+
+    // ---------- TOP BAR (remote focus) ----------
+    if(s.focusZone === 'topbar'){
+      if(k==='ArrowLeft'){ e.preventDefault(); this.setState(st=>({ topIdx: Math.max(0, st.topIdx-1) })); return; }
+      if(k==='ArrowRight'){ e.preventDefault(); this.setState(st=>({ topIdx: Math.min(4, st.topIdx+1) })); return; }
+      if(k==='ArrowDown'){ e.preventDefault(); this.setState({ focusZone:'content' }); return; }
+      if(k==='ArrowUp'){ e.preventDefault(); return; }
+      if(k==='Enter' || k===' '){ e.preventDefault(); this.activateTop(); return; }
+      return;
+    }
+
+    // ---------- CONTENT ----------
+    if(k==='ArrowUp'){
+      if(sc==='search' && s.focusIdx > 0){ e.preventDefault(); this.moveFocus(-1); return; }
+      e.preventDefault(); this.enterTopbar(); return;
+    }
+    if(k===' '){ e.preventDefault(); this.togglePlay(); return; }
+
+    if(sc==='search'){
+      if(k==='ArrowDown'){ e.preventDefault(); this.moveFocus(1); }
+      else if(k==='Enter'){ this.loadResult(s.focusIdx); }
+    }
+    else if(sc==='now'){
+      if(k==='ArrowRight'){ this.nextTrack(); }
+      else if(k==='ArrowLeft'){ this.prevTrack(); }
+      else if(k==='Enter'){ this.togglePlay(); }
+    }
+    else if(sc==='visualizer'){
+      if(k==='ArrowRight'){ this.cycleMode(1); }
+      else if(k==='ArrowLeft'){ this.cycleMode(-1); }
+    }
+  }
+
+  renderVals(){
+    const s = this.state;
+    const tabBase = { position:'relative', fontFamily:'inherit', fontSize:'30px', fontWeight:700, padding:'14px 26px 18px', borderRadius:'14px', border:'none', outline:'none', cursor:'pointer', background:'transparent' };
+    const topFocus = s.focusZone === 'topbar';
+    const focusRing = '0 0 0 3px var(--a1), 0 0 26px rgba(0,224,198,.45)';
+    const tabs = [['now','Now Playing'],['search','Search'],['lyrics','Lyrics'],['visualizer','Visualizer']].map(([k,l],i)=>{
+      const cursor = topFocus && s.topIdx===i;
+      return { label:l, active:s.screen===k, onClick:()=>{ this.go(k); this.setState({ focusZone:'content' }); },
+        style:{ ...tabBase, color: s.screen===k ? '#fff' : (cursor ? '#fff' : 'rgba(255,255,255,.45)'),
+          background: cursor ? 'rgba(255,255,255,.1)' : 'transparent',
+          boxShadow: cursor ? focusRing : 'none' } };
+    });
+
+    const players = ['Living Room','Kitchen Display','Patio Speaker','Studio Monitors'].map(name=>{
+      const active = s.player===name;
+      return { label:name, onClick:()=>this.selectPlayer(name),
+        style:{ display:'flex', alignItems:'center', gap:'12px', width:'100%', textAlign:'left', fontFamily:'inherit', fontSize:'23px', fontWeight:active?700:500, padding:'14px 18px', borderRadius:'12px', border:'none', outline:'none', cursor:'pointer', background: active?'rgba(255,255,255,.08)':'transparent', color: active?'var(--a1)':'rgba(255,255,255,.8)' } };
+    });
+
+    const modeBase = { padding:'14px 32px', borderRadius:'40px', border:'none', outline:'none', cursor:'pointer', fontFamily:'inherit', fontSize:'26px', fontWeight:700 };
+    const modes = [['radial','Radial Pulse'],['flow','Flow Lines'],['bars','Bars']].map(([k,l])=>({
+      label:l, onClick:()=>this.setMode(k),
+      style:{ ...modeBase, color: s.mode===k ? '#06121a' : 'rgba(255,255,255,.7)', background: s.mode===k ? 'linear-gradient(90deg,var(--a1),var(--a2))' : 'transparent' }
+    }));
+
+    const baseRow = { display:'flex', alignItems:'center', gap:'30px', padding:'20px 28px', borderRadius:'22px', cursor:'pointer', background:'rgba(255,255,255,.04)', border:'2px solid rgba(255,255,255,.06)', transition:'transform .12s, background .12s, box-shadow .12s' };
+    const focusedRow = { ...baseRow, background:'linear-gradient(90deg, color-mix(in srgb, var(--a1) 32%, transparent), color-mix(in srgb, var(--a2) 20%, transparent))', border:'2px solid var(--a1)', boxShadow:'0 0 0 4px rgba(0,224,198,.16), 0 24px 60px rgba(0,0,0,.45)', transform:'scale(1.012)' };
+    const filtered = this.getFiltered();
+    this._filtered = filtered;
+    const results = filtered.map((t,i)=>({
+      title:t.title, sub:t.artist+' · '+t.album, focused:i===s.focusIdx, onClick:()=>this.loadResult(i),
+      thumbStyle:{ width:'104px', height:'104px', borderRadius:'14px', flex:'0 0 auto', background:t.art, boxShadow:'0 10px 30px rgba(0,0,0,.4)' },
+      style: i===s.focusIdx ? focusedRow : baseRow
+    }));
+
+    const qrActive = s.showQR;
+    const guestCursor = topFocus && s.topIdx===4;
+    const qrBtnStyle = { display:'flex', alignItems:'center', gap:'10px', fontFamily:'inherit', fontSize:'23px', fontWeight:700, padding:'11px 20px', borderRadius:'40px', cursor:'pointer', outline:'none', border:'1px solid ' + (qrActive?'var(--a1)':'rgba(255,255,255,.1)'), color: qrActive?'var(--a1)':'rgba(255,255,255,.78)', background: qrActive?'rgba(0,224,198,.12)':'rgba(255,255,255,.06)', boxShadow: guestCursor ? focusRing : 'none' };
+
+    const li = s.lineIdx || 0;
+    const lyrics = this.lyrics.map((ln,i)=>{
+      const d = Math.abs(i - li);
+      let size, op, col, w;
+      if(d===0){ size='92px'; op=1;   col='var(--a1)'; w=800; }
+      else if(d===1){ size='48px'; op=.5;  col='#fff'; w=700; }
+      else if(d===2){ size='42px'; op=.28; col='#fff'; w=600; }
+      else { size='38px'; op=.12; col='#fff'; w=600; }
+      return { l:ln.l, style:{ fontSize:size, opacity:op, color:col, fontWeight:w, transition:'font-size .45s, opacity .45s, color .45s', textWrap:'balance' } };
+    });
+
+    // ---------- Up Next queue (Now Playing) ----------
+    const ntr = this.tracks.length;
+    const queue = [];
+    const qn = s.showQR ? 4 : 5;
+    for(let i=1;i<=qn;i++){
+      const qi = (this.trackIdx + i) % ntr;
+      const qt = this.tracks[qi];
+      queue.push({ title:qt.title, artist:qt.artist, dur:this.fmt(qt.dur), onClick:()=>this.setTrack(qi),
+        thumbStyle:{ width:'58px', height:'58px', borderRadius:'10px', flex:'0 0 auto', background:qt.art, boxShadow:'0 6px 16px rgba(0,0,0,.4)' } });
+    }
+
+    // ---------- audio source indicator ----------
+    const asrc = s.audioSource || 'sim';
+    const live = asrc !== 'sim';
+    const sourceLabel = asrc==='mic' ? 'Mic input' : (asrc==='external' ? 'Live feed' : 'Simulated');
+    const sourceDot = live ? 'var(--a1)' : 'rgba(255,255,255,.4)';
+    const micBtnStyle = { display:'flex', alignItems:'center', gap:'12px', fontFamily:'inherit', fontSize:'21px', fontWeight:700, padding:'15px 24px', borderRadius:'40px', cursor:'pointer', outline:'none', border:'1px solid '+(live?'var(--a1)':'rgba(255,255,255,.1)'), background: live?'rgba(0,224,198,.12)':'rgba(10,10,16,.5)', color: live?'var(--a1)':'rgba(255,255,255,.7)', backdropFilter:'blur(12px)' };
+
+    // ---------- guest QR badge (large, floats top-right; click to turn off) ----------
+    const qrBadgeStyle = { position:'absolute', top:'20px', right:'48px', zIndex:70, display:'flex', flexDirection:'column', alignItems:'center', gap:'13px', cursor:'pointer', outline:'none', background:'#ffffff', borderRadius:'20px', padding:'18px 18px 16px', width:'212px', boxShadow: guestCursor ? '0 0 0 3px var(--a1), 0 0 26px rgba(0,224,198,.5)' : '0 22px 60px rgba(0,0,0,.55)' };
+
+    // queue sits below the QR badge when guest mode is on, otherwise near the top.
+    // (shift via transform, not top, so it survives any !important top override)
+    const queueStyle = { position:'absolute', top:'124px', right:'48px', width:'432px', display:'flex', flexDirection:'column', background:'rgba(10,10,16,.5)', backdropFilter:'blur(26px)', border:'1px solid rgba(255,255,255,.08)', borderRadius:'24px', padding:'22px', boxShadow:'0 30px 80px rgba(0,0,0,.5)', zIndex:20 };
+
+    const track = s.track;
+    return {
+      rootRef:this.makeRef('root'), bgRef:this.makeRef('bg'), artRef:this.makeRef('art'),
+      fillRef:this.makeRef('fill'), elapsedRef:this.makeRef('elapsed'), lyricsRef:this.makeRef('lyrics'),
+      canvasRef:this.makeRef('canvas'), qrRef:this.makeRef('qr'), searchRef:this.makeRef('search'),
+
+      isNow:s.screen==='now', isNowNoQr:s.screen==='now' && !s.showQR, isSearch:s.screen==='search', isLyrics:s.screen==='lyrics', isViz:s.screen==='visualizer',
+      tabs, modes, players, results,
+      playing:s.playing, paused:!s.playing,
+      playerOpen:s.playerOpen, player:s.player,
+      showQR:s.showQR, guestUrl:this.props.guestUrl || 'jukebox.local/guest',
+      query:s.query,
+      qrBtnStyle, qrBadgeStyle, qrOff:!s.showQR, queueStyle, queueRef:this.makeRef('queue'), topRightRef:this.makeRef('topright'),
+      queue, queueCount:queue.length,
+      sourceLabel, sourceDot, micBtnStyle, toggleMic:()=>this.toggleMic(),
+      togglePlay:()=>this.togglePlay(), prevTrack:()=>this.prevTrack(), nextTrack:()=>this.nextTrack(),
+      togglePlayer:()=>this.togglePlayer(), toggleQR:()=>this.toggleQR(),
+      onSearch:(e)=>this.onSearch(e), onIntensity:(e)=>this.onIntensity(e),
+      intensityDefault:(this.beatMul!=null?this.beatMul:(this.props.beatIntensity!=null?this.props.beatIntensity:1)),
+
+      trackTitle:track.title, trackSub:track.artist+' — '+track.album, trackTotal:this.fmt(track.dur),
+      lyrics,
+      artStyle:{ width:'560px', height:'560px', borderRadius:'28px', background:track.art, boxShadow:'0 40px 120px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.07)', willChange:'transform' },
+      artBgStyle:{ position:'absolute', inset:'-100px', background:track.art, filter:'blur(90px) brightness(.7)', transform:'scale(1.25)' },
+    };
+  }
+}
+</script>
+</body>
+</html>

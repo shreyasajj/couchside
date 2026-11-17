@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
 
-// Volume bar shown above the volume button.
+// Volume bar, shown low on the screen.
 // open(true): takes focus; Left/Right change by 5, OK/Back close, closes after 4 s idle.
 // flash(delta): remote volume keys; changes volume and shows the bar without taking focus.
 Rectangle {
@@ -16,10 +15,10 @@ Rectangle {
     visible: false
     width: 520 * u
     height: 132 * u
-    radius: 20 * u
-    color: "#e6141024"
-    border.width: interactive ? 5 * u : 0
-    border.color: "#4fc3f7"
+    radius: 24 * u
+    color: Theme.panel
+    border.width: (interactive ? 3 : 1) * u
+    border.color: interactive ? Theme.a1 : Theme.border
 
     function syncLevel() { if (!settle.running) level = Math.max(0, app.volume) }
     function change(delta) {
@@ -69,20 +68,19 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 10 * popup.u
             radius: height / 2
-            color: "#33ffffff"
-            Rectangle {
+            color: "#29ffffff"
+            GradientFill {
                 width: parent.width * popup.level / 100
                 height: parent.height
                 radius: height / 2
-                color: "#ffffff"
             }
         }
-        QQC2.Label {
+        Text {
             textFormat: Text.PlainText
             Layout.preferredWidth: 90 * popup.u
             horizontalAlignment: Text.AlignRight
             text: popup.level
-            color: "#ffffff"
+            color: Theme.text
             font.pixelSize: 44 * popup.u
             font.weight: Font.Bold
             font.features: { "tnum": 1 }

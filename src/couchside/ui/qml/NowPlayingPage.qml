@@ -1,418 +1,286 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Effects
-import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 import "typing.js" as Typing
+import "queue.js" as Queue
 
-// Now Playing (design "Layout B"). Lyrics arrive in Phase 4; until then this is the
-// design's no-lyrics layout: big artwork left, large title, bottom control bar.
-Kirigami.Page {
+// Now Playing: blurred artwork behind, the cover in the middle, then the song, its
+// progress and one row of controls. Up Next sits top-right (under the guest QR when that
+// is showing). The Lyrics button moves the song up into the top-left corner (small,
+// floating) and puts the words in the middle, with the visualizer moving behind them;
+// Up Next and the controls stay.
+FocusScope {
     id: page
     property real u: 1
-    signal openSetup()
+    property real position: 0       // seconds into the song (the shell ticks it)
+    property real topInset: 104 * u // the top bar
+    property real qrBottom: 0       // where the guest QR card ends (0: not showing)
+    property bool active: true      // the app is in front
+    property var sheet: null
     signal openPage(string name)
+    signal openVolume(Item opener)
     signal typed(string text)
+
     // letters from a keyboard remote open Search with them
     Keys.onPressed: (event) => {
         var t = Typing.typed(event)
         if (t) { page.typed(t); event.accepted = true }
     }
 
-    padding: 0
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
-    background: ArtBackground {
-        source: app.artUrl  // same URL as the card: one download; blurred at 384 px anyway
+    readonly property bool hasMedia: app.title !== ""
+
+    function focusDefault() { playButton.forceActiveFocus() }
+
+    // --- lyrics in place of the cover ------------------------------------------------------
+    readonly property bool showLyrics: app.lyricsShown && app.lyricsEnabled && hasMedia
+    readonly property bool vizBehind: showLyrics && app.lyricsVisualizer   // the shell listens for this
+    // Keep the last song's words for a moment while the next song's are looked up (cache
+    // hits take one event-loop turn, LRCLIB a second or two); give up after 1.5 s.
+    property bool wordsShown: false
+    function updateWords() {
+        if (app.hasLyrics) { wordsShown = true; hold.stop() }
+        else if (app.lyricsPending) { if (wordsShown && !hold.running) hold.start() }
+        else { wordsShown = false; hold.stop() }
+    }
+    Timer { id: hold; interval: 1500; onTriggered: if (!app.hasLyrics) page.wordsShown = false }
+    Connections { target: app; function onLyricsChanged() { page.updateWords() } }
+    Component.onCompleted: updateWords()
+
+    // the songs after the one playing, for the Up Next card
+    readonly property var upcoming: Queue.upcoming(app.queueRows,
+        { title: app.nextTitle, artist: app.nextArtist, imageUrl: app.nextArtUrl }, function(s) { return app.formatTime(s) })
+
+    // behind the words: the visualizer (Edge Lights stands in for Party here). Its
+    // pictures are dimmed so the words stay the brightest thing, and darker still under the
+    // controls; the edge lights keep their full strength.
+    Loader {
+        anchors.fill: parent
+        z: -1
+        active: page.vizBehind
+        sourceComponent: Item {
+            Rectangle { anchors.fill: parent; color: "#050507" }
+            VizScene {
+                objectName: "lyricsViz"
+                anchors.fill: parent
+                dim: 0.6
+                shade: true
+                mode: app.visualizerMode === "party" ? "edge" : app.visualizerMode
+                running: page.visible && page.active
+            }
+        }
+    }
+    ArtBackground {
+        anchors.fill: parent
+        visible: !page.vizBehind
+        source: app.artUrl  // same URL as the cover: one download; blurred at 384 px anyway
         baseColour: app.backgroundColour
     }
 
-    readonly property real margin: 72 * u
-    // guest-mode QR (top-right): layouts keep clear of it
-    readonly property real qrSpace: app.guestMode ? guestQr.width + 48 * u : 0
-    readonly property bool hasMedia: app.title !== ""
-
-    // Focus returns to the control that opened something (Settings) or to play/pause.
-    property Item returnFocus: null
-    function focusDefault() {
-        // party mode outlives other pages and overlays: never land on the hidden controls
-        if (app.partyMode) { partyView.forceActiveFocus(); return }
-        var target = (returnFocus && returnFocus.visible) ? returnFocus : playButton
-        returnFocus = null
-        target.forceActiveFocus()
-    }
-    // Main.goBack() asks the page first; true = handled here.
-    function handleBack() {
-        if (volumePopup.visible) { volumePopup.close(); return true }
-        if (app.partyMode) { app.togglePartyMode(); return true }
-        return false
-    }
-    Connections {
-        target: app
-        function onPartyModeChanged() {
-            if (app.partyMode) partyView.forceActiveFocus()
-            else partyButton.forceActiveFocus()
-        }
-    }
-    // The visualizer listens only while this page is in front (see the controller).
-    Binding {
-        target: app
-        property: "pulseVisible"
-        value: page.isCurrentPage && page.visible && Qt.application.state === Qt.ApplicationActive
-    }
-    function adjustVolume(delta) {
-        if (!app.hasVolume) return
-        placeVolumePopup()
-        volumePopup.flash(delta)
-    }
-    function placeVolumePopup() {
-        var p = volumeButton.mapToItem(page, 0, 0)
-        volumePopup.x = Math.max(page.margin, Math.min(page.width - volumePopup.width - page.margin,
-                                                       p.x + volumeButton.width / 2 - volumePopup.width / 2))
-        volumePopup.y = p.y - volumePopup.height - 32 * page.u
-    }
-    Component.onCompleted: { focusDefault(); updateLyricsLayout() }
-
-    // --- progress, ticked locally between server updates -------------------------
-    property real position: 0
-    function updatePosition() {
-        var p = app.positionBase
-        if (app.isPlaying) p += Date.now() / 1000 - app.positionAt
-        p = Math.max(0, p)
-        if (app.hasDuration) p = Math.min(app.duration, p)
-        position = p
-    }
-    // Lyrics layout with a short hold: while the next song's lookup runs (cache hits take
-    // one event-loop turn, LRCLIB a second or two) keep the lyrics layout instead of
-    // flashing the artwork; give up after 1.5 s without lyrics.
-    property bool lyricsLayoutOn: false
-    readonly property bool showLyrics: lyricsLayoutOn && app.lyricsEnabled && page.hasMedia
-    function updateLyricsLayout() {
-        if (!app.lyricsEnabled) { lyricsLayoutOn = false; lyricsHold.stop() }
-        else if (app.hasLyrics) { lyricsLayoutOn = true; lyricsHold.stop() }
-        else if (app.lyricsPending) { if (lyricsLayoutOn && !lyricsHold.running) lyricsHold.start() }
-        else { lyricsLayoutOn = false; lyricsHold.stop() }
-    }
-    Timer { id: lyricsHold; interval: 1500; onTriggered: if (!app.hasLyrics) page.lyricsLayoutOn = false }
-    Connections { target: app; function onLyricsChanged() { page.updateLyricsLayout() } }
-
-    Timer {
-        interval: page.showLyrics ? 250 : 500  // lyrics need a finer tick than the bar
-        repeat: true
-        running: app.isPlaying && page.visible && Qt.application.state === Qt.ApplicationActive
-        triggeredOnStart: true
-        onTriggered: page.updatePosition()
-    }
-    Connections { target: app; function onChanged() { page.updatePosition() } }
-
-    // --- status ---------------------------------------------------------------------
-    QQC2.Label {
+    // --- status (reconnecting, no speaker, …) ----------------------------------------
+    Text {
+        id: statusLine
         textFormat: Text.PlainText
-        anchors { left: parent.left; top: parent.top; margins: page.margin }
-        width: parent.width * 0.6
+        anchors { left: parent.left; top: parent.top; leftMargin: Theme.margin * page.u; topMargin: page.topInset + 12 * page.u }
+        width: parent.width * 0.3
         visible: text !== ""
         text: app.statusText
-        color: "#ffd479"
-        font.pixelSize: 32 * page.u
+        color: Theme.warn
+        font.pixelSize: Theme.label * page.u
+        font.weight: Font.DemiBold
         wrapMode: Text.WordWrap
     }
 
-    // --- artwork + metadata (no-lyrics layout) -------------------------------------
+    // --- the cover (it makes way for the words) ------------------------------------------
     Item {
-        id: content
-        opacity: (page.showLyrics || app.partyMode) ? 0 : 1
+        id: artCard
+        readonly property real topY: page.topInset + 28 * page.u
+        readonly property real side: Math.max(120 * page.u, Math.min(560 * page.u, block.y - topY - 36 * page.u))
+        width: side
+        height: side
+        x: (parent.width - width) / 2
+        y: topY + (block.y - topY - 36 * page.u - side) / 2
+        opacity: page.showLyrics ? 0 : 1
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 300 } }
-        anchors {
-            left: parent.left; right: parent.right; top: parent.top; bottom: bar.top
-            leftMargin: page.margin; rightMargin: page.margin + page.qrSpace
-            topMargin: 140 * page.u; bottomMargin: 48 * page.u
+        Behavior on opacity { NumberAnimation { duration: 220 } }
+        // the beat: a slight swell (a transform only: nothing is drawn again)
+        scale: app.visualizerEnabled && !page.showLyrics ? 1 + 0.028 * app.audioPulse : 1
+
+        BeatGlow {
+            anchors.centerIn: parent
+            width: parent.width * 2.0   // mostly hidden by the cover: the halo is what shows
+            height: width
+            strength: 1.2
+            visible: app.visualizerEnabled && !page.showLyrics
+            pulse: visible ? app.audioPulse : 0  // hidden: no binding work
+            baseColour: Theme.a2
         }
-
-        RowLayout {
+        Cover {
             anchors.fill: parent
-            spacing: 64 * page.u
-
-            Item {
-                id: artCard
-                readonly property real side: Math.min(page.width * 0.33, content.height)
-                Layout.preferredWidth: side
-                Layout.preferredHeight: side
-                Layout.alignment: Qt.AlignVCenter
-
-                BeatGlow {  // the visualizer: a pulse behind the artwork
-                    anchors.centerIn: parent
-                    width: parent.width * 2.1  // mostly hidden by the cover: the halo is what shows
-                    height: width
-                    strength: 1.3
-                    visible: app.visualizerEnabled
-                    pulse: visible ? app.audioPulse : 0  // hidden: no binding work
-                    baseColour: app.backgroundColour
-                }
-                Rectangle {
-                    id: artFrame
-                    anchors.fill: parent
-                    radius: 16 * page.u
-                    color: "#ffffff"
-                    visible: false
-                    layer.enabled: true
-                }
-                Item {
-                    id: artContent
-                    anchors.fill: parent
-                    visible: false
-                    layer.enabled: true
-                    Rectangle { anchors.fill: parent; color: "#2b2163" }
-                    Kirigami.Icon {
-                        anchors.centerIn: parent
-                        width: parent.width * 0.35
-                        height: width
-                        source: "media-optical-audio"
-                        color: "#66ffffff"
-                        isMask: true
-                        visible: !artImage.hasImage
-                    }
-                    CrossfadeImage {
-                        id: artImage
-                        anchors.fill: parent
-                        source: app.artUrl
-                        // decode at the card's real size: sharp on a 4K TV (URL serves 1024 px)
-                        sourceSize: Qt.size(artCard.side, artCard.side)
-                    }
-                }
-                MultiEffect {  // rounded corners + soft shadow
-                    anchors.fill: parent
-                    source: artContent
-                    maskEnabled: true
-                    maskSource: artFrame
-                    maskThresholdMin: 0.5
-                    maskSpreadAtMin: 1.0
-                    shadowEnabled: true
-                    shadowBlur: 1.0
-                    shadowOpacity: 0.6
-                    shadowVerticalOffset: 12 * page.u
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignVCenter
-                spacing: 12 * page.u
-
-                QQC2.Label {
-
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
-                    text: page.hasMedia ? app.title : (app.hasLocalPlayer ? "Nothing playing" : "")
-                    color: "#ffffff"
-                    font.pixelSize: page.width * 0.046
-                    font.weight: Font.Bold
-                    wrapMode: Text.WordWrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    lineHeight: 1.05
-                }
-                QQC2.Label {
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
-                    visible: text !== ""
-                    text: page.hasMedia ? app.artist : "Play something from Music Assistant"
-                    color: "#ffffff"
-                    opacity: 0.9
-                    font.pixelSize: 48 * page.u
-                    elide: Text.ElideRight
-                }
-                QQC2.Label {
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
-                    visible: page.hasMedia && text !== ""
-                    text: app.album
-                    color: "#ffffff"
-                    opacity: 0.7
-                    font.pixelSize: 36 * page.u
-                    elide: Text.ElideRight
-                }
-                CreditPill { visible: page.hasMedia && app.nowPlayingCredit !== "" }
-            }
+            radius: 28 * page.u
+            source: app.artUrl
         }
     }
 
-    // --- lyrics-forward layout (layout B) -------------------------------------------
-    Item {
-        id: lyricsLayout
-        opacity: page.showLyrics && !app.partyMode ? 1 : 0
+    // --- with the lyrics: the song, small and floating, in the top-left corner -------------
+    SongCard {
+        id: songCard
+        objectName: "songCard"
+        u: page.u
+        opacity: page.showLyrics ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 300 } }
-        anchors {
-            left: parent.left; right: parent.right; top: parent.top; bottom: bar.top
-            leftMargin: page.margin; rightMargin: page.margin
-            topMargin: page.margin; bottomMargin: 24 * page.u
-        }
+        Behavior on opacity { NumberAnimation { duration: 220 } }
+        running: page.visible && page.active
+        x: Theme.margin * page.u
+        y: statusLine.visible ? statusLine.y + statusLine.height + 16 * page.u : page.topInset + 24 * page.u
+        width: Math.min(implicitWidth, (upNext.visible ? upNext.x : page.width) - x - 40 * page.u)
+    }
 
-        RowLayout {  // small sharp artwork, title, artist · album
-            id: lyricsHeader
-            anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: page.qrSpace }
-            spacing: 32 * page.u
-            Item {
-                Layout.preferredWidth: page.width * 0.1
-                Layout.preferredHeight: page.width * 0.1
-                BeatGlow {  // outside the cover: the cover clips its contents
-                    anchors.centerIn: parent
-                    width: parent.width * 2.2
-                    height: width
-                    visible: app.visualizerEnabled
-                    pulse: visible ? app.audioPulse : 0  // hidden: no binding work
-                    baseColour: app.backgroundColour
-                }
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 12 * page.u
-                    color: "#2b2163"
-                    clip: true
-                    CrossfadeImage {
-                        anchors.fill: parent
-                        source: app.artUrl
-                        sourceSize: Qt.size(page.width * 0.1, page.width * 0.1)
-                    }
-                }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6 * page.u
-                QQC2.Label {
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
-                    text: app.title
-                    color: "#ffffff"
-                    font.pixelSize: 48 * page.u
-                    font.weight: Font.Bold
-                    elide: Text.ElideRight
-                }
-                QQC2.Label {
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
-                    text: [app.artist, app.album].filter(s => s !== "").join(" · ")
-                    color: "#ffffff"
-                    opacity: 0.8
-                    font.pixelSize: 30 * page.u
-                    elide: Text.ElideRight
-                }
-                CreditPill { visible: app.nowPlayingCredit !== "" }
-            }
-        }
-
+    // --- the words: centred under the corner card, clear of Up Next, above the controls --
+    Item {
+        id: words
+        objectName: "words"
+        anchors { horizontalCenter: parent.horizontalCenter; top: songCard.bottom; bottom: block.top
+                  topMargin: 32 * page.u; bottomMargin: 20 * page.u }
+        // centred on the screen: as much room on the left as Up Next takes on the right
+        width: parent.width - 2 * (upNext.visible ? parent.width - upNext.x + 48 * page.u : Theme.margin * page.u)
+        visible: page.showLyrics
         LyricsView {
-            anchors { left: parent.left; right: parent.right; top: lyricsHeader.bottom; bottom: parent.bottom
-                      topMargin: 24 * page.u; rightMargin: page.qrSpace }
+            anchors.fill: parent
+            visible: page.wordsShown
             u: page.u
             refWidth: page.width
+            stage: true
             size: app.lyricsSize
             lines: app.lyricLines
             position: page.position
         }
-    }
-
-    // --- party mode: no controls, lyrics bouncing with the music --------------------
-    PartyView {
-        id: partyView
-        anchors.fill: parent
-        u: page.u
-        position: page.position
-        opacity: app.partyMode ? 1 : 0
-        visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 400 } }
-    }
-
-    // --- guest mode QR (top-right) --------------------------------------------------
-    Column {
-        id: guestBox
-        visible: app.guestMode
-        anchors { right: parent.right; top: parent.top; margins: page.margin }
-        spacing: 12 * page.u
-        QrCode {
-            id: guestQr
-            rows: app.qrRows
-            size: 220 * page.u
-            anchors.horizontalCenter: parent.horizontalCenter
-        }
-        QQC2.Label {
+        Text {
             textFormat: Text.PlainText
-            width: guestQr.width + 40 * page.u
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: app.qrCaption
-            color: "#ffffff"
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            maximumLineCount: 2
-            elide: Text.ElideRight
-            font.pixelSize: 28 * page.u
-            font.weight: Font.DemiBold
-        }
-    }
-
-    component CreditPill: Rectangle {
-        Layout.topMargin: 6 * page.u
-        implicitWidth: creditText.implicitWidth + 32 * page.u
-        implicitHeight: creditText.implicitHeight + 12 * page.u
-        radius: height / 2
-        color: "#334fc3f7"
-        QQC2.Label {
-            textFormat: Text.PlainText
-            id: creditText
             anchors.centerIn: parent
-            text: "Added by " + app.nowPlayingCredit
-            color: "#bfeaff"
-            font.pixelSize: 28 * page.u
+            visible: !page.wordsShown
+            text: app.lyricsPending ? "Looking for lyrics…" : "No lyrics for this song"
+            color: Theme.textDim
+            font.pixelSize: Theme.heading * page.u
+            font.weight: Font.Bold
         }
     }
 
-    // --- bottom bar ---------------------------------------------------------------
-    ColumnLayout {
-        id: bar
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: page.margin }
-        opacity: app.partyMode ? 0 : 1
-        visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 300 } }
-        spacing: 28 * page.u
+    // --- up next (top-right; under the guest QR when that is showing) ------------------
+    UpNext {
+        id: upNext
+        objectName: "upNext"
+        u: page.u
+        anchors { right: parent.right; rightMargin: 48 * page.u }
+        y: page.qrBottom > 0 ? page.qrBottom + 16 * page.u : page.topInset + 20 * page.u
+        rows: page.upcoming
+        visible: rows.length > 0
+        maxRows: page.qrBottom > 0 ? 3 : 4
+        onActivated: page.openPage("queue")
+        Keys.onDownPressed: partyButton.forceActiveFocus()
+        Keys.onLeftPressed: playButton.forceActiveFocus()
+    }
 
+    // --- the song, its progress and the controls ---------------------------------------
+    Column {
+        id: block
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 50 * page.u }
+        width: Math.min(1360 * page.u, parent.width - 2 * Theme.margin * page.u)
+
+        // the song's name (in the corner card instead while the lyrics show)
+        Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            visible: !page.showLyrics
+            text: page.hasMedia ? app.title : (app.hasLocalPlayer ? "Nothing playing" : "")
+            color: Theme.text
+            font.pixelSize: Theme.display * page.u
+            font.weight: Font.ExtraBold
+            font.letterSpacing: -1.5 * page.u
+            elide: Text.ElideRight
+        }
+        Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            visible: !page.showLyrics
+            topPadding: 4 * page.u
+            text: page.hasMedia ? [app.artist, app.album].filter(s => s !== "").join(" — ")
+                                : "Play something from Music Assistant"
+            color: Theme.textDim
+            font.pixelSize: Theme.subtitle * page.u
+            font.weight: Font.Medium
+            elide: Text.ElideRight
+        }
+        Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            topPadding: 6 * page.u
+            visible: page.hasMedia && app.nowPlayingCredit !== "" && !page.showLyrics
+            text: "Added by " + app.nowPlayingCredit
+            color: Theme.a1
+            font.pixelSize: Theme.label * page.u
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
+        }
+        Item { width: 1; height: 30 * page.u }
         TrackProgress {
-            Layout.fillWidth: true
+            width: parent.width
             u: page.u
-            visible: page.hasMedia
+            opacity: page.hasMedia ? 1 : 0
             position: page.position
             duration: app.duration
         }
+        Item { width: 1; height: 40 * page.u }   // room for the focused button's name
 
+        // Shuffle and repeat on the left, the transport in the middle, volume and party
+        // on the right. Left/Right walks through all of them in that order.
         Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: playButton.height
+            width: parent.width
+            height: playButton.height
 
-            RowLayout {
-                anchors.centerIn: parent
-                spacing: 40 * page.u
-
+            Row {
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                spacing: 28 * page.u
                 FocusButton {
                     id: shuffleButton
                     u: page.u
-                    iconName: "media-playlist-shuffle"
+                    iconName: "shuffle"
                     text: app.shuffle ? "Shuffle on" : "Shuffle off"
                     active: app.shuffle
-                    KeyNavigation.right: prevButton
+                    KeyNavigation.right: repeatButton
                     onClicked: app.toggleShuffle()
                 }
                 FocusButton {
-                    id: prevButton
+                    id: repeatButton
                     u: page.u
-                    iconName: "media-skip-backward"
-                    text: "Previous"
+                    iconName: app.repeatMode === "one" ? "repeat-one" : "repeat"
+                    text: app.repeatMode === "one" ? "Repeat one" : (app.repeatMode === "all" ? "Repeat all" : "Repeat off")
+                    active: app.repeatMode !== "off"
                     KeyNavigation.left: shuffleButton
+                    KeyNavigation.right: prevButton
+                    onClicked: app.cycleRepeat()
+                }
+            }
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 48 * page.u
+                FocusButton {
+                    id: prevButton
+                    anchors.verticalCenter: parent.verticalCenter
+                    u: page.u
+                    iconScale: 0.72
+                    iconName: "previous"
+                    text: "Previous"
+                    KeyNavigation.left: repeatButton
                     KeyNavigation.right: playButton
                     onClicked: app.previous()
                 }
                 FocusButton {
                     id: playButton
+                    anchors.verticalCenter: parent.verticalCenter
                     u: page.u
                     primary: true
-                    iconName: app.isPlaying ? "media-playback-pause" : "media-playback-start"
+                    showLabel: false  // the biggest button, and everyone knows it
+                    iconName: app.isPlaying ? "pause" : "play"
                     text: app.isPlaying ? "Pause" : "Play"
                     KeyNavigation.left: prevButton
                     KeyNavigation.right: nextButton
@@ -420,102 +288,84 @@ Kirigami.Page {
                 }
                 FocusButton {
                     id: nextButton
+                    anchors.verticalCenter: parent.verticalCenter
                     u: page.u
-                    iconName: "media-skip-forward"
+                    iconScale: 0.72
+                    iconName: "next"
                     text: "Next"
                     KeyNavigation.left: playButton
-                    KeyNavigation.right: repeatButton
+                    KeyNavigation.right: volumeButton.visible ? volumeButton : (lyricsButton.visible ? lyricsButton : partyButton)
                     onClicked: app.next()
-                }
-                FocusButton {
-                    id: repeatButton
-                    u: page.u
-                    iconName: app.repeatMode === "one" ? "media-playlist-repeat-song" : "media-playlist-repeat"
-                    text: app.repeatMode === "one" ? "Repeat one" : (app.repeatMode === "all" ? "Repeat all" : "Repeat off")
-                    active: app.repeatMode !== "off"
-                    KeyNavigation.left: nextButton
-                    KeyNavigation.right: volumeButton.visible ? volumeButton : partyButton
-                    onClicked: app.cycleRepeat()
-                }
-                FocusButton {
-                    id: volumeButton
-                    u: page.u
-                    visible: app.hasVolume
-                    iconName: app.volume === 0 ? "audio-volume-muted"
-                              : app.volume < 34 ? "audio-volume-low"
-                              : app.volume < 67 ? "audio-volume-medium" : "audio-volume-high"
-                    text: "Volume " + app.volume
-                    KeyNavigation.left: repeatButton
-                    KeyNavigation.right: partyButton
-                    onClicked: { page.placeVolumePopup(); volumePopup.open(true) }
                 }
             }
 
             Row {
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                spacing: 20 * page.u
-                NavButton {
+                spacing: 16 * page.u
+                FocusButton {
+                    id: volumeButton
+                    anchors.verticalCenter: parent.verticalCenter
+                    u: page.u
+                    visible: app.hasVolume
+                    iconName: app.volume === 0 ? "volume-muted"
+                              : app.volume < 34 ? "volume-none"
+                              : app.volume < 67 ? "volume-low" : "volume-high"
+                    text: "Volume " + app.volume
+                    KeyNavigation.left: nextButton
+                    KeyNavigation.right: lyricsButton.visible ? lyricsButton : partyButton
+                    Keys.onUpPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus(); else event.accepted = false }
+                    onClicked: page.openVolume(volumeButton)
+                }
+                Rectangle {  // the level, to look at
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: app.hasVolume
+                    width: 120 * page.u
+                    height: 8 * page.u
+                    radius: height / 2
+                    color: "#29ffffff"
+                    GradientFill {
+                        width: parent.width * Math.max(0, Math.min(100, app.volume)) / 100
+                        height: parent.height
+                        radius: height / 2
+                    }
+                }
+                FocusButton {
+                    id: lyricsButton
+                    objectName: "lyricsButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    u: page.u
+                    visible: app.lyricsEnabled
+                    iconName: "lyrics"
+                    text: app.lyricsShown ? "Hide lyrics" : "Lyrics"
+                    active: app.lyricsShown
+                    KeyNavigation.left: volumeButton.visible ? volumeButton : nextButton
+                    KeyNavigation.right: partyButton
+                    Keys.onUpPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus(); else event.accepted = false }
+                    onClicked: app.lyricsShown = !app.lyricsShown
+                }
+                FocusButton {
                     id: partyButton
-                    iconName: "view-fullscreen"
-                    iconScale: 0.8
-                    text: "Party mode"
-                    KeyNavigation.left: volumeButton.visible ? volumeButton : repeatButton
-                    KeyNavigation.right: searchButton
-                    onClicked: app.togglePartyMode()
-                }
-                NavButton {
-                    id: searchButton
-                    iconName: "edit-find"
-                    iconScale: 0.8
-                    text: "Search"
-                    KeyNavigation.left: partyButton
-                    KeyNavigation.right: queueButton
-                    onClicked: { page.returnFocus = searchButton; page.openPage("search") }
-                }
-                NavButton {
-                    id: queueButton
-                    iconName: "view-media-playlist"
-                    text: "Queue"
-                    KeyNavigation.left: searchButton
-                    KeyNavigation.right: speakersButton
-                    onClicked: { page.returnFocus = queueButton; page.openPage("queue") }
-                }
-                NavButton {
-                    id: speakersButton
-                    iconName: "speaker"
-                    text: "Speakers"
-                    KeyNavigation.left: queueButton
-                    KeyNavigation.right: settingsButton
-                    onClicked: { page.returnFocus = speakersButton; page.openPage("speakers") }
-                }
-                NavButton {
-                    id: settingsButton
-                    iconName: "configure"
-                    text: "Settings"
-                    KeyNavigation.left: speakersButton
-                    onClicked: { page.returnFocus = settingsButton; page.openSetup() }
+                    objectName: "visualizerButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    u: page.u
+                    iconName: "party"
+                    text: "Visualizer"
+                    KeyNavigation.left: lyricsButton.visible ? lyricsButton : (volumeButton.visible ? volumeButton : nextButton)
+                    Keys.onRightPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus() }
+                    Keys.onUpPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus(); else event.accepted = false }
+                    onClicked: page.openPage("visualizer")
                 }
             }
         }
     }
 
-    component NavButton: FocusButton { u: page.u; size: 76 * page.u }
-
-    // If the volume button disappears while focused, keep focus on the bar.
+    // If the volume button disappears while focused, keep focus on the row.
     Connections {
         target: volumeButton
-        function onVisibleChanged() {
-            if (!volumeButton.visible) {
-                volumePopup.close()
-                if (volumeButton.activeFocus) repeatButton.forceActiveFocus()
-            }
-        }
+        function onVisibleChanged() { if (!volumeButton.visible && page.activeFocus) playButton.forceActiveFocus() }
     }
-
-    VolumePopup {
-        id: volumePopup
-        u: page.u
-        z: 10
-        opener: volumeButton
+    Connections {
+        target: lyricsButton
+        function onVisibleChanged() { if (!lyricsButton.visible && page.activeFocus) playButton.forceActiveFocus() }
     }
 }

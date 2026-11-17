@@ -10,6 +10,10 @@ an update relaunches the new version).
 from __future__ import annotations
 
 import fcntl
+import functools
+import hashlib
+import json
+import os
 import re
 import logging
 import signal
@@ -19,6 +23,7 @@ import time
 from pathlib import Path
 from typing import IO, Callable
 
+from couchside.core.audio_devices import SINK_PREFIX
 from couchside.core.paths import sendspin_settings_dir, state_dir
 from couchside.core.settings import AppSettings, load_settings
 
@@ -34,8 +39,13 @@ def build_daemon_argv(settings: AppSettings, sendspin_dir: Path) -> list[str]:
     argv = [sys.executable, "-c", DAEMON_ENTRY, "daemon",
             "--settings-dir", str(sendspin_dir), "--port", str(settings.sendspin_port),
             "--name", settings.player_name]
-    if settings.sendspin_audio_device:
-        argv += ["--audio-device", settings.sendspin_audio_device]
+    device = settings.sendspin_audio_device
+    if device and device.startswith(SINK_PREFIX):
+        # a PipeWire output: play through the pulse device, routed to that output (the
+        # variable rides in the command, so changing it restarts the daemon like any option)
+        argv = ["env", f"PULSE_SINK={device[len(SINK_PREFIX):]}"] + argv + ["--audio-device", "pulse"]
+    elif device:
+        argv += ["--audio-device", device]
     if settings.sendspin_delay_ms:
         argv += ["--output-delay-ms", str(int(settings.sendspin_delay_ms))]
     return argv
@@ -90,6 +100,55 @@ def lock_path() -> Path:
     return state_dir() / "sendspin.lock"
 
 
+def status_path() -> Path:
+    return state_dir() / "sendspin.status"
+
+
+@functools.lru_cache(maxsize=1)
+def build_id() -> str:
+    """Which build of Couchside this is: a hash of its Python files. The app compares it
+    with the running supervisor's, so one left running from an older install (it lives on
+    across app updates and restarts) is replaced instead of running old code."""
+    root = Path(__file__).resolve().parents[1]
+    h = hashlib.sha1()
+    for p in sorted(root.rglob("*.py")):
+        h.update(str(p.relative_to(root)).encode())
+        h.update(p.read_bytes())
+    return h.hexdigest()[:12]
+
+
+def write_status(path: Path, state: str, exit_code: int | None = None, build: str | None = None,
+                 pid: int | None = None, now: float | None = None) -> None:
+    """What the supervisor is doing, for the app: "running", "restarting" (the daemon
+    exited with `exit_code` and starts again after a delay) or "stopped"."""
+    data = {"state": state, "exit_code": exit_code, "build": build, "pid": pid,
+            "updated": time.time() if now is None else now}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data))
+        tmp.replace(path)
+    except OSError as e:
+        log.warning("can't write the Sendspin status: %s", e)
+
+
+def read_status(path: Path | None = None) -> dict | None:
+    try:
+        data = json.loads((path or status_path()).read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def supervisor_running(path: Path | None = None) -> bool:
+    """Whether a supervisor holds the lock (any sandbox instance of this app)."""
+    fh = acquire_lock(path or lock_path())
+    if fh is None:
+        return True
+    fh.close()
+    return False
+
+
 def acquire_lock(path: Path) -> IO | None:
     """Return an open, exclusively locked file, or None if another instance holds it."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,11 +185,15 @@ def supervise(argv: list[str] | Callable[[], list[str]], log_file: Path, restart
               max_delay: float = 60.0, max_log_bytes: int = MAX_LOG_BYTES,
               sleep: Callable[[float], None] = time.sleep,
               healthy_after: float = 60.0, poll: float = 2.0,
-              control_file: Path | None = None) -> int:
+              control_file: Path | None = None,
+              on_state: Callable[[str, int | None], None] | None = None) -> int:
     """Run the daemon, restarting it after a non-zero exit with a growing delay (reset
     after a run of `healthy_after` seconds). `argv` may be a function: it is called every
     `poll` seconds and the daemon restarts at once when the command changes. Returns on
-    clean exit, SIGTERM/SIGINT, or an exit request in `control_file`."""
+    clean exit, SIGTERM/SIGINT, or an exit request in `control_file`. `on_state` hears
+    ("running", None) whenever the daemon starts and ("restarting", exit code) after it
+    fails."""
+    report = on_state or (lambda _state, _rc: None)
     stopping = False
     child: subprocess.Popen | None = None
     make = argv if callable(argv) else (lambda: argv)
@@ -164,6 +227,7 @@ def supervise(argv: list[str] | Callable[[], list[str]], log_file: Path, restart
                 child = subprocess.Popen(current, stdout=out, stderr=subprocess.STDOUT,
                                          stdin=subprocess.DEVNULL,
                                          preexec_fn=_die_with_parent)
+                report("running", None)
                 if stopping:  # signal landed while starting: pass it on
                     child.terminate()
                 while True:
@@ -194,6 +258,7 @@ def supervise(argv: list[str] | Callable[[], list[str]], log_file: Path, restart
                 return 0
             if time.monotonic() - started >= healthy_after:
                 delay = restart_delay
+            report("restarting", rc)
             with open(log_file, "a") as out:
                 out.write(f"couchside-sendspin: daemon exited with {rc}, "
                           f"restarting in {delay:g}s\n")
@@ -236,8 +301,12 @@ def main() -> int:
 
         def argv() -> list[str]:
             return build_daemon_argv(load_settings(), sendspin_dir)
-        return supervise(argv, path, control_file=control_path())
+
+        def on_state(state: str, rc: int | None) -> None:
+            write_status(status_path(), state, rc, build=build_id(), pid=os.getpid())
+        return supervise(argv, path, control_file=control_path(), on_state=on_state)
     finally:
+        write_status(status_path(), "stopped", build=build_id(), pid=os.getpid())
         lock.close()
 
 

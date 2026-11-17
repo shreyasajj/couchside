@@ -15,5 +15,13 @@ Item {
                    opener, function(id) { var r = ran.slice(); r.push(id); ran = r })
     }
 
+    function openPicker() {
+        sheet.open("Audio output", [{ id: "", label: "Default" },
+                                    { id: "a", label: "HDMI", section: "Outputs" },
+                                    { id: "b", label: "Analog", section: "Outputs", checked: true },
+                                    { id: "c", label: "hw:0,3", section: "Direct" }],
+                   opener, function(id) { var r = ran.slice(); r.push(id); ran = r })
+    }
+
     ActionSheet { id: sheet; objectName: "sheet"; onFocusLost: root.lostCount += 1 }
 }

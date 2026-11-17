@@ -22,8 +22,9 @@ class FakeMusic:
     def get_media_item_image(self, item, *_):
         return getattr(item, "image", None)
 
-    async def search(self, q, limit=12):
+    async def search(self, q, media_types=None, limit=12, library_only=False):
         self.calls.append(("search", q, limit))
+        self.asked = (media_types, library_only)
         if "search" in self.fail:
             raise RuntimeError("down")
         return self.results
@@ -120,3 +121,34 @@ async def test_play_modes_map_to_queue_options():
 async def test_play_failure_returns_false():
     assert not await play(client(queues=FakeQueues(fail=True)), "q1", "x://t", "now")
     assert not await play(client(), "q1", "x://t", "bogus")
+
+
+# --- faster search -------------------------------------------------------------------------
+
+async def test_search_asks_only_for_what_is_shown_and_can_stay_in_the_library():
+    res = NS(tracks=[track()], albums=[], artists=[], playlists=[], radio=[])
+    m = FakeMusic(results=res)
+    await search(client(m), "love")
+    kinds, library_only = m.asked
+    assert sorted(str(getattr(k, "value", k)) for k in kinds) == ["album", "artist", "playlist", "radio", "track"]
+    assert library_only is False
+    await search(client(m), "love", library_only=True)
+    assert m.asked[1] is True
+
+
+async def test_recents_are_asked_for_together():
+    import asyncio
+    started = []
+
+    class Slow(FakeMusic):
+        async def recently_played(self, limit=10):
+            started.append("played")
+            await asyncio.sleep(0)
+            assert started == ["played", "added"]   # the second call did not wait for the first
+            return [track(uri="a://1")]
+
+        async def get_library_tracks(self, limit=None, order_by=None):
+            started.append("added")
+            return [track(uri="b://1")]
+    rows = await recents(client(Slow()))
+    assert [t for t, _ in rows] == ["Recently played", "Recently added"]

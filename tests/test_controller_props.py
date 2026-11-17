@@ -18,7 +18,12 @@ def ctl(tmp_path, monkeypatch, qt_app):
     c.playback.now_playing = NowPlaying(
         "T", "A", "B", PROXY, "playing", duration=261, elapsed=12.5, elapsed_at=1000.0,
         shuffle=True, repeat="all", volume=40, palette_dark=(25, 28, 41), queue_id="q")
-    return c
+    yield c
+    # Stop its timers here, on the main thread: a controller left with a running timer can be
+    # garbage-collected later on another thread, and Qt then crashes in a later test.
+    from PySide6.QtCore import QTimer
+    for timer in c.findChildren(QTimer):
+        timer.stop()
 
 
 def test_progress_and_modes(ctl):
@@ -100,7 +105,7 @@ async def settle():
 async def test_search_rows_shape(ctl, monkeypatch):
     wire(ctl)
 
-    async def fake_search(client, q, limit=12):
+    async def fake_search(client, q, limit=12, library_only=False):
         return SearchOutcome(rows=[("Tracks", [CARD])])
     monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
     ctl.search("love")
@@ -114,7 +119,7 @@ async def test_search_rows_shape(ctl, monkeypatch):
 async def test_search_error_text(ctl, monkeypatch):
     wire(ctl)
 
-    async def fake_search(client, q, limit=12):
+    async def fake_search(client, q, limit=12, library_only=False):
         return SearchOutcome(error="Search failed — check the connection")
     monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
     ctl.search("love")
@@ -660,13 +665,6 @@ def test_sendspin_settings_cycle_and_save(ctl, tmp_path):
     assert ctl.sendspinDelay == 0
     ctl.cycleSendspinDelay()
     assert ctl.sendspinDelay == 25
-    ctl._audio_devices = ["HD-Audio Generic: HISENSE (hw:0,3)", "pulse"]
-    assert ctl.audioDevice == "Default"
-    ctl.cycleAudioDevice()
-    assert ctl.audioDevice == "HD-Audio Generic: HISENSE (hw:0,3)"
-    ctl.cycleAudioDevice()
-    ctl.cycleAudioDevice()
-    assert ctl.audioDevice == "Default"
     ctl.setPlayerName("  Den TV  ")
     ctl.setPlayerName("   ")  # ignored
     saved = load_settings()
@@ -674,13 +672,90 @@ def test_sendspin_settings_cycle_and_save(ctl, tmp_path):
     assert saved.sendspin_delay_ms == 25 and saved.sendspin_audio_device is None
 
 
-async def test_audio_devices_loaded_from_sendspin(ctl, monkeypatch):
+SINKS_JSON = '[{"name":"hdmi","description":"HDMI Surround"}]'
+SOURCES_JSON = ('[{"name":"mic","description":"USB Mic"},'
+                '{"name":"hdmi.monitor","description":"Monitor of HDMI Surround"}]')
+
+
+async def load_devices(ctl, monkeypatch, sinks=SINKS_JSON, sources=SOURCES_JSON, direct=("HDMI 1 (hw:0,7)",)):
     async def fake_list():
-        return ["Speaker A", "Speaker B"]
+        return list(direct)
+
+    async def fake_pactl(kind):
+        return {"sinks": sinks, "sources": sources}[kind]
     monkeypatch.setattr(ctl, "_list_audio_devices", fake_list)
+    monkeypatch.setattr(ctl, "_pactl", fake_pactl)
     ctl.loadAudioDevices()
     await settle()
-    assert ctl._audio_devices == ["Speaker A", "Speaker B"]
+
+
+async def test_audio_outputs_listed_and_chosen(ctl, monkeypatch):
+    from couchside.core.settings import load_settings
+    ctl._pulse = FakePulse()
+    assert ctl.audioOutputs == [{"id": "", "label": "Default", "section": "", "current": True}]
+    assert ctl.audioOutputLabel == "Default"
+    await load_devices(ctl, monkeypatch)
+    assert [(o["id"], o["label"], o["section"]) for o in ctl.audioOutputs] == [
+        ("", "Default", ""), ("sink:hdmi", "HDMI Surround", "Outputs"),
+        ("HDMI 1 (hw:0,7)", "HDMI 1 (hw:0,7)", "Direct (visualizer can't listen)")]
+    ctl.setAudioOutput("sink:hdmi")
+    assert load_settings().sendspin_audio_device == "sink:hdmi"
+    assert ctl.audioOutputLabel == "HDMI Surround"
+    assert [o["current"] for o in ctl.audioOutputs] == [False, True, False]
+    assert ctl._pulse.sources[-1] == "hdmi.monitor"     # the visualizer follows the output
+    ctl.setAudioOutput("")
+    assert load_settings().sendspin_audio_device is None and ctl._pulse.sources[-1] == "@DEFAULT_MONITOR@"
+
+
+async def test_beat_source_listed_and_chosen(ctl, monkeypatch):
+    from couchside.core.settings import load_settings
+    ctl._pulse = FakePulse()
+    assert ctl.beatSources == [{"id": "", "label": "What this TV is playing", "section": "", "current": True}]
+    assert ctl.beatSourceLabel == "What this TV is playing"
+    await load_devices(ctl, monkeypatch)
+    assert [(o["id"], o["section"]) for o in ctl.beatSources] == [
+        ("", ""), ("hdmi.monitor", "Outputs"), ("mic", "Inputs")]
+    ctl.setBeatSource("mic")
+    assert load_settings().visualizer_source == "mic" and ctl._pulse.sources[-1] == "mic"
+    assert ctl.beatSourceLabel == "USB Mic"
+    ctl.setBeatSource("")
+    assert load_settings().visualizer_source is None and ctl._pulse.sources[-1] == "@DEFAULT_MONITOR@"
+
+
+async def test_a_beat_source_that_is_gone_falls_back_and_says_so(ctl, monkeypatch):
+    ctl._pulse = FakePulse()
+    ctl._settings.visualizer_source = "old-mic"
+    ctl._settings.sendspin_audio_device = "sink:hdmi"
+    await load_devices(ctl, monkeypatch)
+    assert ctl._pulse.sources[-1] == "hdmi.monitor"
+    assert "isn't connected" in ctl.toast
+    assert ctl.beatSources[-1] == {"id": "old-mic", "label": "old-mic (not connected)",
+                                   "section": "", "current": True}
+
+
+async def test_no_pactl_still_gives_both_lists(ctl, monkeypatch):
+    ctl._pulse = FakePulse()
+    ctl._settings.visualizer_source = "mic"
+    await load_devices(ctl, monkeypatch, sinks="", sources="")
+    assert [o["id"] for o in ctl.audioOutputs] == ["", "HDMI 1 (hw:0,7)"]
+    assert [o["id"] for o in ctl.beatSources] == ["", "mic"]
+    assert ctl._pulse.sources[-1] == "mic" and ctl.toast == ""   # unknown list: trust the setting
+
+
+def test_accent_colours(ctl):
+    from couchside.core.settings import load_settings
+    assert (ctl.accent1, ctl.accent2) == ("#00e0c6", "#ff3da6")
+    assert [a["id"] for a in ctl.accents] == ["teal-pink", "sky-coral", "violet", "gold-green"]
+    ctl.setAccent("violet")
+    assert (ctl.accent1, ctl.accent2) == ("#7c5cff", "#b14dff") and load_settings().accent == "violet"
+    assert [a["current"] for a in ctl.accents] == [False, False, True, False]
+    ctl.setAccent("x")
+    assert ctl.accent1 == "#7c5cff"
+
+
+def test_an_unknown_saved_accent_shows_the_default(ctl):
+    ctl._settings.accent = "nope"
+    assert (ctl.accent1, ctl.accent2) == ("#00e0c6", "#ff3da6")
 
 
 async def test_sendspin_version_text(ctl, monkeypatch):
@@ -866,6 +941,11 @@ class FakePulse:
     def __init__(self):
         self.running, self.starts, self.stops = False, 0, 0
         self.level, self.beats = 0.0, 0
+        self.bars = [0.0] * 64
+        self.sources = []
+
+    def set_source(self, source):
+        self.sources.append(source)
 
     def start(self):
         self.starts += 1
@@ -903,16 +983,62 @@ async def test_listens_only_while_shown_and_playing(pulse_ctl):
     assert not ctl._pulse.running
 
 
-def test_visualizer_off_stops_listening_but_party_mode_still_listens(pulse_ctl, tmp_path):
+def test_visualizer_off_stops_the_pulse_but_the_visualizer_screen_still_listens(pulse_ctl, tmp_path):
     from couchside.core.settings import load_settings
     ctl = pulse_ctl
     ctl.pulseVisible = True
     ctl.visualizerEnabled = False
     assert not ctl._pulse.running and load_settings().visualizer_enabled is False
-    ctl.togglePartyMode()
-    assert ctl.partyMode and ctl._pulse.running
-    ctl.togglePartyMode()
-    assert not ctl.partyMode and not ctl._pulse.running
+    ctl.vizVisible = True
+    assert ctl._pulse.running and ctl._pulse_timer.interval() == 33
+    ctl.vizVisible = False
+    assert not ctl._pulse.running and ctl._pulse_timer.interval() == 50
+
+
+def test_spectrum_rests_at_zero_and_follows_the_audio(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.playback.now_playing = None
+    ctl.vizVisible = True
+    assert ctl.spectrum == [0.0] * 64 and not ctl._pulse.running   # nothing playing
+    assert ctl.vizBeat == 0.0 and ctl.vizEnergy == 0.0
+
+
+def test_spectrum_updates_only_on_the_visualizer_screen(pulse_ctl):
+    ctl = pulse_ctl
+    seen = []
+    ctl.spectrumChanged.connect(lambda: seen.append(1))
+    ctl.pulseVisible = True
+    ctl._pulse.bars = [0.5] * 64
+    ctl._pulse.level, ctl._pulse.beats = 0.4, 1
+    ctl._poll_pulse()
+    assert seen == []                       # Now Playing: only the stepped pulse
+    ctl.vizVisible = True
+    ctl._pulse.beats = 2
+    ctl._poll_pulse()
+    assert seen and ctl.spectrum == [0.5] * 64
+    assert ctl.vizBeat == 1.0 and ctl.vizEnergy == 0.4
+    ctl._poll_pulse()
+    assert ctl.vizBeat == 0.75              # falls between beats
+
+
+def test_visualizer_intensity_and_mode(ctl):
+    from couchside.core.settings import load_settings
+    assert ctl.visualizerIntensity == 1.0 and ctl.visualizerMode == "radial"
+    ctl.visualizerIntensity = 9
+    assert ctl.visualizerIntensity == 2.4
+    ctl.visualizerIntensity = 0.52
+    assert ctl.visualizerIntensity == 0.5 and load_settings().visualizer_intensity == 0.5
+    ctl.visualizerIntensity = -1
+    assert ctl.visualizerIntensity == 0.0
+    ctl.visualizerMode = "party"
+    assert ctl.visualizerMode == "party" and load_settings().visualizer_mode == "party"
+    ctl.visualizerMode = "nope"
+    assert ctl.visualizerMode == "party"
+
+
+def test_an_unknown_saved_mode_shows_radial(ctl):
+    ctl._settings.visualizer_mode = "nope"
+    assert ctl.visualizerMode == "radial"
 
 
 def test_pulse_swells_on_beats_and_settles(pulse_ctl):
@@ -956,6 +1082,140 @@ def test_a_stream_that_died_is_reopened(pulse_ctl):
     ctl._pulse.healthy = lambda: True
     ctl._poll_pulse()                    # still wanted: listen again
     assert ctl._pulse.starts == 2 and ctl._pulse.running
+
+
+def test_every_beat_turns_the_party_colour(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    seen = []
+    ctl.beatChanged.connect(lambda: seen.append(ctl.beatHue))
+    start = ctl.beatHue
+    ctl._poll_pulse()
+    assert seen == []                       # no beat: the colour stays
+    ctl._pulse.beats = 1
+    ctl._poll_pulse()
+    ctl._pulse.beats = 2
+    ctl._poll_pulse()
+    assert len(seen) == 2 and seen[0] != start and seen[1] != seen[0]
+    assert all(0.0 <= h < 1.0 for h in seen)
+
+
+def test_up_next_comes_from_the_queue(ctl):
+    from dataclasses import replace
+    assert ctl.nextTitle == "" and ctl.nextArtist == "" and ctl.nextArtUrl == ""
+    ctl.playback.now_playing = replace(
+        ctl.playback.now_playing, next_title="Luna", next_artist="Bolier",
+        next_image_url="http://ma:8095/imageproxy/abc?size=512")
+    assert ctl.nextTitle == "Luna" and ctl.nextArtist == "Bolier"
+    assert ctl.nextArtUrl == "http://ma:8095/imageproxy/abc?size=256"
+
+
+def test_party_lights_hold_each_beat_longer_than_the_glow(pulse_ctl):
+    """Lights behind the TV smooth what they see: a flash that is gone in a tenth of a
+    second never reaches them. The edge lights fall slowly after each beat."""
+    ctl = pulse_ctl
+    ctl.pulseVisible = True
+    ctl._pulse.beats = 1
+    ctl._poll_pulse()
+    assert ctl.lightPulse == 1.0 and ctl.audioPulse == 1.0
+    for _ in range(4):                      # 0.2 s later
+        ctl._poll_pulse()
+    assert ctl.audioPulse <= 0.1 and ctl.lightPulse >= 0.4
+    for _ in range(40):
+        ctl._poll_pulse()
+    assert ctl.lightPulse == 0.0
+    ctl._pulse.level, ctl._pulse.beats = 0.8, 2
+    ctl._poll_pulse()
+    ctl.pulseVisible = False                # listening stops: lights go dark at once
+    assert ctl.lightPulse == 0.0
+
+
+def test_party_lights_can_be_switched_off_and_stay_off(pulse_ctl):
+    from couchside.core.settings import load_settings
+    ctl = pulse_ctl
+    seen = []
+    ctl.pulseChanged.connect(lambda: seen.append(1))
+    assert ctl.partyLights is True
+    ctl.partyLights = False
+    assert ctl.partyLights is False and load_settings().party_lights is False and seen
+
+
+# --- faster search: the library answers first, repeats come from memory ----------------------
+
+async def test_library_results_show_first_then_everything(ctl, monkeypatch):
+    import asyncio
+    wire(ctl)
+    full = asyncio.Event()
+    other = MediaCard(key="x://t/2", kind="track", title="Other", subtitle="", image_url=None, uri="x://t/2")
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        if library_only:
+            return SearchOutcome(rows=[("Tracks", [CARD])])
+        await full.wait()                       # streaming services take seconds
+        return SearchOutcome(rows=[("Tracks", [CARD, other])])
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    assert len(ctl.libraryRows[0]["items"]) == 1 and ctl.libraryBusy   # library hits, still searching
+    full.set()
+    await settle()
+    assert len(ctl.libraryRows[0]["items"]) == 2 and not ctl.libraryBusy
+
+
+async def test_a_slow_or_failed_library_answer_never_replaces_the_full_one(ctl, monkeypatch):
+    import asyncio
+    wire(ctl)
+    quick = asyncio.Event()
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        if library_only:
+            await quick.wait()
+            return SearchOutcome(error="Search failed — check the connection")
+        return SearchOutcome(rows=[("Tracks", [CARD])])
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    quick.set()
+    await settle()
+    assert len(ctl.libraryRows) == 1 and ctl.libraryError == "" and not ctl.libraryBusy
+
+
+async def test_the_same_search_again_is_answered_from_memory(ctl, monkeypatch):
+    wire(ctl)
+    calls = []
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        calls.append((q, library_only))
+        return SearchOutcome(rows=[("Tracks", [CARD])]) if q.strip().lower() == "love" else SearchOutcome()
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    ctl.search("lovex")
+    await settle()
+    n = len(calls)
+    ctl.search(" Love ")                        # back to the earlier words (e.g. after deleting a letter)
+    assert len(ctl.libraryRows) == 1 and not ctl.libraryBusy   # at once, no waiting
+    await settle()
+    assert len(calls) == n
+
+
+async def test_failed_searches_are_not_remembered(ctl, monkeypatch):
+    wire(ctl)
+    answers = [SearchOutcome(error="Search failed — check the connection"), SearchOutcome(rows=[("Tracks", [CARD])])]
+
+    async def fake_search(client, q, limit=12, library_only=False):
+        if library_only:
+            return SearchOutcome()
+        return answers.pop(0)
+    monkeypatch.setattr("couchside.ui.controller.library.search", fake_search)
+    ctl.search("love")
+    await settle()
+    assert ctl.libraryError != ""
+    ctl.search("love")
+    await settle()
+    assert ctl.libraryError == "" and len(ctl.libraryRows) == 1
+
+
 async def test_guest_link_waits_for_a_slow_worker_thread(guest_ctl, monkeypatch):
     """CI runners can take longer than a fixed wait to build the link (flaky before)."""
     import time
@@ -967,3 +1227,226 @@ async def test_guest_link_waits_for_a_slow_worker_thread(guest_ctl, monkeypatch)
     guest_ctl.toggleGuestMode()
     await settle_long()
     assert guest_ctl.guestUrl.startswith("http://192.168.30.153:8765/g/")
+
+
+def test_edge_mode_and_visualizer_colours(ctl):
+    from couchside.core.settings import load_settings
+    ctl.visualizerMode = "edge"
+    assert ctl.visualizerMode == "edge" and load_settings().visualizer_mode == "edge"
+    assert ctl.visualizerColours == "accent"
+    assert [c["id"] for c in ctl.visualizerColourChoices] == ["accent", "rainbow", "beat"]
+    assert [c["current"] for c in ctl.visualizerColourChoices] == [True, False, False]
+    seen = []
+    ctl.pulseChanged.connect(lambda: seen.append(1))
+    ctl.setVisualizerColours("rainbow")
+    assert ctl.visualizerColours == "rainbow" and load_settings().visualizer_colours == "rainbow" and seen
+    assert ctl.visualizerColoursLabel == "Rainbow"
+    ctl.setVisualizerColours("nope")
+    assert ctl.visualizerColours == "rainbow"
+    ctl._settings.visualizer_colours = "junk"
+    assert ctl.visualizerColours == "accent"
+
+
+def test_lyrics_on_now_playing_are_remembered(ctl):
+    from couchside.core.settings import load_settings
+    seen = []
+    ctl.lyricsChanged.connect(lambda: seen.append(1))
+    assert ctl.lyricsShown is False and ctl.lyricsVisualizer is True
+    ctl.lyricsShown = True
+    assert ctl.lyricsShown is True and load_settings().lyrics_shown is True and seen
+    ctl.lyricsVisualizer = False
+    assert ctl.lyricsVisualizer is False and load_settings().lyrics_visualizer is False
+
+
+def test_tempo_follows_the_beats(pulse_ctl):
+    from couchside.core.beat import TempoTracker
+    ctl = pulse_ctl
+    clock = [100.0]
+    ctl._clock = lambda: clock[0]
+    ctl.vizVisible = True
+    assert ctl.vizTempo == TempoTracker.RESTING
+    for i in range(1, 7):                    # a beat every 0.4 s: 150 BPM
+        clock[0] += 0.4
+        ctl._pulse.beats = i
+        ctl._poll_pulse()
+    assert ctl.vizTempo == 150.0
+    ctl.vizVisible = False                   # listening stops: the tempo starts again
+    ctl.vizVisible = True
+    assert ctl.vizTempo == TempoTracker.RESTING
+    ctl.vizVisible = False                   # leave nothing ticking for the next test
+
+
+def test_edge_lights_on_every_picture_is_remembered(ctl):
+    from couchside.core.settings import load_settings
+    seen = []
+    ctl.pulseChanged.connect(lambda: seen.append(1))
+    assert ctl.visualizerEdges is False
+    ctl.visualizerEdges = True
+    assert ctl.visualizerEdges is True and load_settings().visualizer_edges is True and seen
+
+
+async def test_close_stops_the_visualizer_timer(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.vizVisible = True
+    assert ctl._pulse_timer.isActive()
+    await ctl.close()
+    assert not ctl._pulse_timer.isActive()
+
+
+# --- something broke: the warning button and the Logs screen ----------------------------------
+
+@pytest.fixture
+def health_ctl(ctl, tmp_path):
+    from couchside.core.connection import ConnState
+    from couchside.sendspin.runner import build_id
+    state = {"status": {"state": "running", "build": build_id()}, "running": True, "now": 1000.0,
+             "starts": 0, "restarts": 0}
+    ctl._sendspin_status = lambda: state["status"]
+    ctl._sendspin_running = lambda: state["running"]
+    ctl._clock = lambda: state["now"]
+    ctl._start_local_sendspin = lambda: state.__setitem__("starts", state["starts"] + 1)
+
+    async def restart():
+        state["restarts"] += 1
+    ctl._restart_sendspin = restart
+    ctl.conn.state = ConnState.CONNECTED
+    ctl.playback.local_player_found = True
+    return ctl, state
+
+
+async def test_a_crashing_speaker_shows_a_problem_at_once(health_ctl):
+    ctl, state = health_ctl
+    seen = []
+    ctl.healthChanged.connect(lambda: seen.append(ctl.problem))
+    ctl._check_health()
+    assert ctl.problem == "" and ctl.problems == []
+    state["status"] = {**state["status"], "state": "restarting", "exit_code": 1}
+    ctl._check_health()
+    assert ctl.problem == "This TV's speaker keeps stopping (exit code 1)" and seen
+    state["status"] = {**state["status"], "state": "running"}
+    ctl._check_health()
+    assert ctl.problem == ""
+
+
+async def test_an_outdated_supervisor_is_restarted_once(health_ctl):
+    import asyncio
+    ctl, state = health_ctl
+    state["status"] = {"state": "running", "build": "old"}
+    ctl._check_health()
+    ctl._check_health()                       # still the old one: not asked twice in a row
+    await asyncio.sleep(0)
+    assert state["restarts"] == 1
+
+
+async def test_a_stopped_speaker_is_started_and_reported_if_it_stays_down(health_ctl):
+    ctl, state = health_ctl
+    state["running"] = False
+    ctl._check_health()
+    assert state["starts"] == 1 and ctl.problem == ""     # give it a moment
+    state["now"] += 10
+    ctl._check_health()
+    assert state["starts"] == 1                            # not again within 30 s
+    state["now"] += 25
+    ctl._check_health()
+    assert state["starts"] == 2 and ctl.problem == "This TV's speaker isn't running"
+
+
+def test_logs_show_the_sendspin_log_tail_and_the_apps_lines(ctl, tmp_path, monkeypatch):
+    import logging
+    from couchside.core import logbuffer
+    path = tmp_path / "sendspin.log"
+    path.write_text("".join(f"line {i}\n" for i in range(1000)))
+    monkeypatch.setattr("couchside.ui.controller.log_path", lambda: path)
+    logbuffer.install()
+    logging.getLogger("couchside.test").warning("hello from the app")
+    ctl.loadLogs()
+    lines = ctl.sendspinLog.splitlines()
+    assert lines[-1] == "line 999" and len(lines) == 300
+    assert "hello from the app" in ctl.appLog
+    path.unlink()
+    ctl.loadLogs()
+    assert ctl.sendspinLog == "(no Sendspin log yet)"
+
+
+# --- crossfade (Music Assistant's settings, from Settings → This speaker) ---------------
+async def test_crossfade_loads_and_changes_through_music_assistant(ctl, monkeypatch):
+    from couchside.core.crossfade import Crossfade
+    wire(ctl)
+    monkeypatch.setattr(ctl, "_queue_id", lambda: "q")
+    state = {"now": Crossfade(enabled=True, mode="global", server_mode="smart_crossfade", seconds=8)}
+    calls = []
+
+    async def fake_load(client, qid):
+        return state["now"]
+
+    async def fake_enabled(client, qid, on):
+        calls.append(("enabled", qid, on))
+        state["now"] = Crossfade(on, state["now"].mode, state["now"].server_mode, state["now"].seconds)
+        return True
+
+    async def fake_mode(client, qid, mode):
+        calls.append(("mode", qid, mode))
+        state["now"] = Crossfade(state["now"].enabled, mode, state["now"].server_mode, state["now"].seconds)
+        return True
+
+    async def fake_seconds(client, seconds):
+        calls.append(("seconds", seconds))
+        state["now"] = Crossfade(state["now"].enabled, state["now"].mode, state["now"].server_mode, seconds)
+        return True
+    monkeypatch.setattr("couchside.ui.controller.crossfade.load", fake_load)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_enabled", fake_enabled)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_mode", fake_mode)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_seconds", fake_seconds)
+
+    assert ctl.crossfadeKnown is False
+    ctl.loadCrossfade()
+    await settle()
+    assert ctl.crossfadeKnown is True and ctl.crossfadeEnabled is True
+    assert ctl.crossfadeModeLabel == "Music Assistant's default (Smart (beat-matched))"
+    assert ctl.crossfadeSeconds == 8 and ctl.crossfadeLengthApplies is False
+    assert [c["id"] for c in ctl.crossfadeModes] == ["global", "standard_crossfade", "smart_crossfade"]
+    assert [c["current"] for c in ctl.crossfadeModes] == [True, False, False]
+
+    ctl.toggleCrossfade()
+    await settle()
+    assert calls[-1] == ("enabled", "q", False) and ctl.crossfadeEnabled is False
+
+    ctl.setCrossfadeMode("standard_crossfade")
+    await settle()
+    assert calls[-1] == ("mode", "q", "standard_crossfade")
+    assert ctl.crossfadeModeLabel == "Standard" and ctl.crossfadeLengthApplies is True
+
+    ctl.stepCrossfadeSeconds(1)
+    await settle()
+    assert calls[-1] == ("seconds", 9) and ctl.crossfadeSeconds == 9
+    state["now"] = Crossfade(False, "standard_crossfade", "smart_crossfade", 15)
+    ctl.loadCrossfade()
+    await settle()
+    ctl.stepCrossfadeSeconds(1)                # already the longest
+    await settle()
+    assert calls[-1] == ("seconds", 9)
+
+
+async def test_crossfade_change_that_fails_says_so(ctl, monkeypatch):
+    from couchside.core.crossfade import Crossfade
+    wire(ctl)
+    monkeypatch.setattr(ctl, "_queue_id", lambda: "q")
+
+    async def fake_load(client, qid):
+        return Crossfade(True, "global", "smart_crossfade", 8)
+
+    async def nope(*_a):
+        return False
+    monkeypatch.setattr("couchside.ui.controller.crossfade.load", fake_load)
+    monkeypatch.setattr("couchside.ui.controller.crossfade.set_enabled", nope)
+    ctl.loadCrossfade()
+    await settle()
+    ctl.toggleCrossfade()
+    await settle()
+    assert ctl.toast == "Couldn't change the crossfade" and ctl.crossfadeEnabled is True
+
+
+async def test_no_crossfade_rows_without_a_server(ctl):
+    ctl.loadCrossfade()
+    await settle()
+    assert ctl.crossfadeKnown is False

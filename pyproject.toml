@@ -33,7 +33,7 @@ couchside-sendspin = "couchside.sendspin.runner:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"couchside.ui" = ["qml/*.qml", "qml/*.js"]
+"couchside.ui" = ["qml/*.qml", "qml/*.js", "qml/qmldir"]
 "couchside" = ["web/*.html", "build_info.json"]
 
 [tool.pytest.ini_options]
