@@ -137,7 +137,7 @@ def test_a_very_long_speaker_name_does_not_push_the_bar_off_screen(view, guest):
 
 def test_tabs_move_left_rather_than_under_a_long_speaker_name(view):
     bar = named(view, "bar")
-    view.rootObject().setProperty("width", 1500)   # less room than a TV: centring would collide
+    view.rootObject().setProperty("width", 1650)   # less room than a TV: centring would collide
     bar.setProperty("speakerName", "The Downstairs Living Room And Kitchen Speaker Group Number Two")
     bar.setProperty("guestMode", True)
     bar.setProperty("qrRows", ["101", "010", "101"])
