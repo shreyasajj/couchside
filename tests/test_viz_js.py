@@ -1,4 +1,4 @@
-"""The visualizer's drawing code, run against a pretend canvas."""
+"""The numbers behind the visualizer's pictures."""
 
 from pathlib import Path
 
@@ -8,31 +8,25 @@ QtQml = pytest.importorskip("PySide6.QtQml")
 
 JS = Path(__file__).parents[1] / "src/couchside/ui/qml/viz.js"
 
-# a canvas context that only counts what is asked of it
-FAKE_CTX = """
-function fakeCtx() {
-    var calls = {}
-    function count(name) { return function() { calls[name] = (calls[name] || 0) + 1; return gradient } }
-    var gradient = { addColorStop: function() {} }
-    var ctx = { calls: calls }
-    var names = ["fillRect", "beginPath", "moveTo", "lineTo", "arc", "arcTo", "closePath", "stroke",
-                 "fill", "save", "restore", "translate", "rotate", "createRadialGradient",
-                 "createLinearGradient"]
-    for (var i = 0; i < names.length; i++) ctx[names[i]] = count(names[i])
-    return ctx
-}
-function run(mode, energy, beat, bars, frames) {
-    var st = newState(), ctx = fakeCtx()
-    for (var i = 0; i < (frames || 1); i++) draw(mode, ctx, 1920, 1080, frame(energy, beat, 1, bars), st)
-    return { painted: (ctx.calls.fill || 0) + (ctx.calls.stroke || 0), rings: st.rings.length }
-}
-function ringsOver(beats) {
-    var st = newState(), ctx = fakeCtx(), seen = []
+HELPERS = """
+function ringCounts(beats) {
+    var rings = [], prev = 0, seen = []
     for (var i = 0; i < beats.length; i++) {
-        radial(ctx, 1920, 1080, frame(0.5, beats[i], 1, null), st)
-        seen.push(st.rings.length)
+        rings = stepRings(rings, beats[i], prev, 0.033)
+        prev = beats[i]
+        seen.push(rings.length)
     }
     return seen
+}
+function ringsAfter(seconds) {
+    var rings = stepRings([], 1, 0, 0.033)
+    for (var t = 0; t < seconds; t += 0.033) rings = stepRings(rings, 1, 1, 0.033)
+    return rings
+}
+function manyBeats(n) {
+    var rings = []
+    for (var i = 0; i < n; i++) { rings = stepRings(rings, 1, 0, 0.001) }
+    return rings.length
 }
 """
 
@@ -40,7 +34,7 @@ function ringsOver(beats) {
 @pytest.fixture
 def js(qt_app):
     engine = QtQml.QJSEngine()
-    result = engine.evaluate(JS.read_text().replace(".pragma library", "") + FAKE_CTX)
+    result = engine.evaluate(JS.read_text().replace(".pragma library", "") + HELPERS)
     assert not result.isError(), result.toString()
 
     def call(expr):
@@ -56,19 +50,44 @@ def test_a_frame_scales_the_beat_by_the_intensity(js):
     assert f["kick"] == 1 and len(f["bars"]) == 64 and not any(f["bars"])
     assert js("frame(0.5, 0.5, 1, null).level") == pytest.approx(0.4)
     assert js("frame(0.2, 1, 0, null).beat") == 0        # intensity 0: no hit at all
-
-
-@pytest.mark.parametrize("mode", ["radial", "flow", "bars"])
-def test_every_mode_draws_with_music_and_in_silence(js, mode):
-    loud = js(f"run('{mode}', 0.8, 1, (function(){{var b=[];for(var i=0;i<64;i++)b.push(i/64);return b}})(), 3)")
-    quiet = js(f"run('{mode}', 0, 0, null, 3)")
-    assert loud["painted"] > 0 and quiet["painted"] > 0
-
-
-def test_an_unknown_mode_draws_the_first_one(js):
-    assert js("run('nope', 0.5, 0, null).painted") > 0
+    assert js("frame(0, 0, 1, [0.5, 0.25]).bars") == [0.5, 0.25]
 
 
 def test_a_ring_starts_when_the_beat_rises_not_while_it_stays_high(js):
-    seen = js("ringsOver([0.1, 0.9, 0.9, 0.8, 0.2, 0.9])")
-    assert seen == [0, 1, 1, 1, 1, 2]
+    assert js("ringCounts([0.1, 0.9, 0.9, 0.8, 0.2, 0.9])") == [0, 1, 1, 1, 1, 2]
+
+
+def test_rings_grow_fade_and_go(js):
+    ring = js("ringsAfter(0.3)")[0]
+    assert ring["r"] > 130 + 0.3 * 800 and 0 < ring["a"] < 0.6
+    assert js("ringsAfter(0.8)") == []                   # faded out after two thirds of a second
+    assert js("manyBeats(20)") == 6                      # never more than the items that draw them
+
+
+def test_spokes_and_orb_follow_the_music(js):
+    assert js("spokeLength(0, 0, true)") == 200
+    assert js("spokeLength(1, 1, true)") == 490 and js("spokeLength(1, 1, false)") == 370
+    assert js("orbRadius(0)") == 130 and js("orbRadius(1)") == 250
+
+
+def test_flow_lines_span_the_width_and_swell_with_the_level(js):
+    quiet = js("flowPoints(2, 1.0, 0, 0, 1920, 1080, 32)")
+    loud = js("flowPoints(2, 1.0, 1.4, 1, 1920, 1080, 32)")
+    assert len(quiet) == 61 and quiet[0]["x"] == 0 and quiet[-1]["x"] == 1920
+
+    def swing(points):
+        ys = [p["y"] for p in points]
+        return max(ys) - min(ys)
+    assert swing(loud) > 3 * swing(quiet) > 0
+    assert all(0 <= p["y"] <= 1080 for p in loud)        # even at full blast it stays on screen
+
+
+def test_bars_never_vanish_and_jump_with_the_beat(js):
+    assert js("barHeight(0, 0)") == pytest.approx(0.012)
+    assert js("barHeight(1, 0)") == 0.75 and js("barHeight(1, 1)") == 1.0
+
+
+def test_mix_blends_two_colours(js):
+    c = js("mix({r:0,g:0,b:0}, {r:1,g:0.5,b:0}, 0.5)")
+    assert (c["r"], c["g"], c["b"]) == (0.5, 0.25, 0)
+    assert js("mix({r:0,g:0,b:0}, {r:1,g:1,b:1}, 7).r") == 1

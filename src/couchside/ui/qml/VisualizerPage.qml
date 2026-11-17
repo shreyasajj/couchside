@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import "viz.js" as Viz
 
 // The Visualizer tab: the music drawn full-screen. Modes along the bottom (Left/Right
@@ -64,39 +65,198 @@ FocusScope {
 
     Rectangle { anchors.fill: parent; color: "#050507" }
 
-    // --- the drawing: a small canvas scaled up, 30 times a second at most --------------------
-    Canvas {
-        id: canvas
+    // --- the pictures: ordinary items the graphics card draws, moved 30 times a second ---
+    // Everything is laid out for 1920 x 1080 and scaled to the screen. One timer reads the
+    // music (level, beat, spectrum) and sets a handful of numbers; nothing is painted in
+    // software.
+    Item {
+        id: scene
         visible: !page.party
-        width: 1280
-        height: 720
+        width: 1920
+        height: 1080
         scale: page.width / width
         transformOrigin: Item.TopLeft
-        smooth: true
-        property var st: Viz.newState()
+
+        readonly property string mode: app.visualizerMode
+        property real energy: 0
+        property real beat: 0          // 0..intensity: this frame's hit
+        property real level: 0
+        property var bars: Viz.zeros()
+        property real t: 0
+        property real spin: 0
+        property var rings: []
+        property var flow: []          // five ribbons, each a list of points
+        property real prevBeat: 0
         property double last: 0
-        function rgb(c) { return { r: Math.round(c.r * 255), g: Math.round(c.g * 255), b: Math.round(c.b * 255) } }
-        onPaint: {
-            var ctx = getContext("2d")
+        readonly property color c1: Theme.a1
+        readonly property color c2: Theme.a2
+        function blend(amount) { var c = Viz.mix(c1, c2, amount); return Qt.rgba(c.r, c.g, c.b, 1) }
+
+        function tick() {
             var now = Date.now() / 1000
             var dt = last > 0 ? Math.min(0.1, now - last) : 0.033
             last = now
-            st.dt = dt
-            st.t += dt
-            st.c1 = rgb(Theme.a1)
-            st.c2 = rgb(Theme.a2)
-            ctx.save()
-            ctx.scale(width / 1920, height / 1080)   // the drawings are made for 1920 x 1080
-            Viz.draw(app.visualizerMode, ctx, 1920, 1080,
-                     Viz.frame(app.vizEnergy, app.vizBeat, app.visualizerIntensity, app.spectrum), st)
-            ctx.restore()
+            var a = Viz.frame(app.vizEnergy, app.vizBeat, app.visualizerIntensity, app.spectrum)
+            energy = a.energy
+            beat = a.beat
+            level = a.level
+            t += dt
+            if (mode === "bars") {
+                bars = a.bars
+            } else if (mode === "flow") {
+                var lines = []
+                for (var i = 0; i < 5; i++) {
+                    var pts = Viz.flowPoints(i, t, level, energy, width, height, 32)
+                    lines.push(pts.map(function(p) { return Qt.point(p.x, p.y) }))
+                }
+                flow = lines
+            } else {
+                spin += (0.12 + energy * 1.3) * dt
+                rings = Viz.stepRings(rings, beat, prevBeat, dt)
+            }
+            prevBeat = beat
+        }
+
+        // Radial Pulse: turning spokes, an orb that swells, a ring sent out on every beat.
+        Item {
+            visible: scene.mode !== "flow" && scene.mode !== "bars"
+            x: scene.width / 2
+            y: scene.height / 2
+
+            Item {   // the spokes
+                rotation: scene.spin * 180 / Math.PI
+                opacity: 0.09 + scene.energy * 0.14
+                Repeater {
+                    model: 56
+                    delegate: Item {
+                        required property int index
+                        rotation: index * 360 / 56
+                        Rectangle {
+                            x: -1
+                            y: 120
+                            width: 2
+                            height: Viz.spokeLength(scene.energy, scene.beat, index % 2 === 1)
+                            color: scene.c1
+                            antialiasing: true
+                        }
+                    }
+                }
+            }
+            Repeater {   // the rings
+                model: Viz.MAX_RINGS
+                delegate: Rectangle {
+                    required property int index
+                    readonly property var ring: index < scene.rings.length ? scene.rings[index] : null
+                    visible: ring !== null
+                    width: ring ? ring.r * 2 : 0
+                    height: width
+                    x: -width / 2
+                    y: -height / 2
+                    radius: width / 2
+                    color: "transparent"
+                    antialiasing: true
+                    border.width: ring ? 6 + ring.a * 12 : 0
+                    border.color: ring ? scene.blend((ring.r - Viz.RING_START) / 560) : "transparent"
+                    opacity: ring ? ring.a * 0.6 : 0
+                }
+            }
+            Shape {   // the orb: drawn once, only its size changes
+                id: orb
+                readonly property real size: Viz.orbRadius(scene.level) * 1.7
+                width: 200
+                height: 200
+                x: -100
+                y: -100
+                scale: size / 100
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillGradient: RadialGradient {
+                        centerX: 100; centerY: 100; centerRadius: 100
+                        focalX: 100; focalY: 100
+                        GradientStop { position: 0; color: Theme.tint(scene.c2, 0.95) }
+                        GradientStop { position: 0.4; color: Theme.tint(scene.c1, 0.78) }
+                        GradientStop { position: 1; color: Theme.tint(scene.c1, 0) }
+                    }
+                    PathAngleArc { centerX: 100; centerY: 100; radiusX: 100; radiusY: 100; startAngle: 0; sweepAngle: 360 }
+                }
+            }
+            Rectangle {   // its bright heart
+                width: Viz.orbRadius(scene.level) * 0.64
+                height: width
+                x: -width / 2
+                y: -height / 2
+                radius: width / 2
+                color: "#ebffffff"
+                antialiasing: true
+            }
+        }
+
+        // Flow Lines: five ribbons, each a bright line over a wide faint one (its glow).
+        Repeater {
+            model: scene.mode === "flow" ? 5 : 0
+            delegate: Shape {
+                id: ribbon
+                required property int index
+                readonly property color tone: scene.blend(index / 4)
+                readonly property var points: index < scene.flow.length ? scene.flow[index] : []
+                anchors.fill: parent
+                ShapePath {
+                    strokeColor: Theme.tint(ribbon.tone, 0.16)
+                    strokeWidth: 22 + scene.level * 26
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    joinStyle: ShapePath.RoundJoin
+                    PathPolyline { path: ribbon.points }
+                }
+                ShapePath {
+                    strokeColor: Theme.tint(ribbon.tone, 0.92)
+                    strokeWidth: 4 + scene.level * 5
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    joinStyle: ShapePath.RoundJoin
+                    PathPolyline { path: ribbon.points }
+                }
+            }
+        }
+
+        // Bars: the spectrum, low notes on the left, each with a faint reflection.
+        Repeater {
+            model: scene.mode === "bars" ? Viz.BARS : 0
+            delegate: Item {
+                id: bar
+                required property int index
+                readonly property real h: Viz.barHeight(scene.bars[index] || 0, scene.beat) * scene.height * 0.6
+                readonly property color tone: scene.blend(index / (Viz.BARS - 1))
+                x: index * scene.width / Viz.BARS
+                Rectangle {
+                    x: 3.5
+                    y: scene.height * 0.8 - bar.h
+                    width: scene.width / Viz.BARS - 7
+                    height: bar.h
+                    radius: 6
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: bar.tone }
+                        GradientStop { position: 1; color: Theme.tint(scene.c1, 0.18) }
+                    }
+                }
+                Rectangle {
+                    x: 3.5
+                    y: scene.height * 0.8 + 8
+                    width: scene.width / Viz.BARS - 7
+                    height: bar.h * 0.32
+                    radius: 4
+                    color: bar.tone
+                    opacity: 0.13
+                }
+            }
         }
     }
     Timer {
         interval: 33
         repeat: true
         running: page.visible && page.active && !page.party
-        onTriggered: canvas.requestPaint()
+        onTriggered: scene.tick()
     }
 
     PartyView {
