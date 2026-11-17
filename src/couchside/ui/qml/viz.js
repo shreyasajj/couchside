@@ -65,3 +65,7 @@ function flowPoints(line, t, level, energy, W, H, step) {
 
 // Bars: one bar's height as a share of the tallest (never quite nothing, so the row shows).
 function barHeight(value, beat) { return Math.max(0.012, value * (0.75 + 0.25 * Math.min(1.5, beat))) }
+
+// Edge Lights: which of the 64 spectrum bars drives bar `i` of `n` along an edge (the top
+// fifth of the spectrum is nearly always empty, so the edge uses the rest).
+function edgeBin(i, n) { return Math.min(BARS - 1, Math.floor(i * (BARS * 0.8) / n)) }

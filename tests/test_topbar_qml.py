@@ -69,8 +69,8 @@ def test_focus_lands_on_the_current_tab_and_moves_without_wrapping(view):
     assert focused(view) == "tab-queue"
     press(view, Qt.Key.Key_Left, 5)
     assert focused(view) == "tab-now"                 # stops at the first tab
-    press(view, Qt.Key.Key_Right, 5)
-    assert focused(view) == "speakerChip"
+    press(view, Qt.Key.Key_Right, 3)
+    assert focused(view) == "speakerChip"             # straight after the three tabs
     press(view, Qt.Key.Key_Return)
     assert went(view) == ["speakers"]
     press(view, Qt.Key.Key_Right, 5)
@@ -81,19 +81,19 @@ def test_ok_on_a_tab_opens_it_and_down_leaves_the_bar(view):
     root = view.rootObject()
     bar = named(view, "bar")
     QMetaObject.invokeMethod(bar, "focusCurrent")
-    press(view, Qt.Key.Key_Right)
-    assert focused(view) == "tab-lyrics"
+    press(view, Qt.Key.Key_Left)
+    assert focused(view) == "tab-search"
     press(view, Qt.Key.Key_Select)
-    assert went(view) == ["lyrics"]
+    assert went(view) == ["search"]
     press(view, Qt.Key.Key_Up)
-    assert focused(view) == "tab-lyrics"              # nothing above the bar
+    assert focused(view) == "tab-search"              # nothing above the bar
     press(view, Qt.Key.Key_Down)
     assert root.property("downs") == 1
 
 
-def test_hidden_tabs_are_gone(view):
+def test_tabs_can_be_fewer(view):
     bar = named(view, "bar")
-    bar.setProperty("tabs", ["now", "search", "queue"])
+    bar.setProperty("tabs", ["now", "queue"])
     pump()
     QMetaObject.invokeMethod(bar, "focusCurrent")
     press(view, Qt.Key.Key_Right)

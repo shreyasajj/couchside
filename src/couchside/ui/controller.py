@@ -60,7 +60,10 @@ ACCENTS = (
     ("violet", "Violet", "#7c5cff", "#b14dff"),
     ("gold-green", "Gold and green", "#ffd23d", "#23d18b"),
 )
-VISUALIZER_MODES = ("radial", "flow", "bars", "party")
+VISUALIZER_MODES = ("radial", "flow", "bars", "edge", "party")
+# what the visualizer is painted with: the look's two colours, the whole colour wheel, or
+# one colour family that takes a step round the wheel on every beat
+VISUALIZER_COLOURS = (("accent", "Theme colours"), ("rainbow", "Rainbow"), ("beat", "Changes on the beat"))
 _QUEUE_EVENTS = {"queue_items_updated", "queue_updated"}
 _PLAYER_EVENTS = {"player_added", "player_updated", "player_removed"}
 
@@ -353,6 +356,30 @@ class AppController(QObject):
     @Property(bool, notify=lyricsChanged)
     def lyricsEnabled(self) -> bool:
         return self._settings.lyrics_enabled
+
+    @Property(bool, notify=lyricsChanged)
+    def lyricsShown(self) -> bool:
+        """Now Playing shows the words in place of the cover (its Lyrics button)."""
+        return self._settings.lyrics_shown
+
+    @lyricsShown.setter
+    def lyricsShown(self, shown: bool) -> None:
+        if bool(shown) != self._settings.lyrics_shown:
+            self._settings.lyrics_shown = bool(shown)
+            save_settings(self._settings)
+            self.lyricsChanged.emit()
+
+    @Property(bool, notify=lyricsChanged)
+    def lyricsVisualizer(self) -> bool:
+        """The visualizer moves behind the words on Now Playing."""
+        return self._settings.lyrics_visualizer
+
+    @lyricsVisualizer.setter
+    def lyricsVisualizer(self, on: bool) -> None:
+        if bool(on) != self._settings.lyrics_visualizer:
+            self._settings.lyrics_visualizer = bool(on)
+            save_settings(self._settings)
+            self.lyricsChanged.emit()
 
     _LYRICS_SIZES = ("small", "medium", "large")
 
@@ -1380,6 +1407,27 @@ class AppController(QObject):
     def visualizerMode(self, mode: str) -> None:
         if mode in VISUALIZER_MODES and mode != self._settings.visualizer_mode:
             self._settings.visualizer_mode = mode
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
+    @Property(str, notify=pulseChanged)
+    def visualizerColours(self) -> str:
+        saved = self._settings.visualizer_colours
+        return saved if any(c[0] == saved for c in VISUALIZER_COLOURS) else VISUALIZER_COLOURS[0][0]
+
+    @Property(str, notify=pulseChanged)
+    def visualizerColoursLabel(self) -> str:
+        return next(label for i, label in VISUALIZER_COLOURS if i == self.visualizerColours)
+
+    @Property("QVariantList", notify=pulseChanged)
+    def visualizerColourChoices(self) -> list[dict]:
+        current = self.visualizerColours
+        return [{"id": i, "label": label, "current": i == current} for i, label in VISUALIZER_COLOURS]
+
+    @Slot(str)
+    def setVisualizerColours(self, colours: str) -> None:
+        if any(c[0] == colours for c in VISUALIZER_COLOURS) and colours != self._settings.visualizer_colours:
+            self._settings.visualizer_colours = colours
             save_settings(self._settings)
             self.pulseChanged.emit()
 

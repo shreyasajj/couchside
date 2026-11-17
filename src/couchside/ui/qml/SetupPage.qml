@@ -482,6 +482,15 @@ FocusScope {
                     }
                 }
                 SettingRow {
+                    id: vizColoursRow
+                    objectName: "vizColoursRow"
+                    label: "Colours"
+                    value: app.visualizerColoursLabel
+                    hint: "The theme's two colours, the whole rainbow, or a new colour on every beat"
+                    onActivated: page.pick("Visualizer colours", app.visualizerColourChoices, vizColoursRow,
+                                           function(id) { app.setVisualizerColours(id) })
+                }
+                SettingRow {
                     label: "Party lights"
                     value: app.partyLights ? "On" : "Off"
                     hint: "Party mode: colour along the screen edges that jumps on every beat"
@@ -498,6 +507,12 @@ FocusScope {
                     label: "Show lyrics"
                     value: app.lyricsEnabled ? "On" : "Off"
                     onActivated: app.lyricsEnabled = !app.lyricsEnabled
+                }
+                SettingRow {
+                    label: "Visualizer behind the lyrics"
+                    value: app.lyricsVisualizer ? "On" : "Off"
+                    hint: "On Now Playing, the visualizer moves behind the words (off: the blurred cover)"
+                    onActivated: app.lyricsVisualizer = !app.lyricsVisualizer
                 }
                 SettingRow {
                     label: "Size"

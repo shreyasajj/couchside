@@ -39,7 +39,10 @@ class AppSettings:
     sendspin_delay_ms: int = 0
     visualizer_source: str | None = None       # None = what this TV is playing
     visualizer_intensity: float = 1.0          # 0..2.4: how hard the visualizer hits on a beat
-    visualizer_mode: str = "radial"            # radial | flow | bars | party
+    visualizer_mode: str = "radial"            # radial | flow | bars | edge | party
+    visualizer_colours: str = "accent"         # accent | rainbow | beat (a new colour on each beat)
+    lyrics_shown: bool = False                 # Now Playing shows the words in place of the cover
+    lyrics_visualizer: bool = True             # ...with the visualizer moving behind them
     accent: str = "teal-pink"                  # colour pair (see the controller's ACCENTS)
 
 

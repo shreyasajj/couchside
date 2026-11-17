@@ -3,8 +3,8 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import "typing.js" as Typing
 
-// Search, with recently played and recently added while the box is empty. One list of
-// big rows under headings (Tracks, Albums, …): Up/Down move, OK asks what to do with it.
+// Search, with recently played and recently added while the box is empty. Rows of cover
+// cards, one row per kind (Tracks, Albums, …); OK on a card asks what to do with it.
 FocusScope {
     id: page
     objectName: "library"
@@ -23,7 +23,7 @@ FocusScope {
         else searchBox.forceActiveFocus()
     }
     property bool rowFocused: false
-    Component.onCompleted: { rebuild(); if (!bridgeManaged) app.loadRecents(); searchBox.forceActiveFocus() }
+    Component.onCompleted: { if (!bridgeManaged) app.loadRecents(); searchBox.forceActiveFocus() }
     function handleBack() {
         // Back while typing: keyboard away, straight to the results (Bigscreen's keyboard
         // swallows the first key after it hides, so landing there saves a press).
@@ -68,29 +68,20 @@ FocusScope {
         ], item, function(mode) { app.playUri(card.uri, mode) })
     }
 
-    // The groups from the controller ([{title, items}]) as one flat list with headings.
-    ListModel { id: flat }
-    function rebuild() {
-        flat.clear()
-        var groups = app.libraryRows
-        for (var g = 0; g < groups.length; g++) {
-            var items = groups[g].items
-            for (var i = 0; i < items.length; i++)
-                flat.append({ group: groups[g].title, title: items[i].title, subtitle: items[i].subtitle || "",
-                              imageUrl: items[i].imageUrl || "", kind: items[i].kind || "track",
-                              uri: items[i].uri || "" })
+    // results gone while the remote was on them: back to the box
+    Connections {
+        target: app
+        function onLibraryChanged() {
+            if (list.count === 0 && list.activeFocus) { page.rowFocused = false; searchBox.forceActiveFocus() }
         }
-        list.currentIndex = 0
-        if (flat.count === 0 && list.activeFocus) { page.rowFocused = false; searchBox.forceActiveFocus() }
     }
-    Connections { target: app; function onLibraryChanged() { page.rebuild() } }
     // Opened before the server was reachable (right after starting): ask for the recents
     // once more when it is.
     property bool askedAgain: false
     Connections {
         target: app
         function onChanged() {
-            if (!page.askedAgain && !page.bridgeManaged && flat.count === 0 && field.text === ""
+            if (!page.askedAgain && !page.bridgeManaged && list.count === 0 && field.text === ""
                     && app.connState === "connected") {
                 page.askedAgain = true
                 app.loadRecents()
@@ -106,7 +97,7 @@ FocusScope {
 
     ColumnLayout {
         anchors { fill: parent; topMargin: page.topInset + 44 * page.u
-                  leftMargin: 150 * page.u; rightMargin: Math.max(150 * page.u, page.qrWidth) }
+                  leftMargin: 72 * page.u; rightMargin: 72 * page.u }
         spacing: 20 * page.u
 
         FocusScope {
@@ -171,23 +162,23 @@ FocusScope {
             font.pixelSize: Theme.label * page.u
         }
 
+        // Rows of cards, one row per kind (Tracks, Albums, …): Up/Down change row,
+        // Left/Right move along it.
         ListView {
             id: list
             objectName: "results"
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 14 * page.u
-            model: flat
+            spacing: 20 * page.u
+            model: app.libraryRows
             keyNavigationEnabled: false
-            highlightMoveDuration: 150
-            preferredHighlightBegin: height * 0.2
-            preferredHighlightEnd: height * 0.75
+            highlightMoveDuration: 200
+            preferredHighlightBegin: 0
+            preferredHighlightEnd: height * 0.6
             highlightRangeMode: ListView.ApplyRange
-            // room for the focused row's ring and growth inside the clipped list
-            leftMargin: 10 * page.u
-            rightMargin: 10 * page.u
             bottomMargin: 40 * page.u
+            onModelChanged: currentIndex = 0
 
             Keys.onUpPressed: {
                 if (currentIndex <= 0) { page.rowFocused = false; searchBox.forceActiveFocus() }
@@ -195,35 +186,55 @@ FocusScope {
             }
             Keys.onDownPressed: if (currentIndex < count - 1) incrementCurrentIndex()
 
-            section.property: "group"
-            section.delegate: Text {
-                required property string section
-                textFormat: Text.PlainText
-                text: section
-                color: Theme.textDim
-                font.pixelSize: Theme.label * page.u
-                font.weight: Font.Bold
-                topPadding: 14 * page.u
-                bottomPadding: 12 * page.u
-                leftPadding: 6 * page.u
-            }
-
-            delegate: ListRow {
+            // Each row is a FocusScope so focus passes row -> card list -> card.
+            delegate: FocusScope {
                 id: rowItem
-                required property var model
-                width: ListView.view.width - 20 * page.u
-                u: page.u
-                focus: ListView.isCurrentItem
-                thumb: 104 * page.u
-                titleSize: Theme.rowTitle
-                title: model.title
-                subtitle: model.subtitle
-                imageUrl: model.imageUrl
-                roundArt: model.kind === "artist"
-                iconName: ({ track: "music", album: "album", artist: "person",
-                             playlist: "queue", radio: "radio" })[model.kind] || "music"
-                hint: "PLAY"
-                onActivated: page.openCard({ title: model.title, uri: model.uri }, rowItem)
+                required property var modelData
+                required property int index
+                width: ListView.view.width
+                height: rowColumn.implicitHeight
+                Column {
+                    id: rowColumn
+                    width: parent.width
+                    spacing: 14 * page.u
+
+                    Text {
+                        textFormat: Text.PlainText
+                        text: rowItem.modelData.title
+                        color: rowItem.ListView.isCurrentItem && list.activeFocus ? Theme.text : Theme.textDim
+                        font.pixelSize: Theme.body * page.u
+                        font.weight: Font.Bold
+                        leftPadding: 16 * page.u
+                    }
+                    ListView {
+                        id: cards
+                        objectName: "cards"
+                        width: parent.width
+                        height: 352 * page.u + 28 * page.u
+                        orientation: ListView.Horizontal
+                        spacing: 32 * page.u
+                        clip: false
+                        focus: true
+                        model: rowItem.modelData.items
+                        highlightRangeMode: ListView.ApplyRange
+                        preferredHighlightBegin: 16 * page.u
+                        preferredHighlightEnd: width - 280 * page.u
+                        highlightMoveDuration: 150
+                        topMargin: 16 * page.u
+                        leftMargin: 16 * page.u
+                        delegate: MediaCardItem {
+                            id: cardItem
+                            required property var modelData
+                            u: page.u
+                            focus: ListView.isCurrentItem
+                            title: modelData.title
+                            subtitle: modelData.subtitle
+                            imageUrl: modelData.imageUrl
+                            kind: modelData.kind
+                            onActivated: page.openCard(modelData, cardItem)
+                        }
+                    }
+                }
             }
         }
     }

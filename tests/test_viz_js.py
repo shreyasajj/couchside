@@ -91,3 +91,8 @@ def test_mix_blends_two_colours(js):
     c = js("mix({r:0,g:0,b:0}, {r:1,g:0.5,b:0}, 0.5)")
     assert (c["r"], c["g"], c["b"]) == (0.5, 0.25, 0)
     assert js("mix({r:0,g:0,b:0}, {r:1,g:1,b:1}, 7).r") == 1
+
+
+def test_edge_bars_use_the_lower_four_fifths_of_the_spectrum(js):
+    assert js("edgeBin(0, 48)") == 0 and js("edgeBin(47, 48)") == 50
+    assert js("edgeBin(23, 24)") == 49 and js("edgeBin(999, 24)") == 63

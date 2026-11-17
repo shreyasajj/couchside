@@ -3,8 +3,8 @@ import QtQuick.Layouts
 import "nav.js" as Nav
 
 // Everything on screen: the top bar, the screen under it, and the overlays. Tabs (Now
-// Playing, Search, Queue, Lyrics, Visualizer) and the screens without a tab (Speakers,
-// Guests, Settings, a content page opened from outside) swap in one place; nothing stacks.
+// Playing, Search, Queue) and the screens without a tab (Visualizer, Speakers, Guests,
+// Settings, a content page opened from outside) swap in one place; nothing stacks.
 // Up from a screen's top row reaches the bar; Down returns to where focus was.
 // Kirigami-free on purpose, so the whole UI loads in tests.
 FocusScope {
@@ -20,9 +20,7 @@ FocusScope {
     signal raiseRequested()             // bring the window to the front (asked from outside)
 
     readonly property bool appActive: Qt.application.state === Qt.ApplicationActive
-    // The Visualizer tab always shows (it listens only while open); Lyrics follows its setting.
-    readonly property var tabs: Nav.tabs(app.lyricsEnabled, true)
-    onTabsChanged: if (Nav.validScreen(screen, app.lyricsEnabled, true) !== screen) go("now")
+    readonly property var tabs: Nav.tabs()
     readonly property string speakerName: {
         var rows = app.speakerRows
         for (var i = 0; i < rows.length; i++) if (rows[i].controlled) return rows[i].name
@@ -35,7 +33,11 @@ FocusScope {
 
     // --- what the controller needs to know about the screen -----------------------------
     Binding { target: app; property: "pulseVisible"; value: shell.screen === "now" && shell.appActive }
-    Binding { target: app; property: "vizVisible"; value: shell.screen === "visualizer" && shell.appActive }
+    // the visualizer draws on its own screen, and behind the words on Now Playing
+    Binding {
+        target: app; property: "vizVisible"
+        value: shell.appActive && (shell.screen === "visualizer" || (shell.screen === "now" && nowPage.vizBehind))
+    }
     Binding { target: app; property: "queueVisible"; value: shell.screen === "now" || shell.screen === "queue" }
 
     // --- progress, ticked locally between server updates ---------------------------------
@@ -48,7 +50,7 @@ FocusScope {
         position = p
     }
     Timer {
-        interval: (shell.screen === "lyrics" || shell.screen === "visualizer") ? 250 : 500  // lyrics need a finer tick
+        interval: (shell.screen === "visualizer" || (shell.screen === "now" && nowPage.showLyrics)) ? 250 : 500  // lyrics need a finer tick
         repeat: true
         running: app.isPlaying && shell.appActive
         triggeredOnStart: true
@@ -68,7 +70,7 @@ FocusScope {
         else content.forceActiveFocus()
     }
     function go(name) {
-        name = Nav.validScreen(name, app.lyricsEnabled, true)
+        name = Nav.validScreen(name)
         if (name !== screen) {
             if (Nav.isTab(screen)) lastTab = screen
             backTo = (!Nav.isTab(screen) && !Nav.isTab(name)) ? screen : ""
@@ -201,6 +203,8 @@ FocusScope {
             position: shell.position
             topInset: topBar.height
             qrBottom: topBar.qrBottom
+            active: shell.appActive
+            sheet: actionSheet
             onOpenPage: (name) => shell.go(name)
             onOpenVolume: (opener) => { volumePopup.opener = opener; volumePopup.open(true) }
             onTyped: (text) => {
@@ -212,7 +216,7 @@ FocusScope {
             id: loader
             anchors.fill: parent
             active: shell.screen !== "now"
-            sourceComponent: ({ search: searchScreen, queue: queueScreen, lyrics: lyricsScreen,
+            sourceComponent: ({ search: searchScreen, queue: queueScreen,
                                 visualizer: visualizerScreen, speakers: speakersScreen,
                                 guests: guestsScreen, settings: settingsScreen,
                                 content: contentScreen })[shell.screen] || null
@@ -220,7 +224,6 @@ FocusScope {
     }
     Component { id: searchScreen; LibraryPage { u: shell.u; sheet: actionSheet; topInset: topBar.height; qrWidth: topBar.qrWidth; qrBottom: topBar.qrBottom; bridgeManaged: shell.bridgeSearch } }
     Component { id: queueScreen; QueuePage { u: shell.u; sheet: actionSheet; topInset: topBar.height; qrWidth: topBar.qrWidth; qrBottom: topBar.qrBottom } }
-    Component { id: lyricsScreen; LyricsPage { u: shell.u; position: shell.position; topInset: topBar.height; qrWidth: topBar.qrWidth } }
     Component {
         id: visualizerScreen
         VisualizerPage { u: shell.u; sheet: actionSheet; position: shell.position; topInset: topBar.height

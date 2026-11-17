@@ -1,27 +1,21 @@
 .pragma library
 
-// Where the remote can go. Tabs sit in the top bar; Speakers, Guests, Settings and a
-// content page opened from outside are screens without a tab.
+// Where the remote can go. Tabs sit in the top bar; the Visualizer, Speakers, Guests,
+// Settings and a content page opened from outside are screens without a tab.
 
-var ALL_TABS = ["now", "search", "queue", "lyrics", "visualizer"]
-var LABELS = { now: "Now Playing", search: "Search", queue: "Queue", lyrics: "Lyrics", visualizer: "Visualizer" }
+var ALL_TABS = ["now", "search", "queue"]
+var LABELS = { now: "Now Playing", search: "Search", queue: "Queue" }
+var SCREENS = ALL_TABS.concat(["visualizer", "speakers", "guests", "settings", "content"])
 
-// The tabs on show: Lyrics and Visualizer disappear with their settings.
-function tabs(lyricsOn, visualizerOn) {
-    return ALL_TABS.filter(function(t) {
-        return (t !== "lyrics" || lyricsOn) && (t !== "visualizer" || visualizerOn)
-    })
-}
+function tabs() { return ALL_TABS }
 
 function isTab(screen) { return ALL_TABS.indexOf(screen) >= 0 }
 
 function label(screen) { return LABELS[screen] || "" }
 
-// The screen to show: itself, or Now Playing when its tab has just been switched off.
-function validScreen(screen, lyricsOn, visualizerOn) {
-    if (!isTab(screen)) return screen
-    return tabs(lyricsOn, visualizerOn).indexOf(screen) >= 0 ? screen : "now"
-}
+// The screen to show: itself, or Now Playing for a name that isn't a screen (Lyrics was
+// a tab once: it is a button on Now Playing now).
+function validScreen(screen) { return SCREENS.indexOf(screen) >= 0 ? screen : "now" }
 
 // Where Back goes: a screen without a tab returns to the tab it was opened from, any
 // other tab returns to Now Playing, and Now Playing asks to exit.

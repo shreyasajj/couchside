@@ -21,20 +21,20 @@ def nav(qt_app):
     return call
 
 
-def test_tabs_follow_the_settings(nav):
-    assert nav("tabs", True, True) == ["now", "search", "queue", "lyrics", "visualizer"]
-    assert nav("tabs", False, True) == ["now", "search", "queue", "visualizer"]
-    assert nav("tabs", False, False) == ["now", "search", "queue"]
+def test_three_tabs(nav):
+    assert nav("tabs") == ["now", "search", "queue"]
+    assert nav("isTab", "visualizer") is False and nav("isTab", "queue") is True
 
 
-def test_a_screen_whose_tab_was_switched_off_becomes_now_playing(nav):
-    assert nav("validScreen", "lyrics", False, True) == "now"
-    assert nav("validScreen", "visualizer", True, False) == "now"
-    assert nav("validScreen", "lyrics", True, True) == "lyrics"
-    assert nav("validScreen", "settings", False, False) == "settings"   # not a tab: stays
+def test_a_name_that_is_not_a_screen_becomes_now_playing(nav):
+    assert nav("validScreen", "lyrics") == "now"          # a tab once: a button on Now Playing now
+    assert nav("validScreen", "visualizer") == "visualizer"
+    assert nav("validScreen", "settings") == "settings"
+    assert nav("validScreen", "nope") == "now"
 
 
 def test_back(nav):
+    assert nav("back", "visualizer", "now") == "now"      # opened from Now Playing
     assert nav("back", "guests", "queue") == "queue"      # back to where it was opened from
     assert nav("back", "settings", "settings") == "now"   # never back to itself
     assert nav("back", "search", "search") == "now"

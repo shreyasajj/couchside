@@ -59,22 +59,24 @@ Settings live in the Flatpak's sandbox:
 From the Couchside tile, or `flatpak run io.github.shreyasajj.Couchside`.
 
 **Getting around.** A bar across the top of every screen has the tabs — Now Playing,
-Search, Queue, Lyrics, Visualizer — and, on the right, the speaker in use (opens
+Search, Queue — and, on the right, the speaker in use (opens
 Speakers), Guest, and Settings. Up from the top of any screen reaches the bar; Left/Right
 move along it, OK opens, Down goes back to where you were. Back goes to Now Playing (from
-Speakers, Guests or Settings: to the tab you came from); on Now Playing it asks before
+the Visualizer, Speakers, Guests or Settings: to the tab you came from); on Now Playing it asks before
 exiting.
 
 **Now Playing.** The cover, the song, its progress, and one row of controls: shuffle,
-repeat, previous, play/pause, next, volume, party. Left/Right move along the row, OK
+repeat, previous, play/pause, next, volume, lyrics, visualizer. Left/Right move along the row, OK
 activates. On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
 Back closes it. **Up Next** (top right) lists the next songs; OK on it opens the Queue.
 Media keys (play/pause, next, previous) work anywhere.
 
-**Lyrics.** The Lyrics tab fills the screen with the song's time-synced lyrics: the line
-being sung large and in colour in the middle, the others fading away above and below,
-scrolling with the music. Songs without synced lyrics show the cover and say so. OK plays
-and pauses. Lyrics come from the
+**Lyrics.** The Lyrics button on Now Playing moves the cover down beside the title and
+puts the song's time-synced lyrics where it was: the line being sung large and in colour,
+the others fading away above and below, scrolling with the music. The visualizer moves
+behind the words (Settings → Lyrics → Visualizer behind the lyrics; off shows the blurred
+cover). The button again brings the cover back; the choice is remembered. Songs without
+synced lyrics say so. Lyrics come from the
 track's own metadata in Music Assistant when present, otherwise from
 [LRCLIB](https://lrclib.net) (Couchside sends the song's title, first artist, album and
 length — nothing else).
@@ -130,8 +132,9 @@ network). For HTTPS or access from outside, put a reverse proxy in front of it a
 The other screens:
 
 - **Search**: OK on the search box starts typing (Bigscreen's on-screen keyboard opens);
-  its Enter, or Back, runs the search and jumps to the results: one list under headings
-  (Tracks, Albums, Artists, Playlists, Radio). Up/Down move, OK offers Play now / Play
+  its Enter, or Back, runs the search and jumps to the results: a row of covers per kind
+  (Tracks, Albums, Artists, Playlists, Radio). Up/Down change row, Left/Right move along
+  it, OK offers Play now / Play
   next / Add to queue. With nothing typed it shows Recently played and Recently added.
 - **Queue**: what is still to play. OK on a song: Play this now, Play next, Move up/down,
   Remove.
@@ -140,14 +143,17 @@ The other screens:
   speaker / Stop syncing; groups also have Edit members and Delete group. "New group"
   makes a synced group from two or more speakers. Couchside always starts on this TV.
 
-**Visualizer.** The Visualizer tab draws the music full-screen. Left/Right on the row at
+**Visualizer.** The sparkle button on Now Playing opens the Visualizer, which draws the
+music full-screen. Left/Right on the row at
 the bottom change the picture: **Radial Pulse** (an orb that sends a ring out on every
-beat), **Flow Lines**, **Bars** (the spectrum), and **Party**. Top left: what it listens
-to (OK picks another source) and **BEAT**, how hard the picture hits on each beat
-(Left/Right). After a few seconds without a key the controls and the top bar fade away;
+beat), **Flow Lines**, **Bars** (the spectrum), **Edge Lights** (the spectrum growing in from
+all four edges of the screen over a frame of light that flashes on the beat, so LED strips
+that follow the screen move with it), and **Party**. Top left: what it listens to (OK
+picks another source), **BEAT**, how hard the picture hits on each beat (Left/Right), and
+**Colours**: the theme's two colours, the whole rainbow, or a new colour on every beat. After a few seconds without a key the controls and the top bar fade away;
 any key brings them back.
 
-**Party** mode (also the sparkle button on Now Playing): the lyrics fill the screen,
+**Party** mode: the lyrics fill the screen,
 bouncing with the music over a glow; songs without lyrics show their cover bouncing
 instead. **Party lights** (Settings → Visualizer, on by default) add colour along all
 four screen edges that jumps on every beat and changes colour with it, so LED strips that
@@ -160,11 +166,12 @@ Settings → **Visualizer**:
 | Beat pulse on Now Playing | The cover and a glow behind it move with the beat (on by default) |
 | Beat source | **What this TV is playing** (default: the output chosen under This speaker, or the default output), one specific output, or an input such as a microphone |
 | Beat intensity | 0–2.4, how hard the Visualizer hits on a beat |
+| Colours | Theme colours, Rainbow, or Changes on the beat |
 | Party lights | Colour along the screen edges in Party mode |
 
 Couchside listens through PipeWire; nothing is recorded or sent anywhere. It listens only
-while Now Playing (with the beat pulse on) or the Visualizer is on screen and music
-plays. A chosen source that is unplugged falls back to what this TV plays.
+while Now Playing (with the beat pulse on, or with the lyrics over the visualizer) or the
+Visualizer is on screen and music plays. A chosen source that is unplugged falls back to what this TV plays.
 
 **Audio output** (Settings → This speaker): where this TV's music comes out. The list
 shows **Default**, then every PipeWire output by name (HDMI, analog, …), then the
@@ -204,7 +211,7 @@ with other speakers). Changes restart the speaker within a couple of seconds.
 ## Develop
 
 `flatpak run io.github.shreyasajj.Couchside --screen=queue` starts on a screen (`now`,
-`search`, `queue`, `lyrics`, `visualizer`, `speakers`, `guests`, `settings`).
+`search`, `queue`, `visualizer`, `speakers`, `guests`, `settings`).
 `COUCHSIDE_SHOTS=<dir> pytest tests/test_shell_qml.py` loads the whole UI offscreen and
 saves a picture of every screen (blur and glow effects don't draw offscreen). The design
 mockup the look follows is in `docs/design/`.

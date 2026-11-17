@@ -1222,3 +1222,32 @@ async def test_guest_link_waits_for_a_slow_worker_thread(guest_ctl, monkeypatch)
     guest_ctl.toggleGuestMode()
     await settle_long()
     assert guest_ctl.guestUrl.startswith("http://192.168.30.153:8765/g/")
+
+
+def test_edge_mode_and_visualizer_colours(ctl):
+    from couchside.core.settings import load_settings
+    ctl.visualizerMode = "edge"
+    assert ctl.visualizerMode == "edge" and load_settings().visualizer_mode == "edge"
+    assert ctl.visualizerColours == "accent"
+    assert [c["id"] for c in ctl.visualizerColourChoices] == ["accent", "rainbow", "beat"]
+    assert [c["current"] for c in ctl.visualizerColourChoices] == [True, False, False]
+    seen = []
+    ctl.pulseChanged.connect(lambda: seen.append(1))
+    ctl.setVisualizerColours("rainbow")
+    assert ctl.visualizerColours == "rainbow" and load_settings().visualizer_colours == "rainbow" and seen
+    assert ctl.visualizerColoursLabel == "Rainbow"
+    ctl.setVisualizerColours("nope")
+    assert ctl.visualizerColours == "rainbow"
+    ctl._settings.visualizer_colours = "junk"
+    assert ctl.visualizerColours == "accent"
+
+
+def test_lyrics_on_now_playing_are_remembered(ctl):
+    from couchside.core.settings import load_settings
+    seen = []
+    ctl.lyricsChanged.connect(lambda: seen.append(1))
+    assert ctl.lyricsShown is False and ctl.lyricsVisualizer is True
+    ctl.lyricsShown = True
+    assert ctl.lyricsShown is True and load_settings().lyrics_shown is True and seen
+    ctl.lyricsVisualizer = False
+    assert ctl.lyricsVisualizer is False and load_settings().lyrics_visualizer is False
