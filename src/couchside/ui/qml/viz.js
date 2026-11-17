@@ -6,7 +6,7 @@
 // units: 1920 x 1080, scaled to the screen.
 
 var BARS = 64
-var RING_START = 130      // a ring's radius when it is born (the orb's resting size)
+var RING_START = 130      // a ring's radius when it is born (just outside the spokes' hub)
 var MAX_RINGS = 6
 
 function zeros() {
@@ -45,9 +45,8 @@ function stepRings(rings, beat, prevBeat, dt) {
     return out
 }
 
-// Radial Pulse: how long the spokes are (odd ones jump with the beat) and how big the orb.
+// Radial Pulse: how long the spokes are (odd ones jump with the beat).
 function spokeLength(energy, beat, odd) { return 200 + energy * 170 + (odd ? beat * 120 : 0) }
-function orbRadius(level) { return 130 + level * 120 }
 
 // Flow Lines: ribbon `line` (0..4) at time `t`, as points across the width every `step`.
 function flowPoints(line, t, level, energy, W, H, step) {
@@ -69,3 +68,16 @@ function barHeight(value, beat) { return Math.max(0.012, value * (0.75 + 0.25 * 
 // Edge Lights: which of the 64 spectrum bars drives bar `i` of `n` along an edge (the top
 // fifth of the spectrum is nearly always empty, so the edge uses the rest).
 function edgeBin(i, n) { return Math.min(BARS - 1, Math.floor(i * (BARS * 0.8) / n)) }
+
+// Edge Lights' chase: colour running round the screen, one lap every eight beats, so it
+// speeds up and slows down with the song. `bpm` comes from the controller's tempo.
+function chaseStep(phase, dt, bpm) { return (phase + dt * bpm / 60 / 8) % 1 }
+
+// 0 → 1 → 0 once as p goes round (0..1, wrapping): two colours blend round the frame
+// without a seam.
+function wave(p) { p = ((p % 1) + 1) % 1; return 1 - Math.abs(2 * p - 1) }
+
+// Where along the frame (0..1) a point is: from the bottom-left corner along the bottom,
+// up the right, back along the top and down the left, by length (1920 + 1080 + …).
+var SIDES = { bottom: [0, 0.32], right: [0.32, 0.18], top: [0.5, 0.32], left: [0.82, 0.18] }
+function perimeter(side, along) { var s = SIDES[side]; return s[0] + s[1] * along }

@@ -491,6 +491,12 @@ FocusScope {
                                            function(id) { app.setVisualizerColours(id) })
                 }
                 SettingRow {
+                    label: "Edge lights on every picture"
+                    value: app.visualizerEdges ? "On" : "Off"
+                    hint: "The Edge Lights border over Radial, Flow and Bars too, running with the tempo"
+                    onActivated: app.visualizerEdges = !app.visualizerEdges
+                }
+                SettingRow {
                     label: "Party lights"
                     value: app.partyLights ? "On" : "Off"
                     hint: "Party mode: colour along the screen edges that jumps on every beat"

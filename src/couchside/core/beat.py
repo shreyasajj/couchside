@@ -107,3 +107,32 @@ class BeatDetector:
         target = np.minimum(BARS_MAX, np.sqrt(mags / self._bar_peak) * BARS_MAX)
         # quick to rise, slower to fall
         self.bars = np.where(target > self.bars, target, self.bars * 0.75 + target * 0.25).astype(np.float32)
+
+
+class TempoTracker:
+    """The song's tempo from the times of its beats: the median of the last eight gaps
+    between 0.25 and 2 s (240 to 30 BPM), so a stray or missed beat doesn't move it. With
+    no beat for 3 s (paused, a quiet passage) it is back at RESTING."""
+
+    RESTING = 60.0
+    KEEP = 8
+
+    def __init__(self) -> None:
+        self._gaps: list[float] = []
+        self._last: float | None = None
+
+    def beat(self, t: float) -> None:
+        if self._last is not None and 0.25 <= t - self._last <= 2.0:
+            self._gaps = (self._gaps + [t - self._last])[-self.KEEP:]
+        self._last = t
+
+    def bpm(self, now: float) -> float:
+        if not self._gaps or self._last is None or now - self._last > 3.0:
+            return self.RESTING
+        gaps = sorted(self._gaps)
+        mid = len(gaps) // 2
+        median = gaps[mid] if len(gaps) % 2 else (gaps[mid - 1] + gaps[mid]) / 2
+        return round(60.0 / median, 1)
+
+    def reset(self) -> None:
+        self._gaps, self._last = [], None

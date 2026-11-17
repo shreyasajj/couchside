@@ -41,6 +41,7 @@ class AppSettings:
     visualizer_intensity: float = 1.0          # 0..2.4: how hard the visualizer hits on a beat
     visualizer_mode: str = "radial"            # radial | flow | bars | edge | party
     visualizer_colours: str = "accent"         # accent | rainbow | beat (a new colour on each beat)
+    visualizer_edges: bool = False             # edge lights over every picture, not only their own mode
     lyrics_shown: bool = False                 # Now Playing shows the words in place of the cover
     lyrics_visualizer: bool = True             # ...with the visualizer moving behind them
     accent: str = "teal-pink"                  # colour pair (see the controller's ACCENTS)

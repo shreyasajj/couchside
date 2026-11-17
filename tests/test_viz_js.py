@@ -67,7 +67,6 @@ def test_rings_grow_fade_and_go(js):
 def test_spokes_and_orb_follow_the_music(js):
     assert js("spokeLength(0, 0, true)") == 200
     assert js("spokeLength(1, 1, true)") == 490 and js("spokeLength(1, 1, false)") == 370
-    assert js("orbRadius(0)") == 130 and js("orbRadius(1)") == 250
 
 
 def test_flow_lines_span_the_width_and_swell_with_the_level(js):
@@ -96,3 +95,23 @@ def test_mix_blends_two_colours(js):
 def test_edge_bars_use_the_lower_four_fifths_of_the_spectrum(js):
     assert js("edgeBin(0, 48)") == 0 and js("edgeBin(47, 48)") == 50
     assert js("edgeBin(23, 24)") == 49 and js("edgeBin(999, 24)") == 63
+
+
+def test_the_chase_laps_the_screen_once_every_eight_beats(js):
+    assert js("chaseStep(0, 1, 120)") == pytest.approx(0.25)      # 2 beats in a second
+    assert js("chaseStep(0, 1, 60)") == pytest.approx(0.125)      # half the tempo, half the speed
+    assert js("chaseStep(0.9, 1, 120)") == pytest.approx(0.15)    # wraps round
+    assert js("chaseStep(0.5, 0, 200)") == pytest.approx(0.5)
+
+
+def test_wave_rises_and_falls_once_round_the_frame(js):
+    assert js("wave(0)") == 0 and js("wave(0.5)") == 1 and js("wave(1)") == 0
+    assert js("wave(0.25)") == pytest.approx(0.5) and js("wave(1.25)") == pytest.approx(0.5)
+
+
+def test_perimeter_goes_round_bottom_right_top_left(js):
+    assert js("perimeter('bottom', 0)") == 0
+    assert js("perimeter('right', 0)") == pytest.approx(0.32)
+    assert js("perimeter('top', 0)") == pytest.approx(0.5)
+    assert js("perimeter('left', 0)") == pytest.approx(0.82)
+    assert js("perimeter('left', 1)") == pytest.approx(1.0)

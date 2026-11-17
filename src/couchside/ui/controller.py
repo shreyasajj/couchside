@@ -9,6 +9,7 @@ import time
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
 from couchside.core import audio_devices
+from couchside.core.beat import TempoTracker
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
 from couchside.core.paths import sendspin_settings_dir
@@ -145,6 +146,7 @@ class AppController(QObject):
         self._viz_beat = 0.0
         self._shown_level, self._seen_beats, self._kick = 0.0, 0, 0.0
         self._beat_hue = 0.55
+        self._tempo = TempoTracker()
         self._light, self._shown_light = 0.0, 0.0  # the edge lights' slower pulse
         self._pulse_timer = QTimer(self)
         self._pulse_timer.setInterval(50)  # 20 updates a second while listening
@@ -180,6 +182,7 @@ class AppController(QObject):
         """Release network resources on shutdown."""
         if self._guest_server is not None:
             await self._guest_server.stop()
+        self._pulse_timer.stop()   # it would keep calling into a controller being torn down
         self._pulse.stop()
         if self._updater is not None and hasattr(self._updater, "close"):
             await self._updater.close()
@@ -1386,6 +1389,28 @@ class AppController(QObject):
     def vizEnergy(self) -> float:
         return self._pulse.level if self._pulse.running else 0.0
 
+    def _clock(self) -> float:
+        """Seconds for the tempo (tests swap it; never time.monotonic itself: asyncio uses it)."""
+        return time.monotonic()
+
+    @Property(float, notify=spectrumChanged)
+    def vizTempo(self) -> float:
+        """The song's beats per minute while listening (slow and steady in silence): how
+        fast the edge lights run round the screen."""
+        return self._tempo.bpm(self._clock())
+
+    @Property(bool, notify=pulseChanged)
+    def visualizerEdges(self) -> bool:
+        """Edge lights over every visualizer picture, not only in their own mode."""
+        return self._settings.visualizer_edges
+
+    @visualizerEdges.setter
+    def visualizerEdges(self, on: bool) -> None:
+        if bool(on) != self._settings.visualizer_edges:
+            self._settings.visualizer_edges = bool(on)
+            save_settings(self._settings)
+            self.pulseChanged.emit()
+
     @Property(float, notify=pulseChanged)
     def visualizerIntensity(self) -> float:
         return self._settings.visualizer_intensity
@@ -1500,6 +1525,7 @@ class AppController(QObject):
             if self._pulse.start():
                 self._pulse_timer.start()
         elif not want and self._pulse.running:
+            self._tempo.reset()
             self._pulse.stop()
             self._pulse_timer.stop()
             self._kick = 0.0
@@ -1524,6 +1550,7 @@ class AppController(QObject):
             self._light = 1.0
             self._viz_beat = 1.0
             self._beat_hue = round((self._beat_hue + 0.17) % 1.0, 2)  # a clearly different colour
+            self._tempo.beat(self._clock())
             self.beatChanged.emit()
         else:
             self._kick = self._kick * 0.55 if self._kick > 0.05 else 0.0

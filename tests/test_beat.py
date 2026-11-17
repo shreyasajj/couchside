@@ -100,3 +100,28 @@ def test_bars_stay_in_range_for_loud_noise():
 
 def test_quiet_music_fills_the_bars_too():
     assert bars_for(tone(100, amp=0.01)).max() > 0.5
+
+
+def test_tempo_is_the_median_gap_between_recent_beats():
+    from couchside.core.beat import TempoTracker
+    t = TempoTracker()
+    assert t.bpm(0.0) == TempoTracker.RESTING            # nothing heard yet
+    for i in range(6):
+        t.beat(i * 0.5)                                  # 120 BPM
+    assert t.bpm(2.6) == 120.0
+    t.beat(2.5 + 0.1)                                    # one stray beat doesn't move it
+    assert t.bpm(2.7) == 120.0
+    for i in range(1, 10):
+        t.beat(2.6 + i * 0.4)                            # the song speeds up to 150
+    assert t.bpm(6.3) == 150.0
+
+
+def test_tempo_ignores_gaps_too_long_or_short_and_rests_in_silence():
+    from couchside.core.beat import TempoTracker
+    t = TempoTracker()
+    for s in (0.0, 0.5, 1.0, 5.0, 5.5, 6.0, 6.1):        # 4 s pause and a 0.1 s double hit
+        t.beat(s)
+    assert t.bpm(6.2) == 120.0
+    assert t.bpm(6.1 + 3.5) == TempoTracker.RESTING      # no beat for 3 s: slow again
+    t.reset()
+    assert t.bpm(6.2) == TempoTracker.RESTING

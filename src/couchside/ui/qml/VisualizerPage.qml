@@ -4,7 +4,8 @@ import QtQuick.Layouts
 // The Visualizer (opened from Now Playing): the music drawn full-screen. Modes along the
 // bottom (Left/Right change it): Radial Pulse, Flow Lines, Bars, Edge Lights, and Party
 // (lyrics and edge lights). Top left: where the beat comes from (OK picks another source),
-// how hard it hits (Left/Right) and its colours (OK picks). After a few seconds without a key the controls and the top bar fade
+// how hard it hits (Left/Right), its colours (OK picks) and whether
+// the edge lights lie over the picture (OK switches). After a few seconds without a key the controls and the top bar fade
 // away; the next key only brings them back.
 FocusScope {
     id: page
@@ -174,10 +175,20 @@ FocusScope {
             maxTextWidth: 520 * page.u
             text: "Colours: " + app.visualizerColoursLabel
             KeyNavigation.up: beatChip
-            Keys.onDownPressed: { var b = page.modeButton(); if (b) b.forceActiveFocus() }
+            KeyNavigation.down: edgesChip
             onClicked: page.sheet.open("Visualizer colours", app.visualizerColourChoices.map(function(c) {
                 return { id: c.id, label: c.label, checked: c.current }
             }), coloursChip, function(id) { app.setVisualizerColours(id) })
+        }
+        Chip {   // edge lights over the other pictures (Edge Lights and Party have their own)
+            id: edgesChip
+            objectName: "edgesChip"
+            u: page.u
+            active: app.visualizerEdges
+            text: "Edge lights: " + (app.visualizerEdges ? "On" : "Off")
+            KeyNavigation.up: coloursChip
+            Keys.onDownPressed: { var b = page.modeButton(); if (b) b.forceActiveFocus() }
+            onClicked: app.visualizerEdges = !app.visualizerEdges
         }
     }
 
@@ -221,7 +232,7 @@ FocusScope {
                     onClicked: app.visualizerMode = mode
                     Keys.onLeftPressed: if (index > 0) modeRepeater.itemAt(index - 1).forceActiveFocus()
                     Keys.onRightPressed: if (index < modeRepeater.count - 1) modeRepeater.itemAt(index + 1).forceActiveFocus()
-                    Keys.onUpPressed: coloursChip.forceActiveFocus()
+                    Keys.onUpPressed: edgesChip.forceActiveFocus()
                 }
             }
         }

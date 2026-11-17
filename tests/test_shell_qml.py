@@ -114,6 +114,12 @@ async def test_every_screen_loads_without_qml_errors(ui):
         pump(0.2)
         if SHOTS:
             view.grabWindow().save(str(Path(SHOTS) / f"visualizer-{mode}.png"))
+    ctl.visualizerEdges = True                 # edge lights over the other pictures
+    for mode in ("radial", "bars"):
+        ctl.visualizerMode = mode
+        pump(0.3)
+        if SHOTS:
+            view.grabWindow().save(str(Path(SHOTS) / f"visualizer-{mode}-edges.png"))
     assert problems(messages) == []
 
 
@@ -260,6 +266,12 @@ async def test_visualizer_modes_follow_left_and_right(ui):
     assert ctl.visualizerMode == "edge"
     press(view, Qt.Key.Key_Right, 5)
     assert ctl.visualizerMode == "party"       # stops at the last mode
+    press(view, Qt.Key.Key_Up)
+    assert "edgesChip" in focus_path(view)
+    press(view, Qt.Key.Key_Return)
+    assert ctl.visualizerEdges is True         # edge lights over every picture
+    press(view, Qt.Key.Key_Return)
+    assert ctl.visualizerEdges is False
     press(view, Qt.Key.Key_Up)
     assert "coloursChip" in focus_path(view)
     press(view, Qt.Key.Key_Up)

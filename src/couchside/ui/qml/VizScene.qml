@@ -6,12 +6,13 @@ import "viz.js" as Viz
 // second. Everything is laid out for 1920 x 1080 and scaled to the width it is given. One
 // timer reads the music (level, beat, spectrum) and sets a handful of numbers; nothing is
 // painted in software. Used full-screen by the Visualizer and behind the words on Now
-// Playing.
+// Playing. Edge Lights is a picture of its own and can also lie over the others.
 Item {
     id: root
     property bool running: false                   // on screen, app in front
     property string mode: app.visualizerMode       // radial | flow | bars | edge
     property string colours: app.visualizerColours // accent | rainbow | beat
+    property bool edges: app.visualizerEdges        // edge lights over the other pictures too
     clip: true
 
     Item {
@@ -31,6 +32,14 @@ Item {
         property var rings: []
         property var flow: []          // five ribbons, each a list of points
         property real prevBeat: 0
+        property real phase: 0         // Edge Lights: how far the colours have run round (0..1)
+        readonly property bool edgeShown: mode === "edge" || root.edges
+        // a point on the frame (0..1 round it) -> its colour, moved on by the chase
+        function chase(pos) {
+            var p = pos + phase
+            if (root.colours === "rainbow") return Qt.hsla(((p % 1) + 1) % 1, 1.0, 0.56, 1)
+            return blend(Viz.wave(p))
+        }
         property double last: 0
         // 0..1 along the picture -> a colour: between the look's two colours, round the
         // colour wheel, or a family of neighbours that steps round the wheel on every beat
@@ -53,9 +62,9 @@ Item {
             beat = a.beat
             level = a.level
             t += dt
-            if (mode === "bars" || mode === "edge") {
-                bars = a.bars
-            } else if (mode === "flow") {
+            if (mode === "bars" || edgeShown) bars = a.bars
+            if (edgeShown) phase = Viz.chaseStep(phase, dt, app.vizTempo)
+            if (mode === "flow") {
                 var lines = []
                 for (var i = 0; i < 5; i++) {
                     var pts = Viz.flowPoints(i, t, level, energy, width, height, 32)
@@ -69,7 +78,7 @@ Item {
             prevBeat = beat
         }
 
-        // Radial Pulse: turning spokes, an orb that swells, a ring sent out on every beat.
+        // Radial Pulse: turning spokes and a ring sent out on every beat.
         Item {
             visible: scene.mode === "radial"
             x: scene.width / 2
@@ -111,36 +120,6 @@ Item {
                     border.color: ring ? scene.blend((ring.r - Viz.RING_START) / 560) : "transparent"
                     opacity: ring ? ring.a * 0.6 : 0
                 }
-            }
-            Shape {   // the orb: drawn once, only its size changes
-                id: orb
-                readonly property real size: Viz.orbRadius(scene.level) * 1.7
-                width: 200
-                height: 200
-                x: -100
-                y: -100
-                scale: size / 100
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeColor: "transparent"
-                    fillGradient: RadialGradient {
-                        centerX: 100; centerY: 100; centerRadius: 100
-                        focalX: 100; focalY: 100
-                        GradientStop { position: 0; color: Theme.tint(scene.c2, 0.95) }
-                        GradientStop { position: 0.4; color: Theme.tint(scene.c1, 0.78) }
-                        GradientStop { position: 1; color: Theme.tint(scene.c1, 0) }
-                    }
-                    PathAngleArc { centerX: 100; centerY: 100; radiusX: 100; radiusY: 100; startAngle: 0; sweepAngle: 360 }
-                }
-            }
-            Rectangle {   // its bright heart
-                width: Viz.orbRadius(scene.level) * 0.64
-                height: width
-                x: -width / 2
-                y: -height / 2
-                radius: width / 2
-                color: "#ebffffff"
-                antialiasing: true
             }
         }
 
@@ -205,59 +184,21 @@ Item {
         }
 
         // Edge Lights: the spectrum growing in from all four edges of the screen, each bar
-        // solid colour at the edge and fading inward, over a frame of light that flashes on
-        // the beat. The middle stays clear (lyrics sit there on Now Playing), and lights
-        // behind the TV that copy the screen's edges move with the music.
+        // solid colour at the edge and fading inward, round a thin rim of light that flashes
+        // on the beat. The colours run round the frame, one lap every eight beats, so they
+        // speed up and slow down with the song. The middle stays clear, so it lies over the
+        // other pictures too (and lyrics on Now Playing); lights behind the TV that copy the
+        // screen's edges move with it.
         Item {
             id: edge
             anchors.fill: parent
-            visible: scene.mode === "edge"
+            visible: scene.edgeShown
             readonly property int across: 48     // bars along the top and the bottom
             readonly property int down: 24       // bars along each side
-            readonly property real flash: Math.min(1, 0.18 + 0.5 * scene.beat + 0.3 * scene.energy)
+            readonly property real rim: 18
+            readonly property real flash: Math.min(1, 0.25 + 0.5 * scene.beat + 0.3 * scene.energy)
             function value(i, n) { return Viz.barHeight(scene.bars[Viz.edgeBin(i, n)] || 0, scene.beat) }
-
-            Rectangle {   // the frame of light: bottom, top, left, right
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                height: 90; opacity: edge.flash
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0; color: scene.blend(0) }
-                    GradientStop { position: 0.5; color: scene.blend(0.5) }
-                    GradientStop { position: 1; color: scene.blend(1) }
-                }
-            }
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top }
-                height: 90; opacity: edge.flash
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0; color: scene.blend(1) }
-                    GradientStop { position: 0.5; color: scene.blend(0.5) }
-                    GradientStop { position: 1; color: scene.blend(0) }
-                }
-            }
-            Rectangle {
-                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-                width: 90; opacity: edge.flash
-                gradient: Gradient {
-                    GradientStop { position: 0; color: scene.blend(1) }
-                    GradientStop { position: 1; color: scene.blend(0) }
-                }
-            }
-            Rectangle {
-                anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
-                width: 90; opacity: edge.flash
-                gradient: Gradient {
-                    GradientStop { position: 0; color: scene.blend(0) }
-                    GradientStop { position: 1; color: scene.blend(1) }
-                }
-            }
-            Rectangle {   // darkens the frame toward the middle, so only the rim glows
-                anchors { fill: parent; margins: 26 }
-                radius: 60
-                color: "#050507"
-            }
+            function at(side, along) { return scene.chase(Viz.perimeter(side, along)) }
 
             Repeater {   // bottom (low notes on the left) and top (mirrored)
                 model: edge.visible ? edge.across * 2 : 0
@@ -266,7 +207,7 @@ Item {
                     readonly property bool atTop: index >= edge.across
                     readonly property int slot: atTop ? index - edge.across : index
                     readonly property real len: edge.value(slot, edge.across) * scene.height * 0.3
-                    readonly property color tone: scene.blend(slot / (edge.across - 1))
+                    readonly property color tone: edge.at(atTop ? "top" : "bottom", (slot + 0.5) / edge.across)
                     x: (atTop ? edge.across - 1 - slot : slot) * scene.width / edge.across + 4
                     y: atTop ? 0 : scene.height - len
                     width: scene.width / edge.across - 8
@@ -284,7 +225,7 @@ Item {
                     readonly property bool atRight: index >= edge.down
                     readonly property int slot: atRight ? index - edge.down : index
                     readonly property real len: edge.value(slot, edge.down) * scene.width * 0.16
-                    readonly property color tone: scene.blend(slot / (edge.down - 1))
+                    readonly property color tone: edge.at(atRight ? "right" : "left", (edge.down - 1 - slot + 0.5) / edge.down)
                     x: atRight ? scene.width - len : 0
                     y: (atRight ? slot : edge.down - 1 - slot) * scene.height / edge.down + 4
                     width: len
@@ -294,6 +235,50 @@ Item {
                         GradientStop { position: 0; color: atRight ? Theme.tint(tone, 0) : tone }
                         GradientStop { position: 1; color: atRight ? tone : Theme.tint(tone, 0) }
                     }
+                }
+            }
+
+            // the rim: bottom, top, left, right (colours sampled along each side)
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: edge.rim; opacity: edge.flash
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: edge.at("bottom", 0) }
+                    GradientStop { position: 0.25; color: edge.at("bottom", 0.25) }
+                    GradientStop { position: 0.5; color: edge.at("bottom", 0.5) }
+                    GradientStop { position: 0.75; color: edge.at("bottom", 0.75) }
+                    GradientStop { position: 1; color: edge.at("bottom", 1) }
+                }
+            }
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; top: parent.top }
+                height: edge.rim; opacity: edge.flash
+                gradient: Gradient {   // the top runs right to left
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: edge.at("top", 1) }
+                    GradientStop { position: 0.25; color: edge.at("top", 0.75) }
+                    GradientStop { position: 0.5; color: edge.at("top", 0.5) }
+                    GradientStop { position: 0.75; color: edge.at("top", 0.25) }
+                    GradientStop { position: 1; color: edge.at("top", 0) }
+                }
+            }
+            Rectangle {
+                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                width: edge.rim; opacity: edge.flash
+                gradient: Gradient {   // the left runs top to bottom
+                    GradientStop { position: 0; color: edge.at("left", 0) }
+                    GradientStop { position: 0.5; color: edge.at("left", 0.5) }
+                    GradientStop { position: 1; color: edge.at("left", 1) }
+                }
+            }
+            Rectangle {
+                anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+                width: edge.rim; opacity: edge.flash
+                gradient: Gradient {   // the right runs bottom to top
+                    GradientStop { position: 0; color: edge.at("right", 1) }
+                    GradientStop { position: 0.5; color: edge.at("right", 0.5) }
+                    GradientStop { position: 1; color: edge.at("right", 0) }
                 }
             }
         }

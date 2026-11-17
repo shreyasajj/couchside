@@ -18,7 +18,12 @@ def ctl(tmp_path, monkeypatch, qt_app):
     c.playback.now_playing = NowPlaying(
         "T", "A", "B", PROXY, "playing", duration=261, elapsed=12.5, elapsed_at=1000.0,
         shuffle=True, repeat="all", volume=40, palette_dark=(25, 28, 41), queue_id="q")
-    return c
+    yield c
+    # Stop its timers here, on the main thread: a controller left with a running timer can be
+    # garbage-collected later on another thread, and Qt then crashes in a later test.
+    from PySide6.QtCore import QTimer
+    for timer in c.findChildren(QTimer):
+        timer.stop()
 
 
 def test_progress_and_modes(ctl):
@@ -1251,3 +1256,38 @@ def test_lyrics_on_now_playing_are_remembered(ctl):
     assert ctl.lyricsShown is True and load_settings().lyrics_shown is True and seen
     ctl.lyricsVisualizer = False
     assert ctl.lyricsVisualizer is False and load_settings().lyrics_visualizer is False
+
+
+def test_tempo_follows_the_beats(pulse_ctl):
+    from couchside.core.beat import TempoTracker
+    ctl = pulse_ctl
+    clock = [100.0]
+    ctl._clock = lambda: clock[0]
+    ctl.vizVisible = True
+    assert ctl.vizTempo == TempoTracker.RESTING
+    for i in range(1, 7):                    # a beat every 0.4 s: 150 BPM
+        clock[0] += 0.4
+        ctl._pulse.beats = i
+        ctl._poll_pulse()
+    assert ctl.vizTempo == 150.0
+    ctl.vizVisible = False                   # listening stops: the tempo starts again
+    ctl.vizVisible = True
+    assert ctl.vizTempo == TempoTracker.RESTING
+    ctl.vizVisible = False                   # leave nothing ticking for the next test
+
+
+def test_edge_lights_on_every_picture_is_remembered(ctl):
+    from couchside.core.settings import load_settings
+    seen = []
+    ctl.pulseChanged.connect(lambda: seen.append(1))
+    assert ctl.visualizerEdges is False
+    ctl.visualizerEdges = True
+    assert ctl.visualizerEdges is True and load_settings().visualizer_edges is True and seen
+
+
+async def test_close_stops_the_visualizer_timer(pulse_ctl):
+    ctl = pulse_ctl
+    ctl.vizVisible = True
+    assert ctl._pulse_timer.isActive()
+    await ctl.close()
+    assert not ctl._pulse_timer.isActive()

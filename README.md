@@ -145,12 +145,14 @@ The other screens:
 
 **Visualizer.** The sparkle button on Now Playing opens the Visualizer, which draws the
 music full-screen. Left/Right on the row at
-the bottom change the picture: **Radial Pulse** (an orb that sends a ring out on every
-beat), **Flow Lines**, **Bars** (the spectrum), **Edge Lights** (the spectrum growing in from
-all four edges of the screen over a frame of light that flashes on the beat, so LED strips
-that follow the screen move with it), and **Party**. Top left: what it listens to (OK
+the bottom change the picture: **Radial Pulse** (turning spokes that send a ring out on
+every beat), **Flow Lines**, **Bars** (the spectrum), **Edge Lights** (the spectrum growing in from
+all four edges of the screen round a rim of light that flashes on the beat; the colours run
+round the frame once every eight beats, so they speed up and slow down with the song's
+tempo, and LED strips that follow the screen move with it), and **Party**. Top left: what it listens to (OK
 picks another source), **BEAT**, how hard the picture hits on each beat (Left/Right), and
-**Colours**: the theme's two colours, the whole rainbow, or a new colour on every beat. After a few seconds without a key the controls and the top bar fade away;
+**Colours**: the theme's two colours, the whole rainbow, or a new colour on every beat,
+and **Edge lights** (OK switches): the Edge Lights border over Radial, Flow and Bars too. After a few seconds without a key the controls and the top bar fade away;
 any key brings them back.
 
 **Party** mode: the lyrics fill the screen,
@@ -167,6 +169,7 @@ Settings → **Visualizer**:
 | Beat source | **What this TV is playing** (default: the output chosen under This speaker, or the default output), one specific output, or an input such as a microphone |
 | Beat intensity | 0–2.4, how hard the Visualizer hits on a beat |
 | Colours | Theme colours, Rainbow, or Changes on the beat |
+| Edge lights on every picture | The Edge Lights border over the other pictures too (off by default) |
 | Party lights | Colour along the screen edges in Party mode |
 
 Couchside listens through PipeWire; nothing is recorded or sent anywhere. It listens only
