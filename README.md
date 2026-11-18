@@ -126,8 +126,9 @@ restarts (on your network, not from a private tab either); their songs stay in t
 Behind a reverse proxy every phone shares the proxy's address, so a determined guest can
 rejoin from a new browser there.
 
-The guest page is served by Couchside on port **8765** of this TV (plain HTTP on your
-network). For HTTPS or access from outside, put a reverse proxy in front of it and set
+The guest page is served by Couchside on port **8780** of this TV (plain HTTP on your
+network); change it in Settings → Guests → **Guest page port** if something else uses it.
+(It used to be 8765, which Bigscreen Bridge now uses.) For HTTPS or access from outside, put a reverse proxy in front of it and set
 **Guest page public URL**; the proxy must pass WebSocket upgrades (`/g/<token>/api/ws`)
 — if it doesn't, phones fall back to polling every 3 s.
 

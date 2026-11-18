@@ -19,7 +19,6 @@ from couchside.core.paths import sendspin_settings_dir
 from couchside.core import crossfade, library, queue, speakers, updates
 from couchside.core.format import art_url, format_time, palette_colour
 from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
-from couchside.core.guest_server import PORT as GUEST_PORT
 from couchside.core.guest_server import GuestServer, lan_ip
 from couchside.core.guests import CODE_TTL, GuestError, GuestRules, GuestSession
 from couchside.core.admin_actions import AdminHost
@@ -851,6 +850,7 @@ class AppController(QObject):
         import couchside
         page = Path(couchside.__file__).parent / "web" / "guest.html"
         return GuestServer(lambda: self._guest_session, self._guest_context, page,
+                           port=self._settings.guest_port,
                            on_change=self.guestChanged.emit,
                            # behind a reverse proxy every phone has the proxy's address
                            limit_per_address=lambda: not self._settings.guest_public_url,
@@ -973,7 +973,7 @@ class AppController(QObject):
                 except OSError as e:
                     log.warning("guest server failed to start: %s", e)
                     self._guest_session = None
-                    self._set_toast(f"Couldn't start guest mode (port {GUEST_PORT} busy?)")
+                    self._set_toast(f"Couldn't start guest mode (port {self._settings.guest_port} busy?)")
                     self.guestChanged.emit()
             self._spawn(start())
             self._update_guest_link()
@@ -995,13 +995,14 @@ class AppController(QObject):
         token = session.token
         public = (self._settings.guest_public_url or "").strip().rstrip("/")
         ma_url = self._settings.server_url
+        port = self._settings.guest_port
 
         def build():
             base = public
             if not base:
                 from urllib.parse import urlsplit
                 host = urlsplit(ma_url).hostname if ma_url else None
-                base = f"http://{lan_ip(host or '192.168.0.1')}:{GUEST_PORT}"
+                base = f"http://{lan_ip(host or '192.168.0.1')}:{port}"
             url = f"{base}/g/{token}/"
             import segno
             rows = ["".join("1" if m else "0" for m in row) for row in segno.make(url, error="m").matrix]
@@ -1056,6 +1057,47 @@ class AppController(QObject):
         save_settings(self._settings)
         self.guestChanged.emit()
         self._update_guest_link()
+
+    @Property(int, notify=guestChanged)
+    def guestPort(self) -> int:
+        return self._settings.guest_port
+
+    @Slot(str)
+    def setGuestPort(self, text: str) -> None:
+        """The guest page's port. While guest mode is on the server moves to it and the QR
+        follows (phones need the new code)."""
+        text = text.strip()
+        port = int(text) if text.isdigit() else 0
+        if not 1024 <= port <= 65535:
+            self._set_toast("The guest port must be a number from 1024 to 65535")
+            self.guestChanged.emit()   # the field shows the port in use again
+            return
+        if port == self._settings.sendspin_port:
+            self._set_toast(f"Port {port} is this TV's Sendspin: pick another")
+            self.guestChanged.emit()
+            return
+        if port == self._settings.guest_port:
+            return
+        self._settings.guest_port = port
+        save_settings(self._settings)
+        old, self._guest_server = self._guest_server, None
+        if self._guest_session is not None:
+            self._guest_server = self._make_guest_server()
+            server = self._guest_server
+
+            async def move():
+                if old is not None:
+                    await old.stop()
+                try:
+                    await server.start()
+                except OSError as e:
+                    log.warning("guest server failed to start: %s", e)
+                    self._set_toast(f"Couldn't start guest mode (port {port} busy?)")
+            self._spawn(move())
+            self._update_guest_link()
+        elif old is not None:
+            self._spawn(old.stop())
+        self.guestChanged.emit()
 
     def _cycle_rule(self, field: str, choices: tuple[int, ...]) -> None:
         value = getattr(self._settings, field)

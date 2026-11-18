@@ -32,6 +32,8 @@ class AppSettings:
     guest_max_waiting: int = 3
     guest_cooldown: int = 0  # seconds between a guest's adds
     guest_public_url: str | None = None
+    # the guest page's port on this TV; not 8765, which Bigscreen Bridge uses
+    guest_port: int = 8780
     autostart_requested: bool = False
     # Not Sendspin's default (8927/8928) so it can't clash with another Sendspin on the host.
     sendspin_port: int = 8937

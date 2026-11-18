@@ -483,13 +483,33 @@ async def test_guest_mode_starts_server_and_rotates_link(guest_ctl):
     await settle_long()
     assert ctl.guestMode and ctl._fake_server.started == 1
     first = ctl.guestUrl
-    assert first.startswith("http://192.168.30.153:8765/g/") and first.endswith("/")
+    assert first.startswith("http://192.168.30.153:8780/g/") and first.endswith("/")
     ctl.toggleGuestMode()
     await settle_long()
     assert not ctl.guestMode and ctl._fake_server.stopped == 1 and ctl.guestUrl == ""
     ctl.toggleGuestMode()
     await settle_long()
     assert ctl.guestUrl != first  # new link every time
+
+
+async def test_guest_port_is_a_setting_and_moves_a_running_server(guest_ctl):
+    """8765 is Bigscreen Bridge's port: the guest page has its own (8780), and it can be
+    changed in Settings; changing it while guests are in moves the server and the QR."""
+    ctl = guest_ctl
+    assert ctl.guestPort == 8780 and ctl._settings.guest_port == 8780
+    ctl.toggleGuestMode()
+    await settle_long()
+    ctl.setGuestPort("8790")
+    await settle_long()
+    assert ctl.guestPort == 8790 and ctl._settings.guest_port == 8790
+    assert ctl._fake_server.stopped == 1 and ctl._fake_server.started == 2   # moved
+    assert ctl.guestUrl.startswith("http://192.168.30.153:8790/g/") and ctl.guestMode
+
+
+@pytest.mark.parametrize("bad", ["80", "70000", "abc", "", "8937"])
+def test_guest_port_rejects_ports_it_cant_use(ctl, bad):
+    ctl.setGuestPort(bad)      # 8937 is this TV's Sendspin
+    assert ctl.guestPort == 8780 and ctl.toast != ""
 
 
 async def test_guest_url_uses_public_url(guest_ctl):
@@ -1226,7 +1246,7 @@ async def test_guest_link_waits_for_a_slow_worker_thread(guest_ctl, monkeypatch)
     monkeypatch.setattr("couchside.ui.controller.lan_ip", slow_lan_ip)
     guest_ctl.toggleGuestMode()
     await settle_long()
-    assert guest_ctl.guestUrl.startswith("http://192.168.30.153:8765/g/")
+    assert guest_ctl.guestUrl.startswith("http://192.168.30.153:8780/g/")
 
 
 def test_edge_mode_and_visualizer_colours(ctl):

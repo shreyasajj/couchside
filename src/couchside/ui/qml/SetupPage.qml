@@ -59,6 +59,7 @@ FocusScope {
         libreField.text = app.libretranslateUrl
         captionField.text = app.qrCaption
         publicUrlField.text = app.guestPublicUrl
+        guestPortField.text = app.guestPort
         playerNameField.text = app.playerName
         app.loadAudioDevices()
         app.loadCrossfade()
@@ -67,7 +68,7 @@ FocusScope {
     // Back while a field is being edited: stop editing and keep what was typed (the same as
     // the keyboard's Enter, which is awkward to reach on Bigscreen's keyboard); stay on the page.
     function handleBack() {
-        for (const f of [urlField, tokenField, deeplField, libreField, captionField, publicUrlField, playerNameField])
+        for (const f of [urlField, tokenField, deeplField, libreField, captionField, publicUrlField, guestPortField, playerNameField])
             if (f.editing) { f.stopEditing(); f.accepted(); return true }
         return false
     }
@@ -419,6 +420,14 @@ FocusScope {
                     placeholderText: "e.g. https://party.example.com"
                     inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
                     onAccepted: app.setGuestPublicUrl(text)
+                }
+                Note { text: "Guest page port — on this TV; phones need the new QR code after a change" }
+                TvField {
+                    id: guestPortField
+                    objectName: "guestPortField"
+                    placeholderText: "8780"
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    onAccepted: { app.setGuestPort(text); text = app.guestPort }
                 }
             }
 

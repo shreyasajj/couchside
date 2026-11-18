@@ -18,6 +18,7 @@ def test_defaults_when_missing(tmp_path):
     assert s.player_name == "Living Room TV"
     assert s.qr_caption == "Scan to add songs"
     assert s.guest_public_url is None
+    assert s.guest_port == 8780          # not Bigscreen Bridge's 8765
     assert s.autostart_requested is False
     assert s.sendspin_port == 8937
 
