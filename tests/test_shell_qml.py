@@ -222,7 +222,8 @@ def give_words_and_a_queue(ctl):
     ctl._raw_lyrics = [LyricLine(float(t), f"Line number {t}") for t in range(0, 200, 4)]
     ctl._rebuild_lyrics()
     ctl._queue_rows = [{"itemId": str(i), "title": f"Song {i}", "subtitle": "Someone", "imageUrl": "",
-                        "duration": 200, "current": i == 0, "addedBy": ""} for i in range(5)]
+                        "duration": 200, "current": i == 0, "addedBy": "Priya" if i == 1 else ""}
+                       for i in range(5)]
     ctl.queueChanged.emit()
     pump(0.2)
 
@@ -231,6 +232,16 @@ def box(item):
     from PySide6.QtCore import QPointF
     top_left = item.mapToScene(QPointF(0, 0))
     return top_left.x(), top_left.y(), top_left.x() + item.width(), top_left.y() + item.height()
+
+
+def credit_in(card):
+    """The "Added by" line under Up Next's first song ("" if none shows)."""
+    def walk(item):
+        for child in item.childItems():
+            if child.objectName() == "upNextCredit" and child.property("visible"):
+                yield child.property("text")
+            yield from walk(child)
+    return next(walk(card), "")
 
 
 def apart(a, b):
@@ -252,9 +263,12 @@ async def test_with_lyrics_the_song_floats_top_left_and_up_next_stays_right(ui):
     x0, y0, _x1, _y1 = box(card)
     assert x0 < 200 and y0 < 200                       # the top-left corner
     assert apart(card, words) and apart(words, up_next) and apart(card, up_next)
-    assert box(words)[2] <= box(up_next)[0]            # the words end before Up Next
+    assert up_next.property("shown") == 1              # just the next song while the words show
+    assert credit_in(up_next) == "Added by Priya"      # and who asked for it
     left, _t, right, _b = box(words)
     assert abs((left + right) / 2 - 960) < 2           # centred on the screen
+    assert right - left > 1500                         # the words get the width Up Next gave up
+    assert words.height() > 350                        # and the room between the top and the controls
     assert ctl.vizVisible is True
     press(view, Qt.Key.Key_Right, 2)                   # the volume button is still there
     assert "lyricsButton" not in focus_path(view) and view.activeFocusItem() is not None
@@ -284,6 +298,9 @@ async def test_party_puts_the_song_top_left_lyrics_in_the_middle_and_up_next_rig
     assert box(card)[0] < 200 and box(card)[1] < 200
     left, _t, right, _b = box(words)
     assert abs((left + right) / 2 - 960) < 2           # centred on the screen
+    assert right - left > 1500                         # Up Next is one song: the words get the width
+    assert words.height() > 500                        # and most of the screen's height
+    assert up_next.property("shown") == 1 and credit_in(up_next) == "Added by Priya"
     assert up_next.property("activeFocusOnTab") is False   # only to look at
     assert ctl.queueVisible is True                     # the queue loads for Up Next
     ctl.visualizerMode = "bars"

@@ -53,17 +53,21 @@ Item {
         anchors { right: parent.right; rightMargin: 48 * party.u }
         y: party.qrBottom > 0 ? party.qrBottom + 16 * party.u : party.topInset + 20 * party.u
         rows: party.upcoming
-        maxRows: party.qrBottom > 0 ? 3 : 4
+        maxRows: party.hasLyrics ? 1 : party.qrBottom > 0 ? 3 : 4
     }
 
-    // the words: centred on the screen, clear of Up Next, as large as Now Playing's
+    // the words: centred on the screen, as large as Now Playing's. Up Next is one song here,
+    // so the words go under it and the card and take the width (beside it, clear of it, if
+    // it sits low under the guest QR)
     Item {
         id: words
         objectName: "partyWords"
-        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; bottom: parent.bottom
-                  topMargin: party.topInset + card.height + 48 * party.u; bottomMargin: 110 * party.u }
-        // centred on the screen: as much room on the left as Up Next takes on the right
-        width: parent.width - 2 * (upNext.visible ? parent.width - upNext.x + 48 * party.u : Theme.margin * party.u)
+        readonly property real cardBottom: party.topInset + 24 * party.u + card.height
+        readonly property bool under: !upNext.visible || upNext.y + upNext.height < cardBottom + 120 * party.u
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 110 * party.u }
+        anchors.top: parent.top
+        anchors.topMargin: (under && upNext.visible ? Math.max(cardBottom, upNext.y + upNext.height) : cardBottom) + 32 * party.u
+        width: parent.width - 2 * (under ? Theme.margin * party.u : parent.width - upNext.x + 48 * party.u)
         visible: party.hasLyrics
         scale: 1.0 + 0.03 * party.kick
         LyricsView {

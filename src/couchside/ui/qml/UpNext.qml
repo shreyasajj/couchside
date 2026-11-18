@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 
 // The "Up Next" card on Now Playing: the next few songs. Focusable as one thing; OK emits
-// activated() (the page opens the queue). rows: [{title, subtitle, imageUrl, trailing}].
+// activated() (the page opens the queue). rows: [{title, subtitle, imageUrl, trailing,
+// addedBy}]; who added a song shows under it.
 FocusScope {
     id: card
     property real u: 1
@@ -92,6 +93,17 @@ FocusScope {
                         text: line.modelData.subtitle || ""
                         color: Theme.textDim
                         font.pixelSize: Theme.small * card.u
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        textFormat: Text.PlainText
+                        objectName: "upNextCredit"
+                        Layout.fillWidth: true
+                        visible: text !== ""
+                        text: line.modelData.addedBy ? "Added by " + line.modelData.addedBy : ""
+                        color: Theme.a1
+                        font.pixelSize: Theme.small * card.u
+                        font.weight: Font.DemiBold
                         elide: Text.ElideRight
                     }
                 }

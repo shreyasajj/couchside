@@ -138,10 +138,15 @@ FocusScope {
     Item {
         id: words
         objectName: "words"
-        anchors { horizontalCenter: parent.horizontalCenter; top: songCard.bottom; bottom: block.top
-                  topMargin: 32 * page.u; bottomMargin: 20 * page.u }
-        // centred on the screen: as much room on the left as Up Next takes on the right
-        width: parent.width - 2 * (upNext.visible ? parent.width - upNext.x + 48 * page.u : Theme.margin * page.u)
+        // Up Next is one song while the words show, so the words go under it and the corner
+        // card and take the screen's width; if Up Next sits low (under the guest QR) they keep
+        // clear of it beside it instead, as much room on the left as it takes on the right
+        readonly property real cardBottom: songCard.y + songCard.height
+        readonly property bool under: !upNext.visible || upNext.y + upNext.height < cardBottom + 120 * page.u
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: block.top; bottomMargin: 20 * page.u }
+        anchors.top: parent.top
+        anchors.topMargin: (under && upNext.visible ? Math.max(cardBottom, upNext.y + upNext.height) : cardBottom) + 32 * page.u
+        width: parent.width - 2 * (under ? Theme.margin * page.u : parent.width - upNext.x + 48 * page.u)
         visible: page.showLyrics
         LyricsView {
             anchors.fill: parent
@@ -173,7 +178,7 @@ FocusScope {
         y: page.qrBottom > 0 ? page.qrBottom + 16 * page.u : page.topInset + 20 * page.u
         rows: page.upcoming
         visible: rows.length > 0
-        maxRows: page.qrBottom > 0 ? 3 : 4
+        maxRows: page.showLyrics ? 1 : page.qrBottom > 0 ? 3 : 4
         onActivated: page.openPage("queue")
         Keys.onDownPressed: partyButton.forceActiveFocus()
         Keys.onLeftPressed: playButton.forceActiveFocus()

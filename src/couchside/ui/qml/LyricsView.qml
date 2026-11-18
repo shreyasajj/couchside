@@ -42,7 +42,9 @@ ListView {
     spacing: -0.18 * refWidth * scale[0]
     currentIndex: Math.max(0, activeIndex)
     highlightRangeMode: ListView.StrictlyEnforceRange
-    preferredHighlightBegin: height * (stage ? 0.4 : 0.28)
+    // on stage the line being sung sits a third of the way down: most of the room is for
+    // the lines coming up, so you can read ahead
+    preferredHighlightBegin: height * (stage ? 0.3 : 0.28)
     preferredHighlightEnd: preferredHighlightBegin + 1
     highlightMoveDuration: stage ? 550 : 400
     highlightMoveVelocity: -1
@@ -60,7 +62,7 @@ ListView {
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: "transparent" }
                     GradientStop { position: 0.12; color: "white" }
-                    GradientStop { position: 0.85; color: "white" }
+                    GradientStop { position: 0.9; color: "white" }
                     GradientStop { position: 1.0; color: "transparent" }
                 }
             }
@@ -101,9 +103,12 @@ ListView {
             text: line.text
         }
         transformOrigin: Item.Center
-        scale: view.stage ? (current ? 1.0 : away === 1 ? 0.52 : away === 2 ? 0.46 : 0.41)
+        // on stage the lines coming up stay larger and brighter than the ones already sung
+        scale: view.stage ? (current ? 1.0 : distance === 1 ? 0.62 : distance === 2 ? 0.54
+                                     : distance > 2 ? 0.48 : away === 1 ? 0.46 : 0.41)
                           : (current ? 1.0 : distance === 1 ? 0.72 : 0.62)
-        opacity: view.stage ? (current ? 1.0 : away === 1 ? 0.5 : away === 2 ? 0.28 : 0.12)
+        opacity: view.stage ? (current ? 1.0 : distance === 1 ? 0.75 : distance === 2 ? 0.55
+                                       : distance > 2 ? 0.35 : away === 1 ? 0.35 : 0.12)
                             : (current ? 1.0 : distance === 1 ? 0.8 : distance > 1 ? 0.45 : 0.35)
         Behavior on scale { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: 250 } }
