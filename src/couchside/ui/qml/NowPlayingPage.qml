@@ -45,7 +45,9 @@ FocusScope {
     // --- lyrics in place of the cover ------------------------------------------------------
     readonly property bool showLyrics: app.lyricsShown && app.lyricsEnabled && hasMedia
     // the shell listens for this: the visualizer behind the words, and in Party
-    readonly property bool vizBehind: (showLyrics && app.lyricsVisualizer) || (partyMode && app.visualizerEnabled)
+    // (none when the picture is Off: the blurred cover instead)
+    readonly property bool vizBehind: app.visualizerMode !== "off"
+                                      && ((showLyrics && app.lyricsVisualizer) || (partyMode && app.visualizerEnabled))
     // Keep the last song's words for a moment while the next song's are looked up (cache
     // hits take one event-loop turn, LRCLIB a second or two); give up after 1.5 s.
     property bool wordsShown: false

@@ -550,7 +550,8 @@ FocusScope {
                     id: vizPictureRow
                     objectName: "vizPictureRow"
                     readonly property var pictures: [{ id: "radial", label: "Radial Pulse" }, { id: "flow", label: "Flow Lines" },
-                                                     { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" }]
+                                                     { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" },
+                                                     { id: "off", label: "Off" }]
                     label: "Picture"
                     value: (pictures.filter(p => p.id === app.visualizerMode)[0] || pictures[0]).label
                     hint: "The Visualizer, and what moves behind the lyrics and Party on Now Playing"

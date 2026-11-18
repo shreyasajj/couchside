@@ -19,7 +19,9 @@ FocusScope {
     property bool bridgeSearch: false   // Search opened from outside: its results are already loading
     signal raiseRequested()             // bring the window to the front (asked from outside)
 
-    readonly property bool appActive: Qt.application.state === Qt.ApplicationActive
+    // in front: with another app in front nothing animates, listens or ticks (the connection
+    // and Sendspin keep going); everything moves again when Couchside comes back
+    property bool appActive: Qt.application.state === Qt.ApplicationActive
     readonly property var tabs: Nav.tabs()
     readonly property string speakerName: {
         var rows = app.speakerRows
@@ -36,7 +38,8 @@ FocusScope {
     // the visualizer draws on its own screen, and behind the words on Now Playing
     Binding {
         target: app; property: "vizVisible"
-        value: shell.appActive && (shell.screen === "visualizer" || (shell.screen === "now" && nowPage.vizBehind))
+        value: shell.appActive && ((shell.screen === "visualizer" && app !== null && app.visualizerMode !== "off")
+                                   || (shell.screen === "now" && nowPage.vizBehind))
     }
     Binding { target: app; property: "queueVisible"   // Up Next on Now Playing, and the queue
               value: shell.screen === "now" || shell.screen === "queue" }
@@ -51,6 +54,7 @@ FocusScope {
         position = p
     }
     Timer {
+        objectName: "positionTimer"
         interval: (shell.screen === "visualizer" || (shell.screen === "now" && nowPage.showLyrics)) ? 250 : 500  // lyrics need a finer tick
         repeat: true
         running: app.isPlaying && shell.appActive

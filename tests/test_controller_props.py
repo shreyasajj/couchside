@@ -1056,6 +1056,8 @@ def test_visualizer_intensity_and_mode(ctl):
     assert ctl.visualizerMode == "edge"
     ctl.visualizerMode = "nope"
     assert ctl.visualizerMode == "edge"
+    ctl.visualizerMode = "off"                   # no picture: nothing behind the words
+    assert ctl.visualizerMode == "off" and load_settings().visualizer_mode == "off"
 
 
 def test_a_saved_party_mode_shows_edge_lights(ctl):

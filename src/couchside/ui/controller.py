@@ -67,7 +67,7 @@ ACCENTS = (
     ("violet", "Violet", "#7c5cff", "#b14dff"),
     ("gold-green", "Gold and green", "#ffd23d", "#23d18b"),
 )
-VISUALIZER_MODES = ("radial", "flow", "bars", "edge")   # Party is a switch on Now Playing
+VISUALIZER_MODES = ("radial", "flow", "bars", "edge", "off")   # Party is a switch on Now Playing
 # what the visualizer is painted with: the look's two colours, the whole colour wheel, or
 # one colour family that takes a step round the wheel on every beat
 VISUALIZER_COLOURS = (("accent", "Theme colours"), ("rainbow", "Rainbow"), ("beat", "Changes on the beat"))
