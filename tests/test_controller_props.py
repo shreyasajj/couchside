@@ -483,13 +483,33 @@ async def test_guest_mode_starts_server_and_rotates_link(guest_ctl):
     await settle_long()
     assert ctl.guestMode and ctl._fake_server.started == 1
     first = ctl.guestUrl
-    assert first.startswith("http://192.168.30.153:8765/g/") and first.endswith("/")
+    assert first.startswith("http://192.168.30.153:8780/g/") and first.endswith("/")
     ctl.toggleGuestMode()
     await settle_long()
     assert not ctl.guestMode and ctl._fake_server.stopped == 1 and ctl.guestUrl == ""
     ctl.toggleGuestMode()
     await settle_long()
     assert ctl.guestUrl != first  # new link every time
+
+
+async def test_guest_port_is_a_setting_and_moves_a_running_server(guest_ctl):
+    """8765 is Bigscreen Bridge's port: the guest page has its own (8780), and it can be
+    changed in Settings; changing it while guests are in moves the server and the QR."""
+    ctl = guest_ctl
+    assert ctl.guestPort == 8780 and ctl._settings.guest_port == 8780
+    ctl.toggleGuestMode()
+    await settle_long()
+    ctl.setGuestPort("8790")
+    await settle_long()
+    assert ctl.guestPort == 8790 and ctl._settings.guest_port == 8790
+    assert ctl._fake_server.stopped == 1 and ctl._fake_server.started == 2   # moved
+    assert ctl.guestUrl.startswith("http://192.168.30.153:8790/g/") and ctl.guestMode
+
+
+@pytest.mark.parametrize("bad", ["80", "70000", "abc", "", "8937"])
+def test_guest_port_rejects_ports_it_cant_use(ctl, bad):
+    ctl.setGuestPort(bad)      # 8937 is this TV's Sendspin
+    assert ctl.guestPort == 8780 and ctl.toast != ""
 
 
 async def test_guest_url_uses_public_url(guest_ctl):
@@ -1030,10 +1050,17 @@ def test_visualizer_intensity_and_mode(ctl):
     assert ctl.visualizerIntensity == 0.5 and load_settings().visualizer_intensity == 0.5
     ctl.visualizerIntensity = -1
     assert ctl.visualizerIntensity == 0.0
-    ctl.visualizerMode = "party"
-    assert ctl.visualizerMode == "party" and load_settings().visualizer_mode == "party"
+    ctl.visualizerMode = "edge"
+    assert ctl.visualizerMode == "edge" and load_settings().visualizer_mode == "edge"
+    ctl.visualizerMode = "party"                 # Party is on Now Playing now, not a picture
+    assert ctl.visualizerMode == "edge"
     ctl.visualizerMode = "nope"
-    assert ctl.visualizerMode == "party"
+    assert ctl.visualizerMode == "edge"
+
+
+def test_a_saved_party_mode_shows_edge_lights(ctl):
+    ctl._settings.visualizer_mode = "party"      # saved before Party moved to Now Playing
+    assert ctl.visualizerMode == "edge"
 
 
 def test_an_unknown_saved_mode_shows_radial(ctl):
@@ -1130,16 +1157,6 @@ def test_party_lights_hold_each_beat_longer_than_the_glow(pulse_ctl):
     assert ctl.lightPulse == 0.0
 
 
-def test_party_lights_can_be_switched_off_and_stay_off(pulse_ctl):
-    from couchside.core.settings import load_settings
-    ctl = pulse_ctl
-    seen = []
-    ctl.pulseChanged.connect(lambda: seen.append(1))
-    assert ctl.partyLights is True
-    ctl.partyLights = False
-    assert ctl.partyLights is False and load_settings().party_lights is False and seen
-
-
 # --- faster search: the library answers first, repeats come from memory ----------------------
 
 async def test_library_results_show_first_then_everything(ctl, monkeypatch):
@@ -1226,7 +1243,7 @@ async def test_guest_link_waits_for_a_slow_worker_thread(guest_ctl, monkeypatch)
     monkeypatch.setattr("couchside.ui.controller.lan_ip", slow_lan_ip)
     guest_ctl.toggleGuestMode()
     await settle_long()
-    assert guest_ctl.guestUrl.startswith("http://192.168.30.153:8765/g/")
+    assert guest_ctl.guestUrl.startswith("http://192.168.30.153:8780/g/")
 
 
 def test_edge_mode_and_visualizer_colours(ctl):

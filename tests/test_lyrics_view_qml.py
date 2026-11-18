@@ -132,3 +132,22 @@ def test_a_line_keeps_its_size_and_wrapping_when_it_becomes_current(view):
     pump(0.6)
     assert nxt.property("current") is True and abs(nxt.scale() - 1.0) < 0.01
     assert (nxt.property("font").pixelSize(), nxt.property("lineCount"), nxt.height()) == before
+
+
+def test_on_stage_the_lines_coming_up_are_easier_to_read_than_the_ones_sung(view):
+    """The words coming up are what you read ahead: brighter and larger than the lines
+    already sung, and more of them fit below the current line than above it."""
+    root = view.rootObject()
+    root.setProperty("refWidth", 1920)
+    root.setProperty("stage", True)
+    root.setProperty("lines", [{"t": float(t), "text": f"line {t}"} for t in range(0, 100, 5)])
+    root.setProperty("position", 51.0)          # line 10 is being sung
+    pump(1.0)
+    cur = line_at(root, 10)
+    assert cur.property("current") is True
+    for away in (1, 2):
+        ahead, behind = line_at(root, 10 + away), line_at(root, 10 - away)
+        assert ahead.opacity() > behind.opacity() and ahead.scale() > behind.scale()
+    assert line_at(root, 11).opacity() >= 0.7 and line_at(root, 12).opacity() >= 0.5
+    # the current line sits in the upper part, leaving most of the room for what's next
+    assert cur.mapToItem(root, 0, 0).y() < root.height() * 0.33

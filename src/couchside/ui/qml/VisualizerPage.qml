@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 
-// The Visualizer (opened from Now Playing): the music drawn full-screen. Modes along the
-// bottom (Left/Right change it): Radial Pulse, Flow Lines, Bars, Edge Lights, and Party
-// (the song floating in the corner, lyrics, Up Next, over the edge lights). Top left:
+// The Visualizer (opened from Now Playing): the music drawn full-screen. Pictures along
+// the bottom (Left/Right change it): Radial Pulse, Flow Lines, Bars and Edge Lights; the
+// one chosen also moves behind the lyrics and Party on Now Playing. Top left:
 // where the beat comes from (OK picks another source), how hard it hits (Left/Right), its
 // colours (OK picks) and whether the edge lights lie over the picture (OK switches). After
 // a few seconds without a key the controls and the top bar fade away; the next key only
@@ -15,14 +15,11 @@ FocusScope {
     property var sheet: null
     property real position: 0
     property real topInset: 104 * u
-    property real qrBottom: 0            // where the guest QR card ends (0: not showing)
     property bool active: true           // the app is in front
     property bool chromeHidden: false    // the shell hides the top bar with it
 
     readonly property var modes: [{ id: "radial", label: "Radial Pulse" }, { id: "flow", label: "Flow Lines" },
-                                  { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" },
-                                  { id: "party", label: "Party" }]
-    readonly property bool party: app.visualizerMode === "party"
+                                  { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" }]
 
     function modeButton() {
         for (var i = 0; i < modeRepeater.count; i++)
@@ -68,24 +65,11 @@ FocusScope {
 
     Rectangle { anchors.fill: parent; color: "#050507" }
 
-    // Party draws the edge lights (when they're on in Settings) behind its words
     VizScene {
         id: scene
         anchors.fill: parent
-        visible: !page.party || app.partyLights
-        mode: page.party ? "edge" : app.visualizerMode
-        running: visible && page.visible && page.active
-    }
-
-    PartyView {
-        anchors.fill: parent
-        visible: page.party
-        u: page.u
-        position: page.position
-        topInset: page.topInset
-        qrBottom: page.qrBottom
+        mode: app.visualizerMode
         running: page.visible && page.active
-        cardShown: page.chromeHidden   // the controls above use that corner while they show
     }
 
     Text {
@@ -190,7 +174,7 @@ FocusScope {
                 return { id: c.id, label: c.label, checked: c.current }
             }), coloursChip, function(id) { app.setVisualizerColours(id) })
         }
-        Chip {   // edge lights over the other pictures (Edge Lights and Party have their own)
+        Chip {   // edge lights over the other pictures (Edge Lights has its own)
             id: edgesChip
             objectName: "edgesChip"
             u: page.u

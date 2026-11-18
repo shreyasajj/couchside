@@ -4,10 +4,11 @@ import QtQuick.Controls as QQC2
 import "nav.js" as Nav
 
 // The bar across the top of every screen: the name (and a warning when something is
-// broken: OK opens the logs), the tabs in the middle of the screen, then the speaker in use,
-// Guest and Settings. Left/Right move along it (no wrap-around), OK opens, Down goes back
-// to the screen (leaveDown). With guest mode on, the QR card takes the Guest button's
-// place in the corner and opens the guest list.
+// broken: OK opens the logs), the tabs in the middle of the screen, then the speaker in use
+// and Settings (guest mode is turned on from Now Playing's control row, or Settings). Left/Right move along it (no wrap-around), OK opens, Down goes back
+// to the screen (leaveDown). With guest mode on, the QR card shows and opens the guest list: top-right, or in the screen's bottom-right corner when
+// qrAtBottom (Now Playing). `hidden` fades the bar away (the Visualizer, Party); the QR card
+// stays, so guests can always scan it.
 FocusScope {
     id: bar
     property real u: 1
@@ -19,22 +20,25 @@ FocusScope {
     property string qrCaption: ""
     property string guestUrl: ""
     property string problem: ""          // something broke: the warning button shows
-    property bool dimmed: false          // the visualizer fades the bar out while nobody presses a key
+    property bool hidden: false          // faded away (the QR card stays)
+    property bool qrAtBottom: false      // the QR card in the bottom-right corner of the screen
+    property real screenHeight: 1080 * u
     signal go(string screen)
-    signal toggleGuest()
     signal leaveDown()
 
     implicitHeight: 104 * u
     // room the QR card takes below the bar: screens keep their top-right corner clear of it
-    readonly property real qrWidth: guestMode ? qrCard.width + 2 * 48 * u : 0
-    readonly property real qrBottom: guestMode ? qrCard.y + qrCard.height : 0
+    readonly property real qrWidth: guestMode && !qrAtBottom ? qrCard.width + 2 * 48 * u : 0
+    readonly property real qrBottom: guestMode && !qrAtBottom ? qrCard.y + qrCard.height : 0
+    // where the QR card starts when it is in the bottom corner (0: not there)
+    readonly property real qrTop: guestMode && qrAtBottom ? qrCard.y : 0
+    readonly property real barOpacity: hidden ? 0 : 1
 
     function order() {
         var list = []
         if (problemChip.visible) list.push(problemChip)
         for (var i = 0; i < tabRepeater.count; i++) list.push(tabRepeater.itemAt(i))
         list.push(speakerChip)
-        if (guestChip.visible) list.push(guestChip)
         list.push(settingsChip)
         if (qrCard.visible) list.push(qrCard)
         return list
@@ -42,7 +46,7 @@ FocusScope {
     function focusCurrent() {
         for (var i = 0; i < tabRepeater.count; i++)
             if (tabRepeater.itemAt(i).name === screen) { tabRepeater.itemAt(i).forceActiveFocus(); return }
-        var other = { speakers: speakerChip, settings: settingsChip, guests: guestMode ? qrCard : guestChip,
+        var other = { speakers: speakerChip, settings: settingsChip, guests: qrCard,
                       logs: problemChip }[screen]
         if (other && other.visible) other.forceActiveFocus()
         else if (tabRepeater.count > 0) tabRepeater.itemAt(0).forceActiveFocus()
@@ -64,6 +68,7 @@ FocusScope {
 
     Rectangle {  // the bar fades into the screen below it
         anchors.fill: parent
+        opacity: barRow.opacity
         gradient: Gradient {
             GradientStop { position: 0; color: "#eb07070b" }
             GradientStop { position: 1; color: "#0007070b" }
@@ -72,8 +77,11 @@ FocusScope {
 
     RowLayout {
         id: barRow
-        anchors { fill: parent; leftMargin: 48 * bar.u; rightMargin: 48 * bar.u + (bar.guestMode ? qrCard.width + 24 * bar.u : 0) }
+        anchors { fill: parent; leftMargin: 48 * bar.u; rightMargin: 48 * bar.u + (bar.qrWidth > 0 ? qrCard.width + 24 * bar.u : 0) }
         spacing: 24 * bar.u
+        opacity: bar.barOpacity
+        enabled: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.fadeMs } }
 
         Row {  // the name
             spacing: 14 * bar.u
@@ -130,15 +138,6 @@ FocusScope {
                 onClicked: bar.go("speakers")
             }
             Chip {
-                id: guestChip
-                objectName: "guestChip"
-                u: bar.u
-                visible: !bar.guestMode
-                iconName: "qr"
-                text: "Guest"
-                onClicked: bar.toggleGuest()
-            }
-            Chip {
                 id: settingsChip
                 objectName: "settingsChip"
                 u: bar.u
@@ -156,6 +155,8 @@ FocusScope {
         // the middle of the screen, unless a long speaker name (or the guest QR) needs that
         // room: then just left of the speaker button, never over the name
         anchors.verticalCenter: parent.verticalCenter
+        opacity: barRow.opacity
+        enabled: barRow.enabled
         x: Math.max(barRow.x + nameEnd.x + nameEnd.width + 24 * bar.u,
                     Math.min((bar.width - width) / 2, barRow.x + rightRow.x - 24 * bar.u - width))
         spacing: 4 * bar.u
@@ -212,7 +213,8 @@ FocusScope {
         objectName: "qrCard"
         visible: bar.guestMode
         u: bar.u
-        anchors { top: parent.top; right: parent.right; topMargin: 20 * bar.u; rightMargin: 48 * bar.u }
+        anchors { right: parent.right; rightMargin: 48 * bar.u }
+        y: bar.qrAtBottom ? bar.screenHeight - height - 40 * bar.u : 20 * bar.u
         rows: bar.qrRows
         caption: bar.qrCaption
         url: bar.guestUrl

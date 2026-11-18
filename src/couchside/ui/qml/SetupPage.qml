@@ -59,6 +59,7 @@ FocusScope {
         libreField.text = app.libretranslateUrl
         captionField.text = app.qrCaption
         publicUrlField.text = app.guestPublicUrl
+        guestPortField.text = app.guestPort
         playerNameField.text = app.playerName
         app.loadAudioDevices()
         app.loadCrossfade()
@@ -67,7 +68,7 @@ FocusScope {
     // Back while a field is being edited: stop editing and keep what was typed (the same as
     // the keyboard's Enter, which is awkward to reach on Bigscreen's keyboard); stay on the page.
     function handleBack() {
-        for (const f of [urlField, tokenField, deeplField, libreField, captionField, publicUrlField, playerNameField])
+        for (const f of [urlField, tokenField, deeplField, libreField, captionField, publicUrlField, guestPortField, playerNameField])
             if (f.editing) { f.stopEditing(); f.accepted(); return true }
         return false
     }
@@ -420,6 +421,14 @@ FocusScope {
                     inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
                     onAccepted: app.setGuestPublicUrl(text)
                 }
+                Note { text: "Guest page port — on this TV; phones need the new QR code after a change" }
+                TvField {
+                    id: guestPortField
+                    objectName: "guestPortField"
+                    placeholderText: "8780"
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    onAccepted: { app.setGuestPort(text); text = app.guestPort }
+                }
             }
 
             ColumnLayout {
@@ -538,10 +547,15 @@ FocusScope {
                     onActivated: app.visualizerEdges = !app.visualizerEdges
                 }
                 SettingRow {
-                    label: "Party lights"
-                    value: app.partyLights ? "On" : "Off"
-                    hint: "Party mode: colour along the screen edges that jumps on every beat"
-                    onActivated: app.partyLights = !app.partyLights
+                    id: vizPictureRow
+                    objectName: "vizPictureRow"
+                    readonly property var pictures: [{ id: "radial", label: "Radial Pulse" }, { id: "flow", label: "Flow Lines" },
+                                                     { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" }]
+                    label: "Picture"
+                    value: (pictures.filter(p => p.id === app.visualizerMode)[0] || pictures[0]).label
+                    hint: "The Visualizer, and what moves behind the lyrics and Party on Now Playing"
+                    onActivated: page.pick("Visualizer picture", pictures.map(p => ({ id: p.id, label: p.label, current: p.id === app.visualizerMode })),
+                                           vizPictureRow, function(id) { app.visualizerMode = id })
                 }
             }
 

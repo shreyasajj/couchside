@@ -100,19 +100,16 @@ def test_tabs_can_be_fewer(view):
     assert focused(view) == "speakerChip"
 
 
-def test_guest_button_turns_guest_mode_on_and_the_qr_card_replaces_it(view):
-    root = view.rootObject()
+def test_guest_mode_has_no_button_up_here_but_its_qr_card_opens_the_guest_list(view):
+    """The Guest button lives on Now Playing's control row; the bar only shows the QR card."""
     bar = named(view, "bar")
-    named(view, "guestChip").forceActiveFocus()
-    press(view, Qt.Key.Key_Return)
-    assert root.property("guestToggles") == 1
+    assert not [i for i in items(view.rootObject()) if i.objectName() == "guestChip"]
     bar.setProperty("guestMode", True)
     bar.setProperty("qrRows", ["101", "010", "101"])
     pump()
-    assert named(view, "guestChip").isVisible() is False
     named(view, "speakerChip").forceActiveFocus()
     press(view, Qt.Key.Key_Right)
-    assert focused(view) == "settingsChip"            # Guest is not in the way any more
+    assert focused(view) == "settingsChip"
     press(view, Qt.Key.Key_Right)
     assert focused(view) == "qrCard"
     press(view, Qt.Key.Key_Return)

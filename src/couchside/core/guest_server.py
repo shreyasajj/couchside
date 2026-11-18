@@ -27,7 +27,7 @@ from couchside.core.guests import GuestError, GuestSession, NotAdmin
 
 log = logging.getLogger(__name__)
 
-PORT = 8765
+PORT = 8780   # the default; Settings can change it (8765 is Bigscreen Bridge's)
 MAX_BODY = 16 * 1024
 MAX_SOCKETS = 100             # open WebSockets (each phone holds one)
 DEVICES_PER_ADDRESS = 3       # on the LAN: phones per network address (stops one phone

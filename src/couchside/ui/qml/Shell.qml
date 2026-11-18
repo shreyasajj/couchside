@@ -38,9 +38,8 @@ FocusScope {
         target: app; property: "vizVisible"
         value: shell.appActive && (shell.screen === "visualizer" || (shell.screen === "now" && nowPage.vizBehind))
     }
-    Binding { target: app; property: "queueVisible"   // Up Next shows on Now Playing and in Party too
-              value: shell.screen === "now" || shell.screen === "queue"
-                     || (shell.screen === "visualizer" && app !== null && app.visualizerMode === "party") }
+    Binding { target: app; property: "queueVisible"   // Up Next on Now Playing, and the queue
+              value: shell.screen === "now" || shell.screen === "queue" }
 
     // --- progress, ticked locally between server updates ---------------------------------
     property real position: 0
@@ -204,7 +203,7 @@ FocusScope {
             u: shell.u
             position: shell.position
             topInset: topBar.height
-            qrBottom: topBar.qrBottom
+            qrTop: topBar.qrTop
             active: shell.appActive
             sheet: actionSheet
             onOpenPage: (name) => shell.go(name)
@@ -228,7 +227,7 @@ FocusScope {
     Component { id: queueScreen; QueuePage { u: shell.u; sheet: actionSheet; topInset: topBar.height; qrWidth: topBar.qrWidth; qrBottom: topBar.qrBottom } }
     Component {
         id: visualizerScreen
-        VisualizerPage { u: shell.u; sheet: actionSheet; position: shell.position; topInset: topBar.height; qrBottom: topBar.qrBottom
+        VisualizerPage { u: shell.u; sheet: actionSheet; position: shell.position; topInset: topBar.height
                          active: shell.appActive }
     }
     Component {
@@ -259,13 +258,13 @@ FocusScope {
         qrCaption: app.qrCaption
         guestUrl: app.guestUrl
         problem: app.problem
-        // the visualizer hides it while nobody presses a key; it comes back with focus
-        readonly property bool hiddenByScreen: !activeFocus && loader.item !== null && loader.item.chromeHidden === true
-        opacity: hiddenByScreen ? 0 : 1
-        enabled: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: Theme.fadeMs } }
+        // the Visualizer (while nobody presses a key) and Party hide it; it comes back with
+        // focus. The guest QR stays, in the bottom-right corner on Now Playing.
+        hidden: !activeFocus && (shell.screen === "now" ? nowPage.chromeHidden
+                                                        : loader.item !== null && loader.item.chromeHidden === true)
+        qrAtBottom: shell.screen === "now"
+        screenHeight: shell.height
         onGo: (name) => shell.go(name)
-        onToggleGuest: app.toggleGuestMode()
         onLeaveDown: shell.leaveBar()
     }
 
