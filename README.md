@@ -162,9 +162,9 @@ every beat), **Flow Lines**, **Bars** (the spectrum), **Edge Lights** (the spect
 all four edges of the screen over a rim of light; each piece of the edge glows as bright as
 its own part of the music is loud, so bass lights up one corner and voices and cymbals
 light up further along; the colours run round the frame once every eight beats, so they speed up and slow down with the song's
-tempo, and LED strips that follow the screen move with it). The picture chosen here is also
+tempo, and LED strips that follow the screen move with it), or **Off**. The picture chosen here is also
 the one behind the lyrics and Party on Now Playing (or pick it in Settings → Visualizer →
-**Picture**). Top left: what it listens to (OK
+**Picture**); with Off they get the blurred cover instead and nothing listens for the beat. Top left: what it listens to (OK
 picks another source), **BEAT**, how hard the picture hits on each beat (Left/Right), and
 **Colours**: the theme's two colours, the whole rainbow, or a new colour on every beat,
 and **Edge lights** (OK switches): the Edge Lights border over Radial, Flow and Bars too. After a few seconds without a key the controls and the top bar fade away;
@@ -179,11 +179,14 @@ Settings → **Visualizer**:
 | Beat intensity | 0–2.4, how hard the Visualizer hits on a beat |
 | Colours | Theme colours, Rainbow, or Changes on the beat |
 | Edge lights on every picture | The Edge Lights border over the other pictures too (off by default) |
-| Picture | Radial Pulse, Flow Lines, Bars or Edge Lights: the Visualizer, and what moves behind the lyrics and Party |
+| Picture | Radial Pulse, Flow Lines, Bars, Edge Lights or Off: the Visualizer, and what moves behind the lyrics and Party |
 
 Couchside listens through PipeWire; nothing is recorded or sent anywhere. It listens only
 while Now Playing (with the beat pulse on, the lyrics over the visualizer, or Party) or the
-Visualizer is on screen and music plays. A chosen source that is unplugged falls back to what this TV plays.
+Visualizer is on screen and music plays. With another app in front Couchside stops
+everything that moves (the visualizer, the floating song card, the progress tick, listening
+for the beat) and only stays connected and keeps Sendspin playing; it all starts again
+when you come back. A chosen source that is unplugged falls back to what this TV plays.
 
 **Audio output** (Settings → This speaker): where this TV's music comes out. The list
 shows **Default**, then every PipeWire output by name (HDMI, analog, …), then the

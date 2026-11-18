@@ -9,6 +9,7 @@ Item {
     property real u: 1
     property bool running: true        // drift (on screen, app in front)
     readonly property real cover: 120 * u
+    readonly property bool drifting: driftAnim.running
 
     implicitWidth: 960 * u
     implicitHeight: cover
@@ -18,6 +19,7 @@ Item {
         width: card.width
         height: card.height
         SequentialAnimation on y {
+            id: driftAnim
             running: card.running && card.visible
             loops: Animation.Infinite
             YAnimator { from: 0; to: -10 * card.u; duration: 3200; easing.type: Easing.InOutSine }

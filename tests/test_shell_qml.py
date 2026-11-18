@@ -334,6 +334,56 @@ async def test_party_on_now_playing_hides_the_controls_and_keeps_the_music(ui):
     assert problems(messages) == []
 
 
+async def test_in_the_background_nothing_moves_and_it_all_comes_back(ui):
+    """Another app in front: no animation, no visualizer, no beat listening, no ticking
+    (only the connection and Sendspin keep going); back in front, everything moves again."""
+    view, ctl, messages = ui
+    give_words_and_a_queue(ctl)
+    ctl.lyricsShown = True
+    go(view, "now")
+    shell, card, viz = view.rootObject(), named(view, "songCard"), named(view, "lyricsViz")
+    assert card.property("drifting") is True and viz.property("running") is True
+    assert ctl.vizVisible is True and ctl.pulseVisible is True
+    shell.setProperty("appActive", False)
+    pump(0.2)
+    assert card.property("drifting") is False and viz.property("running") is False
+    assert ctl.vizVisible is False and ctl.pulseVisible is False
+    assert named(view, "positionTimer").property("running") is False
+    shell.setProperty("appActive", True)
+    pump(0.2)
+    assert card.property("drifting") is True and viz.property("running") is True
+    assert ctl.vizVisible is True and ctl.pulseVisible is True
+    go(view, "visualizer")
+    shell.setProperty("appActive", False)
+    pump(0.2)
+    assert named(view, "visualizerScene").property("running") is False
+    assert named(view, "idleTimer").property("running") is False
+    assert problems(messages) == []
+
+
+async def test_the_visualizer_can_be_switched_off(ui):
+    """Off: the blurred cover behind the lyrics and Party, nothing listening for the beat."""
+    view, ctl, messages = ui
+    give_words_and_a_queue(ctl)
+    ctl.visualizerMode = "off"
+    assert ctl.visualizerMode == "off"
+    ctl.lyricsShown = True
+    go(view, "now")
+    assert named(view, "lyricsViz") is None and ctl.vizVisible is False
+    named(view, "partyButton").forceActiveFocus()
+    press(view, Qt.Key.Key_Return)
+    assert named(view, "now").property("partyMode") is True and ctl.vizVisible is False
+    press(view, Qt.Key.Key_Down)
+    go(view, "visualizer")
+    assert "mode-off" in focus_path(view)              # the last choice on its screen
+    assert named(view, "visualizerScene").property("visible") is False
+    assert named(view, "vizOffNote").property("visible") is True
+    assert ctl.vizVisible is False
+    press(view, Qt.Key.Key_Left)
+    assert ctl.visualizerMode == "edge" and ctl.vizVisible is True
+    assert problems(messages) == []
+
+
 async def test_the_guest_button_is_on_now_playings_bottom_row(ui, monkeypatch):
     """Off: OK turns guest mode on. On: OK opens the guest list (turned off there)."""
     view, ctl, messages = ui
@@ -425,7 +475,9 @@ async def test_visualizer_modes_follow_left_and_right(ui):
     press(view, Qt.Key.Key_Right, 2)
     assert ctl.visualizerMode == "edge"
     press(view, Qt.Key.Key_Right, 5)
-    assert ctl.visualizerMode == "edge"        # stops at the last mode (Party is on Now Playing)
+    assert ctl.visualizerMode == "off"         # stops at the last choice (Party is on Now Playing)
+    press(view, Qt.Key.Key_Left)
+    assert ctl.visualizerMode == "edge"
     press(view, Qt.Key.Key_Up)
     assert "edgesChip" in focus_path(view)
     press(view, Qt.Key.Key_Return)

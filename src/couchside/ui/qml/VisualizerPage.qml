@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 
 // The Visualizer (opened from Now Playing): the music drawn full-screen. Pictures along
-// the bottom (Left/Right change it): Radial Pulse, Flow Lines, Bars and Edge Lights; the
-// one chosen also moves behind the lyrics and Party on Now Playing. Top left:
+// the bottom (Left/Right change it): Radial Pulse, Flow Lines, Bars, Edge Lights, or Off; the
+// one chosen also moves behind the lyrics and Party on Now Playing (Off: the blurred cover). Top left:
 // where the beat comes from (OK picks another source), how hard it hits (Left/Right), its
 // colours (OK picks) and whether the edge lights lie over the picture (OK switches). After
 // a few seconds without a key the controls and the top bar fade away; the next key only
@@ -19,7 +19,9 @@ FocusScope {
     property bool chromeHidden: false    // the shell hides the top bar with it
 
     readonly property var modes: [{ id: "radial", label: "Radial Pulse" }, { id: "flow", label: "Flow Lines" },
-                                  { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" }]
+                                  { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" },
+                                  { id: "off", label: "Off" }]
+    readonly property bool off: app.visualizerMode === "off"
 
     function modeButton() {
         for (var i = 0; i < modeRepeater.count; i++)
@@ -38,8 +40,9 @@ FocusScope {
     }
     Timer {
         id: idle
+        objectName: "idleTimer"
         interval: 4000
-        running: true
+        running: page.active
         // only while the remote is on this screen's controls (not on the top bar, not in a sheet)
         onTriggered: {
             var item = page.Window.activeFocusItem
@@ -67,15 +70,30 @@ FocusScope {
 
     VizScene {
         id: scene
+        objectName: "visualizerScene"
         anchors.fill: parent
+        visible: !page.off
         mode: app.visualizerMode
-        running: page.visible && page.active
+        running: visible && page.visible && page.active
+    }
+    Text {
+        objectName: "vizOffNote"
+        textFormat: Text.PlainText
+        anchors.centerIn: parent
+        width: parent.width * 0.6
+        visible: page.off
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        text: "Visualizer off: the blurred cover shows behind the lyrics and Party. Pick a picture below to turn it back on."
+        color: Theme.textDim
+        font.pixelSize: Theme.body * page.u
+        font.weight: Font.DemiBold
     }
 
     Text {
         textFormat: Text.PlainText
         anchors { horizontalCenter: parent.horizontalCenter; bottom: modeBar.top; bottomMargin: 36 * page.u }
-        visible: !app.isPlaying && !page.chromeHidden
+        visible: !app.isPlaying && !page.chromeHidden && !page.off
         text: app.title === "" ? "Play something to see it move" : "Paused — press play to see it move"
         color: Theme.textDim
         font.pixelSize: Theme.body * page.u
