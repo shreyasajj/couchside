@@ -46,12 +46,16 @@ FocusScope {
         // only while the remote is on this screen's controls (not on the top bar, not in a sheet)
         onTriggered: {
             var item = page.Window.activeFocusItem
-            if (!page.activeFocus || item === page || (page.sheet && page.sheet.visible)) return
+            if (!page.activeFocus || item === keySink || (page.sheet && page.sheet.visible)) return
             page.hiddenFrom = item
             page.chromeHidden = true
-            page.forceActiveFocus()   // the next key lands here: it only brings the controls back
+            keySink.forceActiveFocus()   // the next key lands here: it only brings the controls back
         }
     }
+    // Holds focus while the controls are away. (Focusing the page itself would hand focus straight
+    // back to the button that had it, which keeps it while it fades: Right would change the picture.)
+    // Keys pass through it to the page's Keys.onPressed.
+    Item { id: keySink; objectName: "keySink" }
     Connections {
         target: page.Window.window
         function onActiveFocusItemChanged() { if (!page.chromeHidden) page.poke() }

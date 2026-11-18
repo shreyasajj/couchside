@@ -133,6 +133,10 @@ FocusScope {
             focus: false
             // typing on a real keyboard: keep Bigscreen's on-screen keyboard out of the way
             Keys.onPressed: (event) => { if (Typing.typed(event)) Typing.hideKeyboard() }
+            // A TextField passes Enter on to its parent after `accepted`, and the field would
+            // take it as "start editing" again: finish here and keep the key.
+            Keys.onReturnPressed: (event) => { accepted(); event.accepted = true }
+            Keys.onEnterPressed: (event) => { accepted(); event.accepted = true }
             activeFocusOnTab: false
             font.pixelSize: 32 * page.u
             color: Theme.text

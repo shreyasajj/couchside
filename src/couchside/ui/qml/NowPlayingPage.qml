@@ -25,7 +25,9 @@ FocusScope {
     signal openVolume(Item opener)
     signal typed(string text)
 
-    function enterParty() { partyMode = true; page.forceActiveFocus() }
+    // In Party the next key lands on keySink and only brings the controls back. (Focusing the
+    // page would hand focus straight back to the hidden button that had it: OK would pause.)
+    function enterParty() { partyMode = true; keySink.forceActiveFocus() }
     function leaveParty() { partyMode = false; partyButton.forceActiveFocus() }
     function handleBack() { if (!partyMode) return false; leaveParty(); return true }
     onVisibleChanged: if (!visible) partyMode = false
@@ -267,6 +269,7 @@ FocusScope {
                 spacing: 28 * page.u
                 FocusButton {
                     id: shuffleButton
+                    objectName: "shuffleButton"
                     u: page.u
                     iconName: "shuffle"
                     text: app.shuffle ? "Shuffle on" : "Shuffle off"
@@ -276,6 +279,7 @@ FocusScope {
                 }
                 FocusButton {
                     id: repeatButton
+                    objectName: "repeatButton"
                     u: page.u
                     iconName: app.repeatMode === "one" ? "repeat-one" : "repeat"
                     text: app.repeatMode === "one" ? "Repeat one" : (app.repeatMode === "all" ? "Repeat all" : "Repeat off")
@@ -302,6 +306,7 @@ FocusScope {
                 spacing: 48 * page.u
                 FocusButton {
                     id: prevButton
+                    objectName: "prevButton"
                     anchors.verticalCenter: parent.verticalCenter
                     u: page.u
                     iconScale: 0.72
@@ -326,6 +331,7 @@ FocusScope {
                 }
                 FocusButton {
                     id: nextButton
+                    objectName: "nextButton"
                     anchors.verticalCenter: parent.verticalCenter
                     u: page.u
                     iconScale: 0.72
@@ -410,13 +416,15 @@ FocusScope {
         }
     }
 
-    // If the volume button disappears while focused, keep focus on the row.
+    // If the volume or lyrics button disappears while focused, keep focus on the row (not when
+    // Party hides the whole row: keySink has focus then).
     Connections {
         target: volumeButton
-        function onVisibleChanged() { if (!volumeButton.visible && page.activeFocus) playButton.forceActiveFocus() }
+        function onVisibleChanged() { if (!volumeButton.visible && volumeButton.activeFocus && !page.partyMode) playButton.forceActiveFocus() }
     }
     Connections {
         target: lyricsButton
-        function onVisibleChanged() { if (!lyricsButton.visible && page.activeFocus) playButton.forceActiveFocus() }
+        function onVisibleChanged() { if (!lyricsButton.visible && lyricsButton.activeFocus && !page.partyMode) playButton.forceActiveFocus() }
     }
+    Item { id: keySink; objectName: "partyKeySink" }   // holds focus in Party; keys pass to the page
 }
