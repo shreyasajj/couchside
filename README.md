@@ -60,13 +60,13 @@ From the Couchside tile, or `flatpak run io.github.shreyasajj.Couchside`.
 
 **Getting around.** A bar across the top of every screen has the tabs — Now Playing,
 Search, Queue — and, on the right, the speaker in use (opens
-Speakers), Guest, and Settings. Up from the top of any screen reaches the bar; Left/Right
+Speakers) and Settings. Up from the top of any screen reaches the bar; Left/Right
 move along it, OK opens, Down goes back to where you were. Back goes to Now Playing (from
 the Visualizer, Speakers, Guests or Settings: to the tab you came from); on Now Playing it asks before
 exiting.
 
 **Now Playing.** The cover, the song, its progress, and one row of controls: shuffle,
-repeat, previous, play/pause, next, volume, lyrics, visualizer, party. Left/Right move along the row, OK
+guest mode, previous, play/pause, next, volume, lyrics, visualizer, party. Left/Right move along the row, OK
 activates. On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
 Back closes it. **Up Next** (top right) lists the next songs; OK on it opens the Queue.
 Media keys (play/pause, next, previous) work anywhere.
@@ -103,10 +103,11 @@ Settings → **Lyrics**:
 With English underneath on, the playing song's lyrics are sent to the chosen service.
 Romanization is rule-based and approximate (Japanese kanji get Chinese readings).
 
-**Guest mode.** **Guest** in the top bar (or Settings → Guest mode → On) shows a QR code
+**Guest mode.** The **Guest mode** button on Now Playing (or Settings → Guest mode → On) shows a QR code
 on a white card (with your caption): in the bottom-right corner on Now Playing (it stays
 there in Party), in the top-right corner on the other screens. OK on the
-card opens the guest list, where guest mode is also turned off. Guests scan it, enter a name, and can search and add songs,
+card (or on the button, now called **Guests**) opens the guest list, where guest mode is
+also turned off. Guests scan it, enter a name, and can search and add songs,
 skip the playing song and boost one of their own songs to play next, within the limits
 you set (skips and boosts per guest, songs waiting per guest, wait between adds). Their
 songs play first come, first served, right after the current song (ahead of Music

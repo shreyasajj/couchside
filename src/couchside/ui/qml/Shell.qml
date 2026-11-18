@@ -265,7 +265,6 @@ FocusScope {
         qrAtBottom: shell.screen === "now"
         screenHeight: shell.height
         onGo: (name) => shell.go(name)
-        onToggleGuest: app.toggleGuestMode()
         onLeaveDown: shell.leaveBar()
     }
 

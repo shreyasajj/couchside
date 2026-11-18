@@ -334,6 +334,27 @@ async def test_party_on_now_playing_hides_the_controls_and_keeps_the_music(ui):
     assert problems(messages) == []
 
 
+async def test_the_guest_button_is_on_now_playings_bottom_row(ui, monkeypatch):
+    """Off: OK turns guest mode on. On: OK opens the guest list (turned off there)."""
+    view, ctl, messages = ui
+    toggles = []
+    monkeypatch.setattr(ctl, "toggleGuestMode", lambda: toggles.append(1))
+    go(view, "now")
+    assert named(view, "guestChip") is None                   # not in the top bar any more
+    press(view, Qt.Key.Key_Left, 2)                           # from play: previous, then Guest
+    assert "guestButton" in focus_path(view)
+    _x, y, _r, _b = box(named(view, "guestButton"))
+    assert abs(y - box(named(view, "playButton"))[1]) < 60    # on the row with play
+    press(view, Qt.Key.Key_Return)
+    assert toggles == [1] and screen(view) == "now"
+    named(view, "now").setProperty("guestOn", True)           # as if guest mode were on
+    pump(0.1)
+    named(view, "guestButton").forceActiveFocus()
+    press(view, Qt.Key.Key_Return)
+    assert screen(view) == "guests" and toggles == [1]
+    assert problems(messages) == []
+
+
 async def test_the_guest_qr_sits_bottom_right_on_now_playing_and_up_next_stays_up_top(ui):
     view, ctl, messages = ui
     give_words_and_a_queue(ctl)

@@ -17,6 +17,7 @@ FocusScope {
     property real topInset: 104 * u // the top bar
     property real qrTop: 0          // where the guest QR card starts, bottom-right (0: not showing)
     property bool partyMode: false
+    property bool guestOn: app.guestMode
     readonly property bool chromeHidden: partyMode   // the shell hides the top bar with it
     property bool active: true      // the app is in front
     property var sheet: null
@@ -250,8 +251,8 @@ FocusScope {
         }
         Item { width: 1; height: 40 * page.u; visible: controls.visible }   // room for the focused button's name
 
-        // Shuffle and repeat on the left, the transport in the middle, volume, lyrics, the
-        // visualizer and party on the right. Left/Right walks through all of them in order.
+        // Shuffle, repeat and guest mode on the left, the transport in the middle, volume,
+        // lyrics, the visualizer and party on the right. Left/Right walks through all of them in order.
         // Party hides them.
         Item {
             id: controls
@@ -278,8 +279,19 @@ FocusScope {
                     text: app.repeatMode === "one" ? "Repeat one" : (app.repeatMode === "all" ? "Repeat all" : "Repeat off")
                     active: app.repeatMode !== "off"
                     KeyNavigation.left: shuffleButton
-                    KeyNavigation.right: prevButton
+                    KeyNavigation.right: guestButton
                     onClicked: app.cycleRepeat()
+                }
+                FocusButton {   // off: turns guest mode on; on: the guest list (turned off there)
+                    id: guestButton
+                    objectName: "guestButton"
+                    u: page.u
+                    iconName: "qr"
+                    text: page.guestOn ? "Guests" : "Guest mode"
+                    active: page.guestOn
+                    KeyNavigation.left: repeatButton
+                    KeyNavigation.right: prevButton
+                    onClicked: page.guestOn ? page.openPage("guests") : app.toggleGuestMode()
                 }
             }
 
@@ -293,7 +305,7 @@ FocusScope {
                     iconScale: 0.72
                     iconName: "previous"
                     text: "Previous"
-                    KeyNavigation.left: repeatButton
+                    KeyNavigation.left: guestButton
                     KeyNavigation.right: playButton
                     onClicked: app.previous()
                 }

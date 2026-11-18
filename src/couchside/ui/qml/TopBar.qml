@@ -4,10 +4,9 @@ import QtQuick.Controls as QQC2
 import "nav.js" as Nav
 
 // The bar across the top of every screen: the name (and a warning when something is
-// broken: OK opens the logs), the tabs in the middle of the screen, then the speaker in use,
-// Guest and Settings. Left/Right move along it (no wrap-around), OK opens, Down goes back
-// to the screen (leaveDown). With guest mode on, the QR card takes the Guest button's
-// place and opens the guest list: top-right, or in the screen's bottom-right corner when
+// broken: OK opens the logs), the tabs in the middle of the screen, then the speaker in use
+// and Settings (guest mode is turned on from Now Playing's control row, or Settings). Left/Right move along it (no wrap-around), OK opens, Down goes back
+// to the screen (leaveDown). With guest mode on, the QR card shows and opens the guest list: top-right, or in the screen's bottom-right corner when
 // qrAtBottom (Now Playing). `hidden` fades the bar away (the Visualizer, Party); the QR card
 // stays, so guests can always scan it.
 FocusScope {
@@ -25,7 +24,6 @@ FocusScope {
     property bool qrAtBottom: false      // the QR card in the bottom-right corner of the screen
     property real screenHeight: 1080 * u
     signal go(string screen)
-    signal toggleGuest()
     signal leaveDown()
 
     implicitHeight: 104 * u
@@ -41,7 +39,6 @@ FocusScope {
         if (problemChip.visible) list.push(problemChip)
         for (var i = 0; i < tabRepeater.count; i++) list.push(tabRepeater.itemAt(i))
         list.push(speakerChip)
-        if (guestChip.visible) list.push(guestChip)
         list.push(settingsChip)
         if (qrCard.visible) list.push(qrCard)
         return list
@@ -49,7 +46,7 @@ FocusScope {
     function focusCurrent() {
         for (var i = 0; i < tabRepeater.count; i++)
             if (tabRepeater.itemAt(i).name === screen) { tabRepeater.itemAt(i).forceActiveFocus(); return }
-        var other = { speakers: speakerChip, settings: settingsChip, guests: guestMode ? qrCard : guestChip,
+        var other = { speakers: speakerChip, settings: settingsChip, guests: qrCard,
                       logs: problemChip }[screen]
         if (other && other.visible) other.forceActiveFocus()
         else if (tabRepeater.count > 0) tabRepeater.itemAt(0).forceActiveFocus()
@@ -139,15 +136,6 @@ FocusScope {
                 text: bar.speakerName !== "" ? bar.speakerName : "Speakers"
                 Accessible.name: "Playing on " + text
                 onClicked: bar.go("speakers")
-            }
-            Chip {
-                id: guestChip
-                objectName: "guestChip"
-                u: bar.u
-                visible: !bar.guestMode
-                iconName: "qr"
-                text: "Guest"
-                onClicked: bar.toggleGuest()
             }
             Chip {
                 id: settingsChip
