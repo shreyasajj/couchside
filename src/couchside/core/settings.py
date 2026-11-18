@@ -21,7 +21,6 @@ class AppSettings:
     qr_caption: str = "Scan to add songs"
     lyrics_enabled: bool = True
     visualizer_enabled: bool = True
-    party_lights: bool = True  # party mode: colour along the screen edges
     lyrics_size: str = "medium"  # small | medium | large
     lyrics_language: str = "romanized"  # romanized | original | english_only
     lyrics_translate: bool = False  # English translation under each line
@@ -41,7 +40,7 @@ class AppSettings:
     sendspin_delay_ms: int = 0
     visualizer_source: str | None = None       # None = what this TV is playing
     visualizer_intensity: float = 1.0          # 0..2.4: how hard the visualizer hits on a beat
-    visualizer_mode: str = "radial"            # radial | flow | bars | edge | party
+    visualizer_mode: str = "radial"            # radial | flow | bars | edge (also behind Now Playing)
     visualizer_colours: str = "accent"         # accent | rainbow | beat (a new colour on each beat)
     visualizer_edges: bool = False             # edge lights over every picture, not only their own mode
     lyrics_shown: bool = False                 # Now Playing shows the words in place of the cover

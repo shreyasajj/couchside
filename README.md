@@ -5,7 +5,7 @@ It turns the TV into a Music Assistant speaker (through a bundled
 [Sendspin](https://www.sendspin-audio.com) client) and a remote-friendly player.
 
 Status: **Phase 8** (all phases): connect, bundled speaker, Now Playing (blurred artwork,
-progress, shuffle, repeat, volume, synced lyrics, a beat pulse), party mode, search with
+progress, shuffle, repeat, volume, synced lyrics, a beat pulse, party mode), search with
 recently played/added, the queue, the speaker and group picker, guest mode, admin access,
 in-app updates and Sendspin settings (see [Agents.md](Agents.md) and the [design](docs/superpowers/specs/2026-11-10-couchside-design.md)).
 
@@ -66,16 +66,23 @@ the Visualizer, Speakers, Guests or Settings: to the tab you came from); on Now 
 exiting.
 
 **Now Playing.** The cover, the song, its progress, and one row of controls: shuffle,
-repeat, previous, play/pause, next, volume, lyrics, visualizer. Left/Right move along the row, OK
+repeat, previous, play/pause, next, volume, lyrics, visualizer, party. Left/Right move along the row, OK
 activates. On the volume button, OK opens a volume bar: Left/Right change it by 5, OK or
 Back closes it. **Up Next** (top right) lists the next songs; OK on it opens the Queue.
 Media keys (play/pause, next, previous) work anywhere.
 
+**Party.** The Party button on Now Playing hides the top bar and the buttons and keeps the
+music on screen: the song (or the lyrics, if they're on), Up Next, the progress bar and
+the guest QR, with the visualizer picture moving behind. Any key on the remote (or Back)
+brings the controls back; play/pause, next, previous and volume keys keep working while
+they're hidden.
+
 **Lyrics.** The Lyrics button on Now Playing moves the song into the top-left corner
 (a small cover with the title and artist, floating gently) and puts its time-synced lyrics
-in the middle: the line being sung large and in colour, the others fading away above and
-below, scrolling with the music. Up Next stays on the right and the controls (volume too)
-stay at the bottom. The visualizer moves behind the words, dimmed, with its edge lights at
+across the screen: the line being sung large and in colour a third of the way down, the
+lines coming up below it brighter than the ones already sung, scrolling with the music. Up
+Next shrinks to the next song (with who added it) in the top-right corner and the controls
+(volume too) stay at the bottom. The visualizer moves behind the words, dimmed, with its edge lights at
 full strength (Settings → Lyrics → Visualizer behind the lyrics; off shows the blurred
 cover). The button again brings the cover back; the choice is remembered. Songs without
 synced lyrics say so. Lyrics come from the
@@ -97,7 +104,8 @@ With English underneath on, the playing song's lyrics are sent to the chosen ser
 Romanization is rule-based and approximate (Japanese kanji get Chinese readings).
 
 **Guest mode.** **Guest** in the top bar (or Settings → Guest mode → On) shows a QR code
-on a white card (with your caption) in the top-right corner of every screen. OK on the
+on a white card (with your caption): in the bottom-right corner on Now Playing (it stays
+there in Party), in the top-right corner on the other screens. OK on the
 card opens the guest list, where guest mode is also turned off. Guests scan it, enter a name, and can search and add songs,
 skip the playing song and boost one of their own songs to play next, within the limits
 you set (skips and boosts per guest, songs waiting per guest, wait between adds). Their
@@ -146,25 +154,20 @@ The other screens:
   speaker / Stop syncing; groups also have Edit members and Delete group. "New group"
   makes a synced group from two or more speakers. Couchside always starts on this TV.
 
-**Visualizer.** The sparkle button on Now Playing opens the Visualizer, which draws the
+**Visualizer.** The visualizer button on Now Playing opens the Visualizer, which draws the
 music full-screen. Left/Right on the row at
 the bottom change the picture: **Radial Pulse** (turning spokes that send a ring out on
 every beat), **Flow Lines**, **Bars** (the spectrum), **Edge Lights** (the spectrum growing in from
 all four edges of the screen over a rim of light; each piece of the edge glows as bright as
 its own part of the music is loud, so bass lights up one corner and voices and cymbals
 light up further along; the colours run round the frame once every eight beats, so they speed up and slow down with the song's
-tempo, and LED strips that follow the screen move with it), and **Party**. Top left: what it listens to (OK
+tempo, and LED strips that follow the screen move with it). The picture chosen here is also
+the one behind the lyrics and Party on Now Playing (or pick it in Settings → Visualizer →
+**Picture**). Top left: what it listens to (OK
 picks another source), **BEAT**, how hard the picture hits on each beat (Left/Right), and
 **Colours**: the theme's two colours, the whole rainbow, or a new colour on every beat,
 and **Edge lights** (OK switches): the Edge Lights border over Radial, Flow and Bars too. After a few seconds without a key the controls and the top bar fade away;
 any key brings them back.
-
-**Party** mode: laid out like Now Playing with its lyrics on, without the controls. The
-song floats small in the top-left corner (once the controls fade away), the lyrics fill the
-middle and bounce with the music over a glow, and Up Next sits on the right. Songs without
-lyrics show their cover bouncing instead. **Party lights** (Settings → Visualizer, on by
-default) put the Edge Lights round it, so LED strips that follow the screen dance with the
-music.
 
 Settings → **Visualizer**:
 
@@ -175,10 +178,10 @@ Settings → **Visualizer**:
 | Beat intensity | 0–2.4, how hard the Visualizer hits on a beat |
 | Colours | Theme colours, Rainbow, or Changes on the beat |
 | Edge lights on every picture | The Edge Lights border over the other pictures too (off by default) |
-| Party lights | The Edge Lights round Party mode |
+| Picture | Radial Pulse, Flow Lines, Bars or Edge Lights: the Visualizer, and what moves behind the lyrics and Party |
 
 Couchside listens through PipeWire; nothing is recorded or sent anywhere. It listens only
-while Now Playing (with the beat pulse on, or with the lyrics over the visualizer) or the
+while Now Playing (with the beat pulse on, the lyrics over the visualizer, or Party) or the
 Visualizer is on screen and music plays. A chosen source that is unplugged falls back to what this TV plays.
 
 **Audio output** (Settings → This speaker): where this TV's music comes out. The list

@@ -109,7 +109,7 @@ async def test_every_screen_loads_without_qml_errors(ui):
         if SHOTS:
             pump(0.4)
             view.grabWindow().save(str(Path(SHOTS) / f"{name}.png"))
-    for mode in ("flow", "bars", "edge", "party", "radial"):
+    for mode in ("flow", "bars", "edge", "radial"):
         ctl.visualizerMode = mode
         go(view, "visualizer")
         pump(0.2)
@@ -283,31 +283,75 @@ async def test_with_lyrics_the_song_floats_top_left_and_up_next_stays_right(ui):
     assert problems(messages) == []
 
 
-async def test_party_puts_the_song_top_left_lyrics_in_the_middle_and_up_next_right(ui):
+def guest_mode_on(view):
+    bar = named(view, "topBar")
+    bar.setProperty("guestMode", True)
+    bar.setProperty("qrRows", ["1010101", "0101010"] * 10)
+    pump(0.3)
+
+
+def shown(item):
+    """On screen: visible, and neither it nor anything it sits in is faded out."""
+    while item is not None:
+        if not item.isVisible() or item.opacity() < 0.99:
+            return False
+        item = item.parentItem()
+    return True
+
+
+async def test_party_on_now_playing_hides_the_controls_and_keeps_the_music(ui):
+    """Party is a switch on Now Playing: the top bar and the buttons go, the song, the
+    words, Up Next, the progress bar and the guest QR stay; a key brings the controls back."""
     view, ctl, messages = ui
     give_words_and_a_queue(ctl)
-    ctl.visualizerMode = "party"
-    go(view, "visualizer")
-    card, words, up_next = named(view, "partyCard"), named(view, "partyWords"), named(view, "partyUpNext")
-    assert words.property("visible") is True and up_next.property("visible") is True
-    assert card.property("visible") is False           # the controls use that corner while they show
-    named(view, "visualizerPage").setProperty("chromeHidden", True)   # the controls fade away
-    pump(0.5)
-    assert card.property("visible") is True
-    assert apart(card, words) and apart(words, up_next) and apart(card, up_next)
-    assert box(card)[0] < 200 and box(card)[1] < 200
-    left, _t, right, _b = box(words)
-    assert abs((left + right) / 2 - 960) < 2           # centred on the screen
-    assert right - left > 1500                         # Up Next is one song: the words get the width
-    assert words.height() > 500                        # and most of the screen's height
-    assert up_next.property("shown") == 1 and credit_in(up_next) == "Added by Priya"
-    assert up_next.property("activeFocusOnTab") is False   # only to look at
-    assert ctl.queueVisible is True                     # the queue loads for Up Next
-    ctl.visualizerMode = "bars"
-    pump(0.1)
-    assert ctl.queueVisible is False
+    ctl.lyricsShown = True
+    go(view, "now")
+    guest_mode_on(view)
+    party = named(view, "partyButton")
+    party.forceActiveFocus()
+    press(view, Qt.Key.Key_Return)
+    pump(0.6)
+    now = named(view, "now")
+    assert now.property("partyMode") is True
+    assert not shown(named(view, "playButton")) and not shown(named(view, "volumeButton"))
+    assert not shown(named(view, "tabRow"))                     # the top bar is away
+    for name in ("songCard", "words", "upNext", "progress", "qrCard"):
+        assert shown(named(view, name)), name                   # the music and the QR stay
+    assert ctl.vizVisible is True                               # the chosen picture behind
+    left, _t, right, _b = box(named(view, "words"))
+    assert right - left > 1500 and abs((left + right) / 2 - 960) < 2
     if SHOTS:
-        view.grabWindow().save(str(Path(SHOTS) / "visualizer-party-layout.png"))
+        view.grabWindow().save(str(Path(SHOTS) / "now-party.png"))
+    press(view, Qt.Key.Key_Down)                                # any key: the controls come back
+    pump(0.6)
+    assert now.property("partyMode") is False and "partyButton" in focus_path(view)
+    assert shown(named(view, "playButton")) and shown(named(view, "tabRow"))
+    press(view, Qt.Key.Key_Return)                              # party again, then Back
+    pump(0.6)
+    back(view)
+    assert now.property("partyMode") is False and screen(view) == "now"
+    assert named(view, "exitConfirm") is None or not named(view, "exitConfirm").property("visible")
+    assert problems(messages) == []
+
+
+async def test_the_guest_qr_sits_bottom_right_on_now_playing_and_up_next_stays_up_top(ui):
+    view, ctl, messages = ui
+    give_words_and_a_queue(ctl)
+    ctl.lyricsShown = True
+    go(view, "now")
+    guest_mode_on(view)
+    qr, up_next, words = named(view, "qrCard"), named(view, "upNext"), named(view, "words")
+    x0, y0, x1, y1 = box(qr)
+    assert x1 > 1800 and y1 > 1000                    # the bottom-right corner
+    assert box(up_next)[1] < 200                      # Up Next stays at the top
+    assert apart(qr, words) and apart(qr, named(view, "volumeButton")) and apart(qr, named(view, "partyButton"))
+    left, _t, right, _b = box(words)
+    assert right - left > 1500                        # the words keep their width
+    go(view, "queue")                                 # elsewhere it stays top-right
+    assert box(named(view, "qrCard"))[1] < 100
+    if SHOTS:
+        go(view, "now")
+        view.grabWindow().save(str(Path(SHOTS) / "now-qr-corner.png"))
     assert problems(messages) == []
 
 
@@ -360,7 +404,7 @@ async def test_visualizer_modes_follow_left_and_right(ui):
     press(view, Qt.Key.Key_Right, 2)
     assert ctl.visualizerMode == "edge"
     press(view, Qt.Key.Key_Right, 5)
-    assert ctl.visualizerMode == "party"       # stops at the last mode
+    assert ctl.visualizerMode == "edge"        # stops at the last mode (Party is on Now Playing)
     press(view, Qt.Key.Key_Up)
     assert "edgesChip" in focus_path(view)
     press(view, Qt.Key.Key_Return)

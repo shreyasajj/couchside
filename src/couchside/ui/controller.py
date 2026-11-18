@@ -67,7 +67,7 @@ ACCENTS = (
     ("violet", "Violet", "#7c5cff", "#b14dff"),
     ("gold-green", "Gold and green", "#ffd23d", "#23d18b"),
 )
-VISUALIZER_MODES = ("radial", "flow", "bars", "edge", "party")
+VISUALIZER_MODES = ("radial", "flow", "bars", "edge")   # Party is a switch on Now Playing
 # what the visualizer is painted with: the look's two colours, the whole colour wheel, or
 # one colour family that takes a step round the wheel on every beat
 VISUALIZER_COLOURS = (("accent", "Theme colours"), ("rainbow", "Rainbow"), ("beat", "Changes on the beat"))
@@ -94,7 +94,7 @@ class AppController(QObject):
     levelChanged = Signal()       # audioPulse (up to 20 a second while listening)
     spectrumChanged = Signal()    # spectrum, vizBeat, vizEnergy (30 a second on the Visualizer screen)
     accentChanged = Signal()
-    beatChanged = Signal()        # beatHue (party mode's colour turns on every beat)
+    beatChanged = Signal()        # beatHue (the colour turns on every beat)
     qrChanged = Signal()
     healthChanged = Signal()      # problem, problems (the warning button)
     logsChanged = Signal()        # sendspinLog, appLog (the Logs screen)
@@ -1557,7 +1557,7 @@ class AppController(QObject):
     def appLog(self) -> str:
         return self._app_log
 
-    # --- visualizer and party mode ---------------------------------------------------
+    # --- visualizer -----------------------------------------------------------------
     @Property(bool, notify=pulseChanged)
     def visualizerEnabled(self) -> bool:
         return self._settings.visualizer_enabled
@@ -1645,6 +1645,8 @@ class AppController(QObject):
     @Property(str, notify=pulseChanged)
     def visualizerMode(self) -> str:
         mode = self._settings.visualizer_mode
+        if mode == "party":   # saved when Party was one of the pictures: it drew the edge lights
+            return "edge"
         return mode if mode in VISUALIZER_MODES else VISUALIZER_MODES[0]
 
     @visualizerMode.setter
@@ -1708,27 +1710,17 @@ class AppController(QObject):
         screen all the time)."""
         return self._shown_level
 
-    @Property(bool, notify=pulseChanged)
-    def partyLights(self) -> bool:
-        return self._settings.party_lights
-
-    @partyLights.setter
-    def partyLights(self, on: bool) -> None:
-        self._settings.party_lights = bool(on)
-        save_settings(self._settings)
-        self.pulseChanged.emit()
-
     @Property(float, notify=levelChanged)
     def lightPulse(self) -> float:
-        """0..1 for party mode's edge lights: full on each beat, then falling over about
+        """0..1 for the edge lights: full on each beat, then falling over about
         half a second. Slower than audioPulse on purpose: lights that copy the screen
         smooth what they see, and a shorter flash never reaches them."""
         return self._shown_light
 
     @Property(float, notify=beatChanged)
     def beatHue(self) -> float:
-        """0..1: a colour that takes a step round the colour wheel on every beat. Party
-        mode paints the screen edges with it, so lights that follow the screen dance too."""
+        """0..1: a colour that takes a step round the colour wheel on every beat (the
+        visualizer's "beat" colours), so lights that follow the screen dance too."""
         return self._beat_hue
 
     def _want_listening(self) -> bool:

@@ -4,24 +4,35 @@ import "typing.js" as Typing
 import "queue.js" as Queue
 
 // Now Playing: blurred artwork behind, the cover in the middle, then the song, its
-// progress and one row of controls. Up Next sits top-right (under the guest QR when that
-// is showing). The Lyrics button moves the song up into the top-left corner (small,
-// floating) and puts the words in the middle, with the visualizer moving behind them;
-// Up Next and the controls stay.
+// progress and one row of controls. Up Next sits top-right; the guest QR (in the top bar)
+// takes the bottom-right corner. The Lyrics button moves the song up into the top-left
+// corner (small, floating) and puts the words in the middle, with the visualizer moving
+// behind them; Up Next and the controls stay. Party hides the top bar and the buttons and
+// keeps the music: the song, the words, Up Next, the progress bar and the QR, over the
+// visualizer. Any key (or Back) brings the controls back; media keys keep working.
 FocusScope {
     id: page
     property real u: 1
     property real position: 0       // seconds into the song (the shell ticks it)
     property real topInset: 104 * u // the top bar
-    property real qrBottom: 0       // where the guest QR card ends (0: not showing)
+    property real qrTop: 0          // where the guest QR card starts, bottom-right (0: not showing)
+    property bool partyMode: false
+    readonly property bool chromeHidden: partyMode   // the shell hides the top bar with it
     property bool active: true      // the app is in front
     property var sheet: null
     signal openPage(string name)
     signal openVolume(Item opener)
     signal typed(string text)
 
-    // letters from a keyboard remote open Search with them
+    function enterParty() { partyMode = true; page.forceActiveFocus() }
+    function leaveParty() { partyMode = false; partyButton.forceActiveFocus() }
+    function handleBack() { if (!partyMode) return false; leaveParty(); return true }
+    onVisibleChanged: if (!visible) partyMode = false
+
+    // letters from a keyboard remote open Search with them; in Party any key brings the
+    // controls back (and does nothing else)
     Keys.onPressed: (event) => {
+        if (partyMode) { leaveParty(); event.accepted = true; return }
         var t = Typing.typed(event)
         if (t) { page.typed(t); event.accepted = true }
     }
@@ -32,7 +43,8 @@ FocusScope {
 
     // --- lyrics in place of the cover ------------------------------------------------------
     readonly property bool showLyrics: app.lyricsShown && app.lyricsEnabled && hasMedia
-    readonly property bool vizBehind: showLyrics && app.lyricsVisualizer   // the shell listens for this
+    // the shell listens for this: the visualizer behind the words, and in Party
+    readonly property bool vizBehind: (showLyrics && app.lyricsVisualizer) || (partyMode && app.visualizerEnabled)
     // Keep the last song's words for a moment while the next song's are looked up (cache
     // hits take one event-loop turn, LRCLIB a second or two); give up after 1.5 s.
     property bool wordsShown: false
@@ -49,7 +61,7 @@ FocusScope {
     readonly property var upcoming: Queue.upcoming(app.queueRows,
         { title: app.nextTitle, artist: app.nextArtist, imageUrl: app.nextArtUrl }, function(s) { return app.formatTime(s) })
 
-    // behind the words: the visualizer (Edge Lights stands in for Party here). Its
+    // behind the words and in Party: the visualizer picture chosen on its screen. Its
     // pictures are dimmed so the words stay the brightest thing, and darker still under the
     // controls; the edge lights keep their full strength.
     Loader {
@@ -63,7 +75,7 @@ FocusScope {
                 anchors.fill: parent
                 dim: 0.6
                 shade: true
-                mode: app.visualizerMode === "party" ? "edge" : app.visualizerMode
+                mode: app.visualizerMode
                 running: page.visible && page.active
             }
         }
@@ -143,7 +155,9 @@ FocusScope {
         // clear of it beside it instead, as much room on the left as it takes on the right
         readonly property real cardBottom: songCard.y + songCard.height
         readonly property bool under: !upNext.visible || upNext.y + upNext.height < cardBottom + 120 * page.u
-        anchors { horizontalCenter: parent.horizontalCenter; bottom: block.top; bottomMargin: 20 * page.u }
+        // above the controls, and above the guest QR in the bottom corner
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: block.top
+                  bottomMargin: 20 * page.u + (page.qrTop > 0 ? Math.max(0, block.y - page.qrTop + 16 * page.u) : 0) }
         anchors.top: parent.top
         anchors.topMargin: (under && upNext.visible ? Math.max(cardBottom, upNext.y + upNext.height) : cardBottom) + 32 * page.u
         width: parent.width - 2 * (under ? Theme.margin * page.u : parent.width - upNext.x + 48 * page.u)
@@ -169,16 +183,16 @@ FocusScope {
         }
     }
 
-    // --- up next (top-right; under the guest QR when that is showing) ------------------
+    // --- up next (top-right) ---------------------------------------------------------------
     UpNext {
         id: upNext
         objectName: "upNext"
         u: page.u
         anchors { right: parent.right; rightMargin: 48 * page.u }
-        y: page.qrBottom > 0 ? page.qrBottom + 16 * page.u : page.topInset + 20 * page.u
+        y: page.topInset + 20 * page.u
         rows: page.upcoming
         visible: rows.length > 0
-        maxRows: page.showLyrics ? 1 : page.qrBottom > 0 ? 3 : 4
+        maxRows: page.showLyrics ? 1 : 4
         onActivated: page.openPage("queue")
         Keys.onDownPressed: partyButton.forceActiveFocus()
         Keys.onLeftPressed: playButton.forceActiveFocus()
@@ -227,19 +241,23 @@ FocusScope {
         }
         Item { width: 1; height: 30 * page.u }
         TrackProgress {
+            objectName: "progress"
             width: parent.width
             u: page.u
             opacity: page.hasMedia ? 1 : 0
             position: page.position
             duration: app.duration
         }
-        Item { width: 1; height: 40 * page.u }   // room for the focused button's name
+        Item { width: 1; height: 40 * page.u; visible: controls.visible }   // room for the focused button's name
 
-        // Shuffle and repeat on the left, the transport in the middle, volume and party
-        // on the right. Left/Right walks through all of them in that order.
+        // Shuffle and repeat on the left, the transport in the middle, volume, lyrics, the
+        // visualizer and party on the right. Left/Right walks through all of them in order.
+        // Party hides them.
         Item {
+            id: controls
             width: parent.width
             height: playButton.height
+            visible: !page.partyMode
 
             Row {
                 anchors { left: parent.left; verticalCenter: parent.verticalCenter }
@@ -281,6 +299,7 @@ FocusScope {
                 }
                 FocusButton {
                     id: playButton
+                    objectName: "playButton"
                     anchors.verticalCenter: parent.verticalCenter
                     u: page.u
                     primary: true
@@ -299,7 +318,7 @@ FocusScope {
                     iconName: "next"
                     text: "Next"
                     KeyNavigation.left: playButton
-                    KeyNavigation.right: volumeButton.visible ? volumeButton : (lyricsButton.visible ? lyricsButton : partyButton)
+                    KeyNavigation.right: volumeButton.visible ? volumeButton : (lyricsButton.visible ? lyricsButton : vizButton)
                     onClicked: app.next()
                 }
             }
@@ -309,6 +328,7 @@ FocusScope {
                 spacing: 16 * page.u
                 FocusButton {
                     id: volumeButton
+                    objectName: "volumeButton"
                     anchors.verticalCenter: parent.verticalCenter
                     u: page.u
                     visible: app.hasVolume
@@ -317,7 +337,7 @@ FocusScope {
                               : app.volume < 67 ? "volume-low" : "volume-high"
                     text: "Volume " + app.volume
                     KeyNavigation.left: nextButton
-                    KeyNavigation.right: lyricsButton.visible ? lyricsButton : partyButton
+                    KeyNavigation.right: lyricsButton.visible ? lyricsButton : vizButton
                     Keys.onUpPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus(); else event.accepted = false }
                     onClicked: page.openVolume(volumeButton)
                 }
@@ -344,21 +364,33 @@ FocusScope {
                     text: app.lyricsShown ? "Hide lyrics" : "Lyrics"
                     active: app.lyricsShown
                     KeyNavigation.left: volumeButton.visible ? volumeButton : nextButton
-                    KeyNavigation.right: partyButton
+                    KeyNavigation.right: vizButton
                     Keys.onUpPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus(); else event.accepted = false }
                     onClicked: app.lyricsShown = !app.lyricsShown
                 }
                 FocusButton {
-                    id: partyButton
+                    id: vizButton
                     objectName: "visualizerButton"
                     anchors.verticalCenter: parent.verticalCenter
                     u: page.u
-                    iconName: "party"
+                    iconName: "visualizer"
                     text: "Visualizer"
                     KeyNavigation.left: lyricsButton.visible ? lyricsButton : (volumeButton.visible ? volumeButton : nextButton)
-                    Keys.onRightPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus() }
+                    KeyNavigation.right: partyButton
                     Keys.onUpPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus(); else event.accepted = false }
                     onClicked: page.openPage("visualizer")
+                }
+                FocusButton {
+                    id: partyButton
+                    objectName: "partyButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    u: page.u
+                    iconName: "party"
+                    text: "Party"
+                    KeyNavigation.left: vizButton
+                    Keys.onRightPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus() }
+                    Keys.onUpPressed: (event) => { if (upNext.visible) upNext.forceActiveFocus(); else event.accepted = false }
+                    onClicked: page.enterParty()
                 }
             }
         }

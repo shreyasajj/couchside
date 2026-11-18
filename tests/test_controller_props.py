@@ -1050,10 +1050,17 @@ def test_visualizer_intensity_and_mode(ctl):
     assert ctl.visualizerIntensity == 0.5 and load_settings().visualizer_intensity == 0.5
     ctl.visualizerIntensity = -1
     assert ctl.visualizerIntensity == 0.0
-    ctl.visualizerMode = "party"
-    assert ctl.visualizerMode == "party" and load_settings().visualizer_mode == "party"
+    ctl.visualizerMode = "edge"
+    assert ctl.visualizerMode == "edge" and load_settings().visualizer_mode == "edge"
+    ctl.visualizerMode = "party"                 # Party is on Now Playing now, not a picture
+    assert ctl.visualizerMode == "edge"
     ctl.visualizerMode = "nope"
-    assert ctl.visualizerMode == "party"
+    assert ctl.visualizerMode == "edge"
+
+
+def test_a_saved_party_mode_shows_edge_lights(ctl):
+    ctl._settings.visualizer_mode = "party"      # saved before Party moved to Now Playing
+    assert ctl.visualizerMode == "edge"
 
 
 def test_an_unknown_saved_mode_shows_radial(ctl):
@@ -1148,16 +1155,6 @@ def test_party_lights_hold_each_beat_longer_than_the_glow(pulse_ctl):
     ctl._poll_pulse()
     ctl.pulseVisible = False                # listening stops: lights go dark at once
     assert ctl.lightPulse == 0.0
-
-
-def test_party_lights_can_be_switched_off_and_stay_off(pulse_ctl):
-    from couchside.core.settings import load_settings
-    ctl = pulse_ctl
-    seen = []
-    ctl.pulseChanged.connect(lambda: seen.append(1))
-    assert ctl.partyLights is True
-    ctl.partyLights = False
-    assert ctl.partyLights is False and load_settings().party_lights is False and seen
 
 
 # --- faster search: the library answers first, repeats come from memory ----------------------

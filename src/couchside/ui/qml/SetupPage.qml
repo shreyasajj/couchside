@@ -547,10 +547,15 @@ FocusScope {
                     onActivated: app.visualizerEdges = !app.visualizerEdges
                 }
                 SettingRow {
-                    label: "Party lights"
-                    value: app.partyLights ? "On" : "Off"
-                    hint: "Party mode: colour along the screen edges that jumps on every beat"
-                    onActivated: app.partyLights = !app.partyLights
+                    id: vizPictureRow
+                    objectName: "vizPictureRow"
+                    readonly property var pictures: [{ id: "radial", label: "Radial Pulse" }, { id: "flow", label: "Flow Lines" },
+                                                     { id: "bars", label: "Bars" }, { id: "edge", label: "Edge Lights" }]
+                    label: "Picture"
+                    value: (pictures.filter(p => p.id === app.visualizerMode)[0] || pictures[0]).label
+                    hint: "The Visualizer, and what moves behind the lyrics and Party on Now Playing"
+                    onActivated: page.pick("Visualizer picture", pictures.map(p => ({ id: p.id, label: p.label, current: p.id === app.visualizerMode })),
+                                           vizPictureRow, function(id) { app.visualizerMode = id })
                 }
             }
 
