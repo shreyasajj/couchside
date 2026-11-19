@@ -1,4 +1,3 @@
-import asyncio
 
 from dbus_next import Message, MessageType, Variant
 
@@ -46,7 +45,7 @@ async def _ret(x):
 
 
 async def test_start_creates_a_monitor_and_listens_to_it():
-    up, bus, events, ok = await started()
+    _up, bus, _events, ok = await started()
     assert ok
     create = next(m for m in bus.calls if m.member == "CreateUpdateMonitor")
     assert (create.destination, create.path, create.interface) == (fp.PORTAL, fp.PATH, fp.PORTAL_IFACE)
@@ -55,7 +54,7 @@ async def test_start_creates_a_monitor_and_listens_to_it():
 
 
 async def test_signals_become_callbacks():
-    up, bus, events, _ = await started()
+    _up, bus, events, _ = await started()
     bus.emit("UpdateAvailable", {"remote-commit": Variant("s", "abc"), "running-commit": Variant("s", "old")})
     bus.emit("Progress", {"n_ops": Variant("u", 2), "op": Variant("u", 1), "progress": Variant("u", 40),
                           "status": Variant("u", 0)})
@@ -80,7 +79,7 @@ async def test_spawn_latest_version():
     pid = await up.spawn_latest(["couchside-sendspin"], {"QT_QPA_PLATFORM": "wayland"})
     m = bus.calls[-1]
     assert pid == 4242 and m.member == "Spawn" and m.signature == "ayaaya{uh}a{ss}ua{sv}"
-    cwd, argv, fds, env, flags, opts = m.body
+    cwd, argv, _fds, env, flags, _opts = m.body
     assert argv == [b"couchside-sendspin\0"] and cwd.endswith(b"\0")
     assert flags & fp.SPAWN_LATEST_VERSION and env == {"QT_QPA_PLATFORM": "wayland"}
 
@@ -98,8 +97,9 @@ async def test_portal_error_reply_is_handled():
 
     async def err(msg):
         bus.calls.append(msg)
-        return Message.new_error(msg, "org.freedesktop.DBus.Error.ServiceUnknown", "nope") \
-            if msg.member == "CreateUpdateMonitor" else Message(message_type=MessageType.METHOD_RETURN, reply_serial=1)
+        if msg.member == "CreateUpdateMonitor":
+            return Message.new_error(msg, "org.freedesktop.DBus.Error.ServiceUnknown", "nope")
+        return Message(message_type=MessageType.METHOD_RETURN, reply_serial=1)
     bus.call = err
     up = fp.PortalUpdater(bus_factory=lambda: _ret(bus))
     assert await up.start(lambda i: None, lambda p: None) is False

@@ -5,8 +5,9 @@ stays Qt-free and testable. Admins never act on other admins: only the host does
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from couchside.core import queue as queue_mod
 from couchside.core.guest_actions import _queue, _upcoming
@@ -96,6 +97,7 @@ def admin_info(session: GuestSession, host: AdminHost, actor: Guest) -> dict:
                       "controlled": bool(s.get("controlled")), "available": bool(s.get("available")),
                       "playing": s.get("playing") or ""} for s in host.speakers()],
         "guests": [{"id": g.public_id, "name": g.name, "admin": g.admin, "you": g is actor,
-                    "skipsLeft": max(0, r.skips - g.skips_used), "boostsLeft": max(0, r.boosts - g.boosts_used)}
+                    "skipsLeft": max(0, r.skips - g.skips_used),
+                     "boostsLeft": max(0, r.boosts - g.boosts_used)}
                    for g in session.guests.values()],
     }

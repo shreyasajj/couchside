@@ -30,7 +30,7 @@ _installed: RingHandler | None = None
 
 def install(maxlen: int = 500) -> RingHandler:
     """Keep the root logger's lines from now on (once)."""
-    global _installed
+    global _installed  # noqa: PLW0603 - one handler for the whole process
     if _installed is None:
         _installed = RingHandler(maxlen)
         logging.getLogger().addHandler(_installed)

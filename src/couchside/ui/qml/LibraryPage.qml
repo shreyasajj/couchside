@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
@@ -36,7 +37,7 @@ FocusScope {
         stopEditing()
         toResults()
     }
-    function startEditing() { field.forceActiveFocus(); Qt.inputMethod.show() }
+    function startEditing() { field.forceActiveFocus(); Qt.inputMethod.show() }  // qmllint disable missing-property
     // Letters from a keyboard remote: start a new search with them (or keep typing),
     // without the on-screen keyboard.
     function typeInto(text) {
@@ -53,7 +54,7 @@ FocusScope {
     }
     // Clearing field.focus matters: a FocusScope hands focus back to the child that
     // last had it, which would put the cursor (and the keyboard) straight back.
-    function stopEditing() { field.focus = false; Qt.inputMethod.hide() }
+    function stopEditing() { field.focus = false; Qt.inputMethod.hide() }  // qmllint disable missing-property
     function toResults() {
         stopEditing()
         if (list.count > 0) { page.rowFocused = true; list.forceActiveFocus() }

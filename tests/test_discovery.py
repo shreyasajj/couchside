@@ -1,4 +1,4 @@
-from couchside.core.discovery import choose_server, MassServer, _dedupe, parse_mass_service
+from couchside.core.discovery import MassServer, _dedupe, choose_server, parse_mass_service
 
 REAL_TXT = {
     b"server_id": b"9cc41ff7c04e48e6a502301970c5af11",

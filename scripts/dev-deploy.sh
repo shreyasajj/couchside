@@ -17,6 +17,8 @@ ssh "$TV" 'bash ~/couchside/scripts/install.sh' 2>&1 | tail -n 25
 
 if [[ "${1:-}" == "--run" ]]; then
   # Launch inside the logged-in graphical session (environment taken from plasmashell).
+  # Unquoted on purpose: APP_ID and COUCHSIDE_ARGS fill in here; the TV's own values are escaped (\$).
+  # shellcheck disable=SC2087
   ssh "$TV" "bash -s" <<REMOTE
 set -e
 pkill -f 'couchside.ui.app|bin/couchside( |\$)' || true

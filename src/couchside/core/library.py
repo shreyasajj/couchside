@@ -114,7 +114,7 @@ async def recents(client: Any, limit: int = 15) -> list[tuple[str, list[MediaCar
     rows: list[tuple[str, list[MediaCard]]] = []
     # both at once: the page waits for the slower one, not for their sum
     for name, result in zip(("recently played", "recently added"),
-                            await asyncio.gather(played(), added(), return_exceptions=True)):
+                            await asyncio.gather(played(), added(), return_exceptions=True), strict=True):
         if isinstance(result, BaseException):
             log.warning("%s failed: %s", name, result)
         else:

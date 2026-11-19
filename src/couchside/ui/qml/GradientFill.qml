@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // The look's signature: a fill running from the first accent to the second, left to right.

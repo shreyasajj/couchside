@@ -3,8 +3,8 @@
 from couchside.core.connection import ConnState
 from couchside.core.health import ProblemWatch, diagnose, supervisor_outdated
 
-OK = dict(status={"state": "running", "build": "b1"}, running=True, conn=ConnState.CONNECTED,
-          local_player=True, has_token=True)
+OK = {"status": {"state": "running", "build": "b1"}, "running": True, "conn": ConnState.CONNECTED,
+          "local_player": True, "has_token": True}
 
 
 def ids(problems):

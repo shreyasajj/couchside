@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("PySide6.QtQuick")
-from PySide6.QtCore import QCoreApplication, QUrl  # noqa: E402
-from PySide6.QtQuick import QQuickView  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QUrl
+from PySide6.QtQuick import QQuickView
 
 QML_DIR = Path(__file__).parents[1] / "src/couchside/ui/qml"
 HARNESS = Path(__file__).parent / "qml/SheetHarness.qml"
@@ -39,7 +39,7 @@ def harness(qt_app):
 
 
 def call(obj, name, *args):
-    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG  # noqa: F401
+    from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject  # noqa: F401
     return QMetaObject.invokeMethod(obj, name)
 
 
@@ -72,7 +72,7 @@ def test_no_focus_lost_when_opener_alive(harness):
 
 def test_ok_right_after_open_is_ignored(harness):
     # A double press on the opener must not run the sheet's first action.
-    from PySide6.QtCore import QMetaObject, Q_ARG
+    from PySide6.QtCore import Q_ARG, QMetaObject
     call(harness, "makeOpener")
     call(harness, "openSheet")
     QMetaObject.invokeMethod(sheet(harness), "run", Q_ARG("QVariant", 0))
@@ -88,8 +88,7 @@ def test_ok_right_after_open_is_ignored(harness):
 
 
 def test_a_picker_opens_on_the_ticked_choice_and_shows_section_headings(harness):
-    from PySide6.QtCore import QMetaObject, Q_ARG
-    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtCore import Q_ARG, QMetaObject
     call(harness, "makeOpener")
     call(harness, "openPicker")
     pump(0.4)

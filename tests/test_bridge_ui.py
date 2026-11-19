@@ -11,8 +11,8 @@ from couchside.core.settings import AppSettings
 
 @pytest.fixture
 async def ui(qt_app, tmp_path, monkeypatch):
-    from couchside.ui.controller import AppController
     from couchside.ui.bridge_control import UiControl
+    from couchside.ui.controller import AppController
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     controller = AppController(AppSettings())
     controller.conn.client = NS(players=[], music=NS())
@@ -28,11 +28,13 @@ async def ui(qt_app, tmp_path, monkeypatch):
 async def test_search_uses_controller_domain_rows(ui, monkeypatch):
     control, controller = ui
     card = library.MediaCard("library://track/1", "track", "Song", "Artist", None, "library://track/1")
-    monkeypatch.setattr(library, "search", AsyncMock(return_value=library.SearchOutcome([("Tracks", [card])])))
-    result = await control.execute(dict(id="search", command="navigate", content_type="search", content_id="Song"))
+    found = library.SearchOutcome([("Tracks", [card])])
+    monkeypatch.setattr(library, "search", AsyncMock(return_value=found))
+    result = await control.execute({"id": "search", "command": "navigate", "content_type": "search",
+                                    "content_id": "Song"})
     assert controller.libraryRows[0]["items"][0]["title"] == "Song"
     assert result["view"] == {"type": "search", "id": "Song"}
-    focused = await control.execute(dict(id="focus", command="focus"))
+    focused = await control.execute({"id": "focus", "command": "focus"})
     assert focused["view"] == result["view"]
 
 
@@ -40,8 +42,8 @@ async def test_item_resolution_is_ui_only(ui):
     control, controller = ui
     controller.conn.client.music.get_item_by_uri = AsyncMock(return_value=NS(
         uri="library://album/1", media_type="album", name="Album", artist_str="Artist", image=None))
-    result = await control.execute(dict(id="item", command="navigate", content_type="album",
-                                        content_id="library://album/1"))
+    result = await control.execute({"id": "item", "command": "navigate", "content_type": "album",
+                                        "content_id": "library://album/1"})
     assert result["view"] == {"type": "album", "id": "library://album/1"}
     assert not hasattr(controller.conn.client, "player_queues")  # No playback calls required.
 
@@ -50,7 +52,8 @@ async def test_disconnected_search_does_not_navigate(ui):
     control, controller = ui
     controller.conn.state = ConnState.RECONNECTING
     with pytest.raises(ControlError, match="not connected"):
-        await control.execute(dict(id="search", command="navigate", content_type="search", content_id="Song"))
+        await control.execute({"id": "search", "command": "navigate", "content_type": "search",
+                               "content_id": "Song"})
     assert control.view == {"type": "now_playing", "id": ""}
 
 
@@ -67,10 +70,10 @@ async def test_state_changes_are_announced_once(ui):
     control.endpoint = NS(StateChanged=lambda: emitted.append(True))
     controller.conn.client.music.get_item_by_uri = AsyncMock(return_value=NS(
         uri="library://album/1", media_type="album", name="Album", artist_str="Artist", image=None))
-    await control.execute(dict(id="item", command="navigate", content_type="album", content_id="library://album/1"))
+    await control.execute({"id": "item", "command": "navigate", "content_type": "album", "content_id": "library://album/1"})
     assert len(emitted) == 1
     controller.changed.emit()  # unrelated UI churn leaves the published state alone
-    await control.execute(dict(id="focus", command="focus"))
+    await control.execute({"id": "focus", "command": "focus"})
     assert len(emitted) == 1
     controller.conn.state = ConnState.RECONNECTING
     controller.changed.emit()
@@ -79,28 +82,32 @@ async def test_state_changes_are_announced_once(ui):
 
 async def test_browse_lists_library_without_navigating(ui):
     control, controller = ui
-    root = await control.execute(dict(id="root", command="browse"))
+    root = await control.execute({"id": "root", "command": "browse"})
     assert [row["path"] for row in root["items"]] == ["playlist", "album", "artist", "track"]
-    rows = [NS(uri=f"library://album/{n}", media_type="album", name=f"Album {n}", artist_str="Artist", image=None)
-            for n in range(3)] + [NS(uri="not a uri", media_type="album", name="Broken", artist_str="", image=None)]
+    rows = [NS(uri=f"library://album/{n}", media_type="album", name=f"Album {n}", artist_str="Artist",
+               image=None)
+            for n in range(3)]
+    rows += [NS(uri="not a uri", media_type="album", name="Broken", artist_str="", image=None)]
     controller.conn.client.music.get_library_albums = AsyncMock(return_value=rows[:3])
-    page = await control.execute(dict(id="page", command="browse", path="album", offset=4, limit=2))
+    page = await control.execute({"id": "page", "command": "browse", "path": "album",
+                                  "offset": 4, "limit": 2})
     controller.conn.client.music.get_library_albums.assert_awaited_once_with(limit=3, offset=4)
     assert [row["id"] for row in page["items"]] == ["library://album/0", "library://album/1"]
     assert page["next_offset"] == 6 and page["items"][0]["content_type"] == "album"
     controller.conn.client.music.get_library_albums = AsyncMock(return_value=rows[3:])
-    assert (await control.execute(dict(id="bad", command="browse", path="album")))["items"] == []
+    assert (await control.execute({"id": "bad", "command": "browse", "path": "album"}))["items"] == []
     assert control.view == {"type": "now_playing", "id": ""}
     controller.conn.state = ConnState.RECONNECTING
     with pytest.raises(ControlError, match="not connected"):
-        await control.execute(dict(id="down", command="browse", path="album"))
+        await control.execute({"id": "down", "command": "browse", "path": "album"})
 
 
 async def test_browse_requests_are_validated_by_the_dispatcher(ui):
     import json
     control, _ = ui
-    for extra in (dict(path="radio"), dict(limit=51), dict(offset=-1), dict(content_id="x")):
-        reply = json.loads(await control.dispatcher.handle(json.dumps(dict(id=str(extra), command="browse", **extra))))
+    for extra in ({"path": "radio"}, {"limit": 51}, {"offset": -1}, {"content_id": "x"}):
+        request = json.dumps(dict(id=str(extra), command="browse", **extra))
+        reply = json.loads(await control.dispatcher.handle(request))
         assert reply["error"]["code"] == "invalid_request"
-    reply = json.loads(await control.dispatcher.handle(json.dumps(dict(id="ok", command="browse"))))
+    reply = json.loads(await control.dispatcher.handle(json.dumps({"id": "ok", "command": "browse"})))
     assert reply["ok"] and len(reply["result"]["items"]) == 4

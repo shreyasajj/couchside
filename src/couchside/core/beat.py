@@ -123,7 +123,7 @@ class TempoTracker:
 
     def beat(self, t: float) -> None:
         if self._last is not None and 0.25 <= t - self._last <= 2.0:
-            self._gaps = (self._gaps + [t - self._last])[-self.KEEP:]
+            self._gaps = ([*self._gaps, t - self._last])[-self.KEEP:]
         self._last = t
 
     def bpm(self, now: float) -> float:

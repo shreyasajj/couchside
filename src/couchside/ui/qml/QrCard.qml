@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // The guest QR on a white card: the code, the caption, the address. Shown top-right on

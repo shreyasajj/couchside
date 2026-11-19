@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Shapes
 import "viz.js" as Viz
@@ -67,9 +68,9 @@ Item {
             if (mode === "bars" || edgeShown) bars = a.bars
             if (edgeShown) phase = Viz.chaseStep(phase, dt, app.vizTempo)
             if (mode === "flow") {
-                var lines = []
-                for (var i = 0; i < 5; i++) {
-                    var pts = Viz.flowPoints(i, t, level, energy, width, height, 32)
+                let lines = []
+                for (let i = 0; i < 5; i++) {
+                    let pts = Viz.flowPoints(i, t, level, energy, width, height, 32)
                     lines.push(pts.map(function(p) { return Qt.point(p.x, p.y) }))
                 }
                 flow = lines
@@ -96,13 +97,14 @@ Item {
                     Repeater {
                         model: 56
                         delegate: Item {
+                            id: spoke
                             required property int index
                             rotation: index * 360 / 56
                             Rectangle {
                                 x: -1
                                 y: 120
                                 width: 2
-                                height: Viz.spokeLength(scene.energy, scene.beat, index % 2 === 1)
+                                height: Viz.spokeLength(scene.energy, scene.beat, spoke.index % 2 === 1)
                                 color: scene.c1
                                 antialiasing: true
                             }

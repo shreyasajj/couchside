@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("PySide6.QtQuick")
-from PySide6.QtCore import QCoreApplication, QUrl  # noqa: E402
-from PySide6.QtQuick import QQuickView  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QUrl
+from PySide6.QtQuick import QQuickView
 
 QML = Path(__file__).parents[1] / "src/couchside/ui/qml/LyricsView.qml"
 LONG = ("ਨੀ ਬੋਤਲੇ Azul ਦੀਏ ਨਖਰਾ ਆ ਜਿਵੇਂ Don Julio forty two and the night keeps going on and on "
@@ -34,7 +34,7 @@ def view(qt_app):
 
 
 def first_line(root):
-    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+    from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject
     from PySide6.QtQuick import QQuickItem
     return QMetaObject.invokeMethod(root, "itemAtIndex", Q_RETURN_ARG(QQuickItem), Q_ARG(int, 0))
 
@@ -84,7 +84,8 @@ def test_sizes_and_centering(view):
 def test_translation_shows_under_the_line(view):
     root = view.rootObject()
     root.setProperty("refWidth", 1920)
-    root.setProperty("lines", [{"t": 0.0, "text": "hae, ni old school jihi e", "sub": "Hey, not like old school"}])
+    root.setProperty("lines", [{"t": 0.0, "text": "hae, ni old school jihi e",
+                               "sub": "Hey, not like old school"}])
     root.setProperty("position", 1.0)
     pump(0.5)
     line = first_line(root)
@@ -103,12 +104,12 @@ def test_text_from_outside_is_never_rich_text(view):
     line = first_line(root)
     ctx = QQmlEngine.contextForObject(line)
     assert QQmlExpression(ctx, line, "textFormat === Text.PlainText").evaluate()[0] is True
-    sub = [c for c in line.childItems() if c.property("text") == "<h1>big</h1>"][0]
+    sub = next(c for c in line.childItems() if c.property("text") == "<h1>big</h1>")
     assert QQmlExpression(ctx, sub, "textFormat === Text.PlainText").evaluate()[0] is True
 
 
 def line_at(root, i):
-    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+    from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject
     from PySide6.QtQuick import QQuickItem
     return QMetaObject.invokeMethod(root, "itemAtIndex", Q_RETURN_ARG(QQuickItem), Q_ARG(int, i))
 

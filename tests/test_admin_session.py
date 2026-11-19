@@ -1,6 +1,13 @@
 import pytest
 
-from couchside.core.guests import CODE_TRIES, CODE_TRIES_PER_PHONE, CODE_TTL, GuestError, GuestRules, GuestSession
+from couchside.core.guests import (
+    CODE_TRIES,
+    CODE_TRIES_PER_PHONE,
+    CODE_TTL,
+    GuestError,
+    GuestRules,
+    GuestSession,
+)
 
 A, B = "device-aaaaaaaa", "device-bbbbbbbb"
 

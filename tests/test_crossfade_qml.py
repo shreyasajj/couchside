@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("PySide6.QtQuick")
-from PySide6.QtCore import QCoreApplication, QUrl  # noqa: E402
-from PySide6.QtGui import QColor, QImage  # noqa: E402
-from PySide6.QtQml import QQmlComponent, QQmlEngine  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QUrl
+from PySide6.QtGui import QColor, QImage
+from PySide6.QtQml import QQmlComponent, QQmlEngine
 
 QML = Path(__file__).parents[1] / "src/couchside/ui/qml/CrossfadeImage.qml"
 

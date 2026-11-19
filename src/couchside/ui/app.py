@@ -30,17 +30,17 @@ def main() -> int:
     logging.basicConfig(level=os.environ.get("COUCHSIDE_LOG", "INFO"))
     from couchside.core import logbuffer
     logbuffer.install()   # recent lines for the Logs screen (after basicConfig: it adds stderr)
+    import qasync
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuickControls2 import QQuickStyle
-    import qasync
 
     from couchside.core.settings import load_settings
     from couchside.core.tasks import keep_running
     from couchside.sendspin.pairing import tail_log
     from couchside.sendspin.runner import log_path
-    from couchside.ui.controller import AppController
     from couchside.ui.bridge_control import UiControl
+    from couchside.ui.controller import AppController
 
     app = QGuiApplication(sys.argv)
     app.setApplicationName("Couchside")
@@ -89,7 +89,8 @@ def main() -> int:
                 lambda: tail_log(log_path(), controller.on_pairing_event), "pairing log")),
             asyncio.ensure_future(keep_running(
                 lambda: _ensure_sendspin(settings), "Sendspin start", delay=30)),
-            asyncio.ensure_future(keep_running(controller.check_versions_forever, "version check", delay=600)),
+            asyncio.ensure_future(keep_running(controller.check_versions_forever, "version check",
+                                               delay=600)),
             asyncio.ensure_future(controller.start_update_monitor()),
         ]
         await closing.wait()

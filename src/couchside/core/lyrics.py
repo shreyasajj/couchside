@@ -7,8 +7,9 @@ import bisect
 import logging
 import re
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from couchside import __version__
 

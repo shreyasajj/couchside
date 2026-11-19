@@ -13,15 +13,16 @@ import fcntl
 import functools
 import hashlib
 import json
+import logging
 import os
 import re
-import logging
 import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import IO, Callable
+from typing import IO
 
 from couchside.core.audio_devices import SINK_PREFIX
 from couchside.core.paths import sendspin_settings_dir, state_dir
@@ -43,7 +44,7 @@ def build_daemon_argv(settings: AppSettings, sendspin_dir: Path) -> list[str]:
     if device and device.startswith(SINK_PREFIX):
         # a PipeWire output: play through the pulse device, routed to that output (the
         # variable rides in the command, so changing it restarts the daemon like any option)
-        argv = ["env", f"PULSE_SINK={device[len(SINK_PREFIX):]}"] + argv + ["--audio-device", "pulse"]
+        argv = ["env", f"PULSE_SINK={device[len(SINK_PREFIX):]}", *argv, "--audio-device", "pulse"]
     elif device:
         argv += ["--audio-device", device]
     if settings.sendspin_delay_ms:
@@ -152,7 +153,7 @@ def supervisor_running(path: Path | None = None) -> bool:
 def acquire_lock(path: Path) -> IO | None:
     """Return an open, exclusively locked file, or None if another instance holds it."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fh = open(path, "a+")
+    fh = open(path, "a+")  # noqa: SIM115 - held open (and locked) for as long as we run
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
@@ -226,7 +227,8 @@ def supervise(argv: list[str] | Callable[[], list[str]], log_file: Path, restart
             with open(log_file, "a", buffering=1) as out:
                 child = subprocess.Popen(current, stdout=out, stderr=subprocess.STDOUT,
                                          stdin=subprocess.DEVNULL,
-                                         preexec_fn=_die_with_parent)
+                                         # one-thread supervisor: preexec_fn is safe here
+                                         preexec_fn=_die_with_parent)  # noqa: PLW1509
                 report("running", None)
                 if stopping:  # signal landed while starting: pass it on
                     child.terminate()

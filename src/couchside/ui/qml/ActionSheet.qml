@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
@@ -33,7 +34,7 @@ Rectangle {
         openedAt = Date.now()
         visible = true
         var start = 0
-        for (var i = 0; i < acts.length; i++) if (acts[i].checked) { start = i; break }
+        for (let i = 0; i < acts.length; i++) if (acts[i].checked) { start = i; break }
         Qt.callLater(function() {
             if (list.count > 0) {
                 list.currentIndex = start

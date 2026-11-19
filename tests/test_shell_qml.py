@@ -10,12 +10,12 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("PySide6.QtQuick")
-from PySide6.QtCore import QCoreApplication, QMetaObject, Q_ARG, Qt, QUrl, qInstallMessageHandler  # noqa: E402
-from PySide6.QtQuick import QQuickView  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, Qt, QUrl, qInstallMessageHandler
+from PySide6.QtQuick import QQuickView
+from PySide6.QtTest import QTest
 
-from couchside.core.playback import NowPlaying  # noqa: E402
-from couchside.core.settings import AppSettings  # noqa: E402
+from couchside.core.playback import NowPlaying
+from couchside.core.settings import AppSettings
 
 SHELL = Path(__file__).parents[1] / "src/couchside/ui/qml/Shell.qml"
 SCREENS = ["now", "search", "queue", "visualizer", "speakers", "guests", "settings", "logs"]
@@ -412,10 +412,11 @@ async def test_the_guest_qr_sits_bottom_right_on_now_playing_and_up_next_stays_u
     go(view, "now")
     guest_mode_on(view)
     qr, up_next, words = named(view, "qrCard"), named(view, "upNext"), named(view, "words")
-    x0, y0, x1, y1 = box(qr)
+    _x0, _y0, x1, y1 = box(qr)
     assert x1 > 1800 and y1 > 1000                    # the bottom-right corner
     assert box(up_next)[1] < 200                      # Up Next stays at the top
-    assert apart(qr, words) and apart(qr, named(view, "volumeButton")) and apart(qr, named(view, "partyButton"))
+    assert apart(qr, words) and apart(qr, named(view, "volumeButton"))
+    assert apart(qr, named(view, "partyButton"))
     left, _t, right, _b = box(words)
     assert right - left > 1500                        # the words keep their width
     go(view, "queue")                                 # elsewhere it stays top-right

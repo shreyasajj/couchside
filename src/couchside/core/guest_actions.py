@@ -145,9 +145,8 @@ async def guest_search(client: Any, query: str, guest: Guest | None = None) -> l
     if not query:
         return []
     res = await client.music.search(query, media_types=[MediaType.TRACK], limit=20)
-    out = []
-    for c in library._cards(client, getattr(res, "tracks", None)):
-        out.append({"uri": c.uri, "title": c.title, "subtitle": c.subtitle, "imageUrl": c.image_url or ""})
+    out = [{"uri": c.uri, "title": c.title, "subtitle": c.subtitle, "imageUrl": c.image_url or ""}
+           for c in library._cards(client, getattr(res, "tracks", None))]
     if guest is not None:
         guest.offer(r["uri"] for r in out)
     return out

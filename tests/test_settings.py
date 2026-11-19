@@ -135,6 +135,7 @@ def test_lyrics_language_settings_round_trip(tmp_path):
 
 def test_secret_file_is_private(tmp_path, monkeypatch):
     import stat
+
     from couchside.core.settings import load_secret, save_secret
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert load_secret("deepl_key") is None

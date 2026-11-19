@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Callable
 
 
 class PairingEvent(Enum):
@@ -72,7 +72,8 @@ async def tail_log(
         if size < offset:
             offset, buffer = 0, ""
         if size > offset:
-            with path.open("r", encoding="utf-8", errors="replace") as fh:
+            # a few new lines of a local log, read once a poll: not worth a thread
+            with path.open("r", encoding="utf-8", errors="replace") as fh:  # noqa: ASYNC230
                 fh.seek(offset)
                 chunk = fh.read()
                 offset = fh.tell()

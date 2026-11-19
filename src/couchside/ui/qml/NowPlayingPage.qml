@@ -1,5 +1,5 @@
+pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Layouts
 import "typing.js" as Typing
 import "queue.js" as Queue
 

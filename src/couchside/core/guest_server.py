@@ -8,16 +8,18 @@ reverse proxy at any path. A wrong or old token is 403. Rule violations are 400 
 from __future__ import annotations
 
 import asyncio
-import json
+import contextlib
 import ipaddress
+import json
 import logging
 import re
 import secrets
 import socket
 import time
 import weakref
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from aiohttp import WSMsgType, web
 
@@ -109,6 +111,7 @@ class GuestServer:
         self._clock = clock
         self._on_change = on_change or (lambda: None)
         self._sockets: weakref.WeakSet = weakref.WeakSet()
+        self._sends: set[asyncio.Task] = set()   # kept until done (else they may be collected)
         self._runner: web.AppRunner | None = None
         self.app = web.Application(client_max_size=MAX_BODY)
         r = self.app.router
@@ -162,13 +165,13 @@ class GuestServer:
     def notify_changed(self) -> None:
         """Tell every open phone to refresh (queue/now playing changed)."""
         async def send(ws):
-            try:
+            with contextlib.suppress(Exception):   # the phone went away
                 await ws.send_json({"type": "changed"})
-            except Exception:
-                pass  # the phone went away
         for ws in list(self._sockets):
             if not ws.closed:
-                asyncio.ensure_future(send(ws))
+                task = asyncio.ensure_future(send(ws))
+                self._sends.add(task)
+                task.add_done_callback(self._sends.discard)
 
     def _rate(self, request: web.Request, what: str, who: str, burst: int, per: float) -> None:
         if not self._limits.allow((what, who), burst, per):
@@ -180,7 +183,8 @@ class GuestServer:
         session = self._session()
         given = request.match_info.get("token", "")
         if session is None or not secrets.compare_digest(given.encode(), session.token.encode()):
-            raise web.HTTPForbidden(text=json.dumps({"error": "This link has expired — scan the QR code on the TV again"}),
+            expired = {"error": "This link has expired — scan the QR code on the TV again"}
+            raise web.HTTPForbidden(text=json.dumps(expired),
                                     content_type="application/json")
         return session
 
@@ -192,9 +196,11 @@ class GuestServer:
         try:
             data = await request.json()
         except Exception:
-            raise web.HTTPBadRequest(text=json.dumps({"error": "Bad request"}), content_type="application/json")
+            raise web.HTTPBadRequest(text=json.dumps({"error": "Bad request"}),
+                                     content_type="application/json") from None
         if not isinstance(data, dict):
-            raise web.HTTPBadRequest(text=json.dumps({"error": "Bad request"}), content_type="application/json")
+            raise web.HTTPBadRequest(text=json.dumps({"error": "Bad request"}),
+                                     content_type="application/json")
         return data
 
     def _ctx(self):
@@ -280,7 +286,7 @@ class GuestServer:
                 results = await guest_actions.guest_search(client, request.query.get("q", ""), guest=guest)
             except Exception as e:
                 log.warning("guest search failed: %s", e)
-                raise GuestError("Search didn't work — try again")
+                raise GuestError("Search didn't work — try again") from e
             return web.json_response({"results": results})
         return await self._run(request, act)
 
