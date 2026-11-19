@@ -103,6 +103,24 @@ jobs:
             echo "debug info in the app"; exit 1
           fi
           test -s repo/summary.sig
+      - name: Single-file bundle
+        # One download instead of thousands of repo objects (GitHub Pages rate-limits
+        # those, e.g. for CI runners). It carries the signing key and the repo URL, so a
+        # TV installed from it still updates from the signed repo.
+        run: |
+          gpg --export "$KEY_ID" > couchside.gpg
+          flatpak build-bundle --gpg-sign="$KEY_ID" --gpg-keys=couchside.gpg --repo-url="$REPO_URL" \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            repo Couchside-x86_64.flatpak "$APP_ID" master
+          test -s Couchside-x86_64.flatpak
+          sha256sum Couchside-x86_64.flatpak > Couchside-x86_64.flatpak.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle
+          path: |
+            Couchside-x86_64.flatpak
+            Couchside-x86_64.flatpak.sha256
+          retention-days: 7
       - name: Site (repo, .flatpakrepo, .flatpakref)
         run: |
           GPGKEY=$(gpg --export "$KEY_ID" | base64 -w0)
@@ -137,6 +155,27 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+
+  # The bundle on a rolling "latest" release: github.com/shreyasajj/couchside/releases/latest
+  bundle:
+    needs: [build, deploy]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle
+      - name: Replace the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(curl -fsSL https://shreyasajj.github.io/couchside/latest.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+          gh release delete latest-build --cleanup-tag --yes 2>/dev/null || true
+          gh release create latest-build Couchside-x86_64.flatpak Couchside-x86_64.flatpak.sha256 \
+            --target "${{ github.sha }}" --latest --title "Couchside $version" \
+            --notes "Latest build of main ($version). Install: flatpak install --user --bundle Couchside-x86_64.flatpak — it then updates from the signed repo like a TV installed from couchside.flatpakref."
 
   deploy:
     needs: build
