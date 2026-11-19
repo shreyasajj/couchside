@@ -249,6 +249,19 @@ mockup the look follows is in `docs/design/`.
 - **Unit tests** (any machine; PySide6-Essentials comes with the `test` extra for the
   controller tests):
   `python3 -m venv .venv && .venv/bin/pip install -e '.[test]' && .venv/bin/pytest`
+  - `tests/fake_ma.py` is a small Music Assistant (players, queues, a music catalogue,
+    events) that the real connection and controller run on; the `house` fixture in
+    `tests/conftest.py` connects the app to it.
+  - `tests/test_flows.py`: whole journeys on it — playback controls, search and play,
+    the queue, speakers and groups, crossfade, losing the server, settings kept across
+    a restart, and guest mode from a phone over HTTP (join, add, boost, skip, admin code,
+    admin powers, limits).
+  - `tests/test_components_qml.py`: each screen on its own with a stand-in controller
+    (`tests/qml/FakeApp.qml`) that records calls; good paths and bad ones (empty, odd or
+    vanishing data). It also checks every `app.x` the QML uses exists on the controller.
+  - `tests/test_buttons_qml.py`: every button on every screen pressed with OK in the
+    real UI, and its effect checked. A new button fails the test until it gets a check
+    in `BUTTONS`.
 - **On the TV:** `scripts/dev-deploy.sh --run` syncs this checkout to the TV over
   SSH (`COUCHSIDE_TV`, default `mediac@192.168.30.153`), rebuilds the Flatpak
   (only the app module rebuilds) and starts it on screen.
