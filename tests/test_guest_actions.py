@@ -163,7 +163,7 @@ async def test_guest_state():
 
 
 async def test_guest_search_is_tracks_only():
-    client, s, g = setup()
+    client, _s, g = setup()
     results = await guest_search(client, "love", guest=g)
     assert client.music.calls == [("love", ["track"], 20)]
     assert results == [{"uri": "x://t/1", "title": "Song", "subtitle": "Band", "imageUrl": ""}]

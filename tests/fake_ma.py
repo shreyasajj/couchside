@@ -41,7 +41,7 @@ RADIO = [NS(name="Night FM", uri="library://radio/1", media_type=NS(value="radio
 
 
 class _Failing:
-    def __init__(self, ma: "FakeMA") -> None:
+    def __init__(self, ma: FakeMA) -> None:
         self._ma = ma
 
     def _call(self, name: str, *args: Any) -> None:
@@ -81,7 +81,7 @@ class FakeQueue:
 
 
 class FakePlayers(_Failing):
-    def __init__(self, ma: "FakeMA") -> None:
+    def __init__(self, ma: FakeMA) -> None:
         super().__init__(ma)
         self.items: dict[str, NS] = {}
 
@@ -148,7 +148,7 @@ class FakePlayers(_Failing):
 
 
 class FakeQueues(_Failing):
-    def __init__(self, ma: "FakeMA") -> None:
+    def __init__(self, ma: FakeMA) -> None:
         super().__init__(ma)
         self.items: dict[str, FakeQueue] = {}
 
@@ -240,7 +240,7 @@ class FakeQueues(_Failing):
 
 
 class FakeMusic(_Failing):
-    def __init__(self, ma: "FakeMA") -> None:
+    def __init__(self, ma: FakeMA) -> None:
         super().__init__(ma)
         self.played: list[NS] = []
 
@@ -252,7 +252,8 @@ class FakeMusic(_Failing):
         q = query.lower()
 
         def hits(items, *fields):
-            return [i for i in items if any(q in str(getattr(i, f, "") or "").lower() for f in fields)][:limit]
+            found = [i for i in items if any(q in str(getattr(i, f, "") or "").lower() for f in fields)]
+            return found[:limit]
         return NS(tracks=hits(CATALOGUE, "name", "artist_str"), albums=hits(ALBUMS, "name", "artist_str"),
                   artists=hits(ARTISTS, "name"), playlists=hits(PLAYLISTS, "name"), radio=hits(RADIO, "name"))
 
@@ -290,7 +291,7 @@ class FakeMA:
 
     # --- the house --------------------------------------------------------------------
     @classmethod
-    def house(cls) -> "FakeMA":
+    def house(cls) -> FakeMA:
         """This TV playing a three-song queue, a kitchen speaker it can sync with, an
         offline den speaker."""
         ma = cls()
@@ -335,7 +336,8 @@ class FakeMA:
         t = cur.media_item
         p.current_media = NS(title=t.name, artist=t.artist_str, album=getattr(t.album, "name", ""),
                              image_url=None, duration=t.duration, uri=t.uri, palette=None,
-                             elapsed_time=q.elapsed_time, elapsed_time_last_updated=q.elapsed_time_last_updated)
+                             elapsed_time=q.elapsed_time,
+                              elapsed_time_last_updated=q.elapsed_time_last_updated)
 
     def step(self, pid: str, delta: int) -> None:
         q = self.player_queues.items[pid]

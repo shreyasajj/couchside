@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
@@ -38,6 +39,7 @@ FocusScope {
         Repeater {   // everything wrong right now
             model: app.problems
             delegate: Row {
+                id: problemRow
                 required property string modelData
                 spacing: 14 * page.u
                 Icon {
@@ -49,7 +51,7 @@ FocusScope {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     textFormat: Text.PlainText
-                    text: modelData
+                    text: problemRow.modelData
                     color: Theme.warn
                     font.pixelSize: Theme.body * page.u
                     font.weight: Font.Bold

@@ -5,9 +5,10 @@ it, and Spawn with the latest-version flag starts the new build. Qt-free (dbus-n
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 log = logging.getLogger(__name__)
 

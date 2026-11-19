@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
@@ -16,12 +17,12 @@ FocusScope {
 
     readonly property var controlled: {
         var rows = app.speakerRows
-        for (var i = 0; i < rows.length; i++) if (rows[i].controlled) return rows[i]
+        for (let i = 0; i < rows.length; i++) if (rows[i].controlled) return rows[i]
         return null
     }
     function nameOf(id) {
         var rows = app.speakerRows
-        for (var i = 0; i < rows.length; i++) if (rows[i].playerId === id) return rows[i].name
+        for (let i = 0; i < rows.length; i++) if (rows[i].playerId === id) return rows[i].name
         return id
     }
 
@@ -32,7 +33,7 @@ FocusScope {
         var oldIndex = Math.max(0, list.currentIndex)
         rows = app.speakerRows
         var idx = -1
-        for (var i = 0; i < rows.length; i++) if (rows[i].playerId === keep) { idx = i; break }
+        for (let i = 0; i < rows.length; i++) if (rows[i].playerId === keep) { idx = i; break }
         if (idx < 0) idx = Math.min(oldIndex, rows.length - 1)
         list.currentIndex = Math.max(0, idx)
     }
@@ -121,7 +122,7 @@ FocusScope {
             title: "New group"
             subtitle: "Pick speakers to play in sync"
             Keys.onUpPressed: list.forceActiveFocus()
-            onActivated: groupEditor.open("", [], newGroup)
+            onActivated: page.groupEditor.open("", [], newGroup)
         }
     }
 }

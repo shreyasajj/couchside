@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // Image that keeps the old picture until the new one has loaded, then cross-fades.
@@ -12,11 +13,11 @@ Item {
     property bool showFront: true
     readonly property Image shownLayer: showFront ? front : back
     readonly property Image hiddenLayer: showFront ? back : front
-    readonly property bool hasImage: shownLayer.status === Image.Ready && shownLayer.source != ""
+    readonly property bool hasImage: shownLayer.status === Image.Ready && shownLayer.source.toString() !== ""
     readonly property url shownSource: hasImage ? shownLayer.source : ""
 
     onSourceChanged: {
-        if (source == "") {
+        if (source.toString() === "") {
             front.source = ""
             back.source = ""
             return

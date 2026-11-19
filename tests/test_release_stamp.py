@@ -23,7 +23,8 @@ def test_stamp_writes_build_info_and_metainfo(tmp_path):
     stamp_release.stamp("0.7.12", "abcdef1234567890", "2026-11-12", root=root)
     assert json.loads((root / "src/couchside/build_info.json").read_text()) == {
         "version": "0.7.12", "commit": "abcdef123456", "feed": "https://shreyasajj.github.io/couchside/latest.json"}
-    assert '<release version="0.7.12" date="2026-11-12"' in (root / "flatpak" / stamp_release.METAINFO.name).read_text()
+    metainfo = (root / "flatpak" / stamp_release.METAINFO.name).read_text()
+    assert '<release version="0.7.12" date="2026-11-12"' in metainfo
 
 
 def test_stamp_refuses_bad_input(tmp_path):
@@ -62,10 +63,10 @@ def test_every_bundled_package_is_pinned():
     """python-deps.json is generated at build time, so the requirements must pin the whole
     tree: nothing reaches TVs without passing a PR (Dependabot bumps each pin)."""
     import re
-    lines = [l.split("#")[0].strip() for l in (ROOT / "flatpak/requirements.txt").read_text().splitlines()]
-    lines = [l for l in lines if l]
+    lines = [ln.split("#")[0].strip() for ln in (ROOT / "flatpak/requirements.txt").read_text().splitlines()]
+    lines = [ln for ln in lines if ln]
     assert len(lines) > 30  # the whole tree, not just the top level
-    assert all(re.fullmatch(r"[A-Za-z0-9._-]+==[0-9][A-Za-z0-9.+-]*", l) for l in lines), lines
+    assert all(re.fullmatch(r"[A-Za-z0-9._-]+==[0-9][A-Za-z0-9.+-]*", ln) for ln in lines), lines
 
 
 def test_bundled_packages_are_a_pip_compile_lock():

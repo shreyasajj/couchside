@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
@@ -37,15 +38,15 @@ FocusScope {
         if (item) item.forceActiveFocus()
     }
     function inside(item, container) {
-        for (var p = item; p; p = p.parent) if (p === container) return true
+        for (let p = item; p; p = p.parent) if (p === container) return true
         return false
     }
     function firstFocusable(item) {
-        for (var i = 0; i < item.children.length; i++) {
-            var c = item.children[i]
+        for (let i = 0; i < item.children.length; i++) {
+            let c = item.children[i]
             if (!c.visible) continue
             if (c.activeFocusOnTab) return c
-            var deeper = firstFocusable(c)
+            let deeper = firstFocusable(c)
             if (deeper) return deeper
         }
         return null
@@ -110,8 +111,8 @@ FocusScope {
         Layout.fillWidth: true
         implicitHeight: input.implicitHeight
         activeFocusOnTab: true
-        function startEditing() { input.forceActiveFocus(); Qt.inputMethod.show() }
-        function stopEditing() { input.focus = false; Qt.inputMethod.hide(); tv.forceActiveFocus() }
+        function startEditing() { input.forceActiveFocus(); Qt.inputMethod.show() }  // qmllint disable missing-property
+        function stopEditing() { input.focus = false; Qt.inputMethod.hide(); tv.forceActiveFocus() }  // qmllint disable missing-property
         Keys.onReturnPressed: startEditing()
         Keys.onEnterPressed: startEditing()
         Keys.onPressed: (event) => {
@@ -531,7 +532,7 @@ FocusScope {
                     onActivated: {
                         var steps = [0.5, 1.0, 1.5, 2.0]
                         var next = steps[0]
-                        for (var i = 0; i < steps.length; i++) if (steps[i] > app.visualizerIntensity + 0.001) { next = steps[i]; break }
+                        for (let i = 0; i < steps.length; i++) if (steps[i] > app.visualizerIntensity + 0.001) { next = steps[i]; break }
                         app.visualizerIntensity = next
                     }
                 }
@@ -645,7 +646,7 @@ FocusScope {
                     label: "Colours"
                     value: {
                         var all = app.accents
-                        for (var i = 0; i < all.length; i++) if (all[i].current) return all[i].label
+                        for (let i = 0; i < all.length; i++) if (all[i].current) return all[i].label
                         return ""
                     }
                     hint: "The two colours used for focus, progress and the visualizer"

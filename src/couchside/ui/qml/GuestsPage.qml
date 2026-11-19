@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
@@ -22,7 +23,7 @@ FocusScope {
         var hadFocus = list.activeFocus
         rows = app.guestRows
         var idx = -1
-        for (var i = 0; i < rows.length; i++) if (rows[i].id === keep) { idx = i; break }
+        for (let i = 0; i < rows.length; i++) if (rows[i].id === keep) { idx = i; break }
         if (idx < 0) idx = Math.min(oldIndex, rows.length - 1)
         list.currentIndex = Math.max(0, idx)
         if (hadFocus && rows.length === 0) modeButton.forceActiveFocus()

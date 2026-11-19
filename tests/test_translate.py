@@ -42,7 +42,7 @@ async def test_blank_lines_keep_their_place():
 async def test_deepl_free_and_pro_hosts():
     http = Http((200, {"translations": [{"text": "Hey"}, {"text": "red things"}]}))
     assert await DeepLTranslator(http, "abc:fx").translate(LINES) == ["Hey", "red things"]
-    method, url, body, headers = http.calls[0]
+    _method, url, body, headers = http.calls[0]
     assert url == "https://api-free.deepl.com/v2/translate"
     assert body == {"text": LINES, "target_lang": "EN-US"}
     assert headers == {"Authorization": "DeepL-Auth-Key abc:fx"}

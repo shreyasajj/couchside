@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // The heading at the top of a screen that has no tab of its own to say where you are,

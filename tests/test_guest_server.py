@@ -73,7 +73,8 @@ async def test_add_skip_boost(env):
     await env.tc.get(env.base + "api/search", params={"deviceId": DEV, "q": "love"})
     r = await env.tc.post(env.base + "api/add", json={"deviceId": DEV, "uri": "x://t/1"})
     assert r.status == 200
-    new = next(i.queue_item_id for i in env.client.player_queues.items if env.session.added_by(i.queue_item_id))
+    new = next(i.queue_item_id for i in env.client.player_queues.items
+               if env.session.added_by(i.queue_item_id))
     assert env.session.added_by(new) == "Sam"
     r = await env.tc.post(env.base + "api/boost", json={"deviceId": DEV, "itemId": new})
     assert r.status == 200
@@ -159,8 +160,9 @@ async def test_websockets_capped(env, monkeypatch):
     import couchside.core.guest_server as gs
     monkeypatch.setattr(gs, "MAX_SOCKETS", 2)
     socks = [await env.tc.ws_connect(env.base + "api/ws") for _ in range(2)]
-    r = await env.tc.get(env.base + "api/ws", headers={"Upgrade": "websocket", "Connection": "Upgrade",
-                                                       "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="})
+    headers = {"Upgrade": "websocket", "Connection": "Upgrade", "Sec-WebSocket-Version": "13",
+               "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="}
+    r = await env.tc.get(env.base + "api/ws", headers=headers)
     assert r.status == 503
     r.release()
     for w in socks:

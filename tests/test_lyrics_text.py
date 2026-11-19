@@ -27,8 +27,10 @@ def lines(*texts):
 def test_is_english():
     assert is_english(lines("I will shelter you", "For days, for weeks, for years", "As long as you need"))
     assert not is_english(lines("ਹਾਏ, ਨੀ old school ਜਿਹੀ ਏ", "ਨੀ ਤੇਰਾ ਕੋਈ ਮੁਕਾਬਲਾ ਨਹੀਂ"))
-    assert not is_english(lines("Despacito, quiero respirar tu cuello despacito", "Deja que te diga cosas al oído"))
-    assert not is_english(lines("hae, ni old school jihi e", "ni tera koi mukabla nahin"))  # romanized Punjabi
+    assert not is_english(lines("Despacito, quiero respirar tu cuello despacito",
+                                 "Deja que te diga cosas al oído"))
+    # romanized Punjabi
+    assert not is_english(lines("hae, ni old school jihi e", "ni tera koi mukabla nahin"))
     assert not is_english([])
 
 

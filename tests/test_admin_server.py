@@ -118,7 +118,8 @@ async def test_admin_routes_work_for_admins(env):
 
 async def test_admin_inputs_are_checked(env):
     env.session.guests[DEV].admin = True
-    for route, body in [("queue", {"itemId": 5, "action": "up"}), ("queue", {"itemId": "x" * 200, "action": "up"}),
+    for route, body in [("queue", {"itemId": 5, "action": "up"}),
+                        ("queue", {"itemId": "x" * 200, "action": "up"}),
                         ("volume", {"level": "loud"}), ("volume", {}), ("volume", {"level": True}),
                         ("speaker", {"playerId": None, "action": "control"}),
                         ("guest", {"guestId": ["x"], "action": "reset"}), ("shuffle", {"on": "yes"})]:

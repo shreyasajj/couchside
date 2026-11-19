@@ -1,9 +1,17 @@
 import pytest
 
-from couchside.core.audio_devices import (AudioChoice, capture_source, output_choices, pactl_json,
-                                          parse_sinks, parse_sources, source_choices)
+from couchside.core.audio_devices import (
+    AudioChoice,
+    capture_source,
+    output_choices,
+    pactl_json,
+    parse_sinks,
+    parse_sources,
+    source_choices,
+)
 
-SINKS = '[{"name":"alsa_output.hdmi","description":"HDMI Surround","monitor_source":"alsa_output.hdmi.monitor"}]'
+SINKS = ('[{"name":"alsa_output.hdmi","description":"HDMI Surround",'
+         '"monitor_source":"alsa_output.hdmi.monitor"}]')
 SOURCES = ('[{"name":"alsa_input.usb","description":"USB Mic"},'
            '{"name":"alsa_output.hdmi.monitor","description":"Monitor of HDMI Surround"}]')
 
@@ -29,7 +37,8 @@ def test_a_device_without_a_description_shows_its_name():
 
 def test_output_choices_order_and_missing_saved():
     got = output_choices(parse_sinks(SINKS), ["HD-Audio Generic: HDMI 1 (hw:0,7)", "pulse"], "sink:gone")
-    assert [c.id for c in got] == ["", "sink:alsa_output.hdmi", "HD-Audio Generic: HDMI 1 (hw:0,7)", "sink:gone"]
+    assert [c.id for c in got] == ["", "sink:alsa_output.hdmi", "HD-Audio Generic: HDMI 1 (hw:0,7)",
+                                    "sink:gone"]
     assert got[0] == AudioChoice("", "Default", "")
     assert got[2].section == "Direct (visualizer can't listen)"
     assert got[-1].label == "gone (not connected)"

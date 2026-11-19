@@ -18,10 +18,12 @@ FEED = "https://shreyasajj.github.io/couchside/latest.json"
 def stamp(version: str, commit: str, date: str, feed: str = FEED, root: Path = ROOT) -> None:
     if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         raise SystemExit(f"bad version or date: {version} {date}")
-    (root / BUILD_INFO.relative_to(ROOT)).write_text(json.dumps({"version": version, "commit": commit[:12], "feed": feed}) + "\n")
+    info = {"version": version, "commit": commit[:12], "feed": feed}
+    (root / BUILD_INFO.relative_to(ROOT)).write_text(json.dumps(info) + "\n")
     meta = root / METAINFO.relative_to(ROOT)
     text = meta.read_text()
-    text, n = re.subn(r'<release version="[^"]*" date="[^"]*"', f'<release version="{version}" date="{date}"', text, count=1)
+    text, n = re.subn(r'<release version="[^"]*" date="[^"]*"',
+                      f'<release version="{version}" date="{date}"', text, count=1)
     if n != 1:
         raise SystemExit("no <release> entry in the metainfo")
     meta.write_text(text)

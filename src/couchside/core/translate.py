@@ -59,7 +59,8 @@ class GoogleTranslator(Translator):
             "client": "gtx", "sl": "auto", "tl": "en", "dt": "t", "q": "\n".join(texts)})
         if status != 200 or not isinstance(data, list) or not data or not isinstance(data[0], list):
             return None
-        joined = "".join(seg[0] for seg in data[0] if isinstance(seg, list) and seg and isinstance(seg[0], str))
+        joined = "".join(seg[0] for seg in data[0]
+                         if isinstance(seg, list) and seg and isinstance(seg[0], str))
         return joined.rstrip("\n").split("\n")
 
 

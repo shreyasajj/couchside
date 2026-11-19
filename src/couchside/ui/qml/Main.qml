@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import org.kde.kirigami as Kirigami
 
@@ -33,10 +34,10 @@ Kirigami.ApplicationWindow {
     // Couchside's rules (close overlays, go back, confirm exit: Shell.goBack).
     Component.onCompleted: {
         var found = 0
-        for (const list of [pageStack.resources, pageStack.data]) {
+        for (const list of [root.pageStack.resources, root.pageStack.data]) {
             if (!list) continue
-            for (var i = 0; i < list.length; i++) {
-                var o = list[i]
+            for (let i = 0; i < list.length; i++) {
+                let o = list[i]
                 if (o && o.sequences !== undefined && o.hasOwnProperty("autoRepeat")
                         && o.sequences.indexOf(StandardKey.Back) >= 0 && o.enabled) {
                     o.enabled = false

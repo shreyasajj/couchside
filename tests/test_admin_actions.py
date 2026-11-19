@@ -10,8 +10,8 @@ class Host:
     def __init__(self):
         self.calls = []
         self.vol, self.shuf = 40, False
-        self.rows = [{"playerId": "tv", "name": "TV", "controlled": True, "available": True, "playing": "Song",
-                      "isGroup": False, "members": []},
+        self.rows = [{"playerId": "tv", "name": "TV", "controlled": True, "available": True,
+                      "playing": "Song", "isGroup": False, "members": []},
                      {"playerId": "kitchen", "name": "Kitchen", "controlled": False, "available": True,
                       "playing": "", "isGroup": False, "members": []},
                      {"playerId": "off", "name": "Off", "controlled": False, "available": False,
@@ -20,7 +20,9 @@ class Host:
     def host(self):
         async def set_volume(v): self.calls.append(("volume", v))
         async def set_shuffle(on): self.calls.append(("shuffle", on))
-        async def transfer(pid): self.calls.append(("transfer", pid)); return True
+        async def transfer(pid):
+            self.calls.append(("transfer", pid))
+            return True
         return aa.AdminHost(volume=lambda: self.vol, set_volume=set_volume, shuffle=lambda: self.shuf,
                             set_shuffle=set_shuffle, speakers=lambda: self.rows,
                             control=lambda pid: self.calls.append(("control", pid)), transfer=transfer)
@@ -76,7 +78,7 @@ async def test_admin_queue_refuses_unknown_items_and_actions():
 async def test_admin_volume_shuffle_speakers():
     host = Host()
     h = host.host()
-    _, s, g, _, _ = admin_setup()
+    _, _s, g, _, _ = admin_setup()
     g.admin = True
     await aa.admin_volume(h, g, level=150)
     await aa.admin_volume(h, g, step=-5)
@@ -108,14 +110,16 @@ async def test_admin_resets_and_removes_guests_but_not_admins():
 
 async def test_admin_info_lists_guests_without_device_ids():
     host = Host()
-    _, s, g, other, _ = admin_setup()
+    _, s, g, _other, _ = admin_setup()
     g.admin = True
     info = aa.admin_info(s, host.host(), g)
     assert info["volume"] == 40 and info["shuffle"] is False
-    assert [(x["name"], x["admin"], x["you"]) for x in info["guests"]] == [("Sam", True, True), ("Olly", False, False)]
+    guests = [(x["name"], x["admin"], x["you"]) for x in info["guests"]]
+    assert guests == [("Sam", True, True), ("Olly", False, False)]
     assert all(set(x) == {"id", "name", "admin", "you", "skipsLeft", "boostsLeft"} for x in info["guests"])
     assert "device" not in repr(info)
-    assert [(x["playerId"], x["available"]) for x in info["speakers"]] == [("tv", True), ("kitchen", True), ("off", False)]
+    speakers = [(x["playerId"], x["available"]) for x in info["speakers"]]
+    assert speakers == [("tv", True), ("kitchen", True), ("off", False)]
 
 
 async def test_admin_skips_are_unlimited_and_failures_dont_go_negative():

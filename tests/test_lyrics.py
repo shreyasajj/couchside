@@ -1,7 +1,12 @@
 import asyncio
 
 from couchside.core.lyrics import (
-    LyricLine, LyricsFetcher, TrackInfo, first_artist, line_index_at, parse_lrc,
+    LyricLine,
+    LyricsFetcher,
+    TrackInfo,
+    first_artist,
+    line_index_at,
+    parse_lrc,
 )
 
 LRC = "[00:15.14] I will shelter you\n[00:18.36] For days\n"
@@ -120,7 +125,8 @@ async def test_errors_and_timeouts_are_none():
     assert await LyricsFetcher(Http({"get": RuntimeError("x"), "search": ValueError("y")}),
                                ma_lookup=ma_boom).get(INFO) is None
     assert await LyricsFetcher(slow, timeout=0.05).get(INFO) is None
-    assert await LyricsFetcher(Http({"get": (200, "not json object"), "search": (200, {"oops": 1})})).get(INFO) is None
+    http = Http({"get": (200, "not json object"), "search": (200, {"oops": 1})})
+    assert await LyricsFetcher(http).get(INFO) is None
 
 
 async def test_results_cached_including_misses():

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // The song, small, in the top-left corner (party mode, and Now Playing while the lyrics

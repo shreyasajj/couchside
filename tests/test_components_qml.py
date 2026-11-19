@@ -12,11 +12,18 @@ import pytest
 
 pytest.importorskip("PySide6.QtQuick")
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
-from PySide6.QtCore import (QCoreApplication, QMetaObject, Q_ARG, Q_RETURN_ARG, Qt,  # noqa: E402
-                            QUrl, qInstallMessageHandler)
-from PySide6.QtQml import QQmlComponent  # noqa: E402
-from PySide6.QtQuick import QQuickView  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtCore import (
+    Q_ARG,
+    Q_RETURN_ARG,
+    QCoreApplication,
+    QMetaObject,
+    Qt,
+    QUrl,
+    qInstallMessageHandler,
+)
+from PySide6.QtQml import QQmlComponent
+from PySide6.QtQuick import QQuickView
+from PySide6.QtTest import QTest
 
 HERE = Path(__file__).parent
 QML = HERE.parent / "src/couchside/ui/qml"
@@ -100,8 +107,7 @@ class Harness:
         return any(text in t for t in self.texts())
 
     def focused(self):
-        item = self.view.activeFocusItem()
-        return item
+        return self.view.activeFocusItem()
 
     def focused_text(self):
         item = self.view.activeFocusItem()
@@ -211,7 +217,7 @@ def test_now_playing_the_other_buttons(h):
     h.load("NowPlayingPage")
     h.focus(h.named("volumeButton"))
     h.ok()
-    assert h.events() == ["openVolume:" + str(h.named("volumeButton"))] or h.events()[0].startswith("openVolume")
+    assert h.events()[0].startswith("openVolume")
     h.focus(h.named("lyricsButton"))
     h.ok()
     assert h.app.property("lyricsShown") is False
@@ -640,7 +646,8 @@ def test_visualizer_controls_hide_when_idle_and_any_key_brings_them_back(h):
 # === Settings =================================================================================
 SETTINGS = {
     "Guest mode": [("Guest mode", "toggleGuestMode"), ("Skips per guest", "cycleGuestSkips"),
-                   ("Boosts per guest", "cycleGuestBoosts"), ("Songs waiting per guest", "cycleGuestMaxWaiting"),
+                   ("Boosts per guest", "cycleGuestBoosts"),
+                   ("Songs waiting per guest", "cycleGuestMaxWaiting"),
                    ("Wait between adds", "cycleGuestCooldown")],
     "This speaker": [("Sync delay", "cycleSendspinDelay"), ("Crossfade", "toggleCrossfade"),
                      ("Crossfade length", "stepCrossfadeSeconds")],
@@ -803,8 +810,8 @@ def test_settings_translation_rows_appear_with_the_service(h):
     h.ok()
     assert h.calls("cycleTranslateService")
     assert h.shown("DeepL API key")
-    key = [i for i in h.items() if i.property("editing") is not None and i.isVisible()
-           and "key" in (i.property("placeholderText") or "")][0]
+    key = next(i for i in h.items() if i.property("editing") is not None and i.isVisible()
+           and "key" in (i.property("placeholderText") or ""))
     type_into(h, key, "k:fx")
     assert h.calls("saveDeeplKey") == [["saveDeeplKey", "k:fx"]] and key.property("text") == ""
 
@@ -859,8 +866,8 @@ def test_every_kind_of_button_answers_ok_enter_and_select(h, name, signal, key):
 def test_holding_ok_down_does_not_repeat_the_action(h, name):
     h.load(name)
     QTest.keyPress(h.view, Qt.Key.Key_Return)
-    from PySide6.QtGui import QKeyEvent
     from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
     repeat = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier, "\r", True)
     QCoreApplication.sendEvent(h.view, repeat)
     QTest.keyRelease(h.view, Qt.Key.Key_Return)

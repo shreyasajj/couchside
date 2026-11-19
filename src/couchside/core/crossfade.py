@@ -55,7 +55,7 @@ async def load(client: Any, queue_id: str | None) -> Crossfade | None:
                                                 key="crossfade_mode")
         seconds = await client.send_command("config/core/get_value", domain=DOMAIN,
                                             key="crossfade_duration")
-    except Exception as err:  # noqa: BLE001 - an old server or no rights: no crossfade rows
+    except Exception as err:
         log.info("Couldn't read the crossfade settings: %s", err)
         return None
     return Crossfade(enabled=bool(getattr(queue, "crossfade_enabled", False)),
@@ -69,7 +69,7 @@ async def _send(client: Any, command: str, **args: Any) -> bool:
     try:
         await client.send_command(command, **args)
         return True
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         log.warning("%s failed: %s", command, err)
         return False
 

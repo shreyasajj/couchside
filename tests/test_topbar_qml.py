@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("PySide6.QtQuick")
-from PySide6.QtCore import QCoreApplication, QMetaObject, Qt, QUrl  # noqa: E402
-from PySide6.QtQuick import QQuickItem, QQuickView  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QMetaObject, Qt, QUrl
+from PySide6.QtQuick import QQuickView
+from PySide6.QtTest import QTest
 
 HARNESS = Path(__file__).parent / "qml/TopBarHarness.qml"
 

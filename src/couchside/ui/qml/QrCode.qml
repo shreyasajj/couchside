@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // QR code from rows of "0"/"1" (app.qrRows), dark modules on white with the 4-module quiet
@@ -22,8 +23,8 @@ Rectangle {
             ctx.reset()
             ctx.fillStyle = "#000000"
             var r = qr.rows
-            for (var y = 0; y < r.length; y++)
-                for (var x = 0; x < r[y].length; x++)
+            for (let y = 0; y < r.length; y++)
+                for (let x = 0; x < r[y].length; x++)
                     if (r[y][x] === "1") ctx.fillRect((x + 4) * qr.cell, (y + 4) * qr.cell, qr.cell, qr.cell)
         }
     }

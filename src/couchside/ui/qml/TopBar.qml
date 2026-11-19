@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
@@ -37,15 +38,15 @@ FocusScope {
     function order() {
         var list = []
         if (problemChip.visible) list.push(problemChip)
-        for (var i = 0; i < tabRepeater.count; i++) list.push(tabRepeater.itemAt(i))
+        for (let i = 0; i < tabRepeater.count; i++) list.push(tabRepeater.itemAt(i))
         list.push(speakerChip)
         list.push(settingsChip)
         if (qrCard.visible) list.push(qrCard)
         return list
     }
     function focusCurrent() {
-        for (var i = 0; i < tabRepeater.count; i++)
-            if (tabRepeater.itemAt(i).name === screen) { tabRepeater.itemAt(i).forceActiveFocus(); return }
+        for (let i = 0; i < tabRepeater.count; i++)
+            if (tabRepeater.itemAt(i).name === screen) { tabRepeater.itemAt(i).forceActiveFocus(); return }  // qmllint disable missing-property
         var other = { speakers: speakerChip, settings: settingsChip, guests: qrCard,
                       logs: problemChip }[screen]
         if (other && other.visible) other.forceActiveFocus()
@@ -53,9 +54,9 @@ FocusScope {
     }
     function move(delta) {
         var list = order()
-        for (var i = 0; i < list.length; i++) {
+        for (let i = 0; i < list.length; i++) {
             if (list[i].activeFocus) {
-                var next = list[Math.max(0, Math.min(list.length - 1, i + delta))]
+                let next = list[Math.max(0, Math.min(list.length - 1, i + delta))]
                 next.forceActiveFocus()
                 return
             }

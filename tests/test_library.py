@@ -80,8 +80,8 @@ def test_image_url_prefers_proxy():
 
 
 async def test_search_orders_and_drops_empty_rows():
-    res = NS(tracks=[track()], albums=[], artists=[NS(name="A", uri="x://artist/1", media_type=NS(value="artist"), image=None)],
-             playlists=[], radio=[])
+    artist = NS(name="A", uri="x://artist/1", media_type=NS(value="artist"), image=None)
+    res = NS(tracks=[track()], albums=[], artists=[artist], playlists=[], radio=[])
     out = await search(client(FakeMusic(results=res)), "love")
     assert [title for title, _ in out.rows] == ["Tracks", "Artists"]
     assert out.error == ""
@@ -130,7 +130,8 @@ async def test_search_asks_only_for_what_is_shown_and_can_stay_in_the_library():
     m = FakeMusic(results=res)
     await search(client(m), "love")
     kinds, library_only = m.asked
-    assert sorted(str(getattr(k, "value", k)) for k in kinds) == ["album", "artist", "playlist", "radio", "track"]
+    names = sorted(str(getattr(k, "value", k)) for k in kinds)
+    assert names == ["album", "artist", "playlist", "radio", "track"]
     assert library_only is False
     await search(client(m), "love", library_only=True)
     assert m.asked[1] is True

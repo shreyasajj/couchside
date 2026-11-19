@@ -1,7 +1,7 @@
 """Strict, UI-only control protocol. Playback remains owned by Music Assistant."""
-from collections import OrderedDict
 import json
 import re
+from collections import OrderedDict
 
 BUS_NAME = "io.github.shreyasajj.Couchside.Control"
 OBJECT_PATH = "/io/github/shreyasajj/Couchside/Control"
@@ -36,7 +36,8 @@ def validate_browse(request):
     path, offset, limit = request.get("path"), request.get("offset", 0), request.get("limit", 50)
     if path is not None and path not in BROWSE_PATHS:
         raise ControlError("invalid_request", "Unknown library section")
-    if type(offset) is not int or not 0 <= offset <= 1000000 or type(limit) is not int or not 1 <= limit <= 50:
+    if (type(offset) is not int or not 0 <= offset <= 1000000
+            or type(limit) is not int or not 1 <= limit <= 50):
         raise ControlError("invalid_request", "Invalid page bounds")
     return path, offset, limit
 

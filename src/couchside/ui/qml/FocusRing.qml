@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // The focus mark: a ring in the first accent with a soft glow outside it. Fill the item

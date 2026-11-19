@@ -24,6 +24,8 @@ dependencies = [
 [project.optional-dependencies]
 # PySide6-Essentials only for the controller tests; the app uses the Flatpak/system PySide6.
 test = ["pytest>=8", "pytest-asyncio>=1.0", "PySide6-Essentials>=6.8"]
+# ruff is pinned so a new ruff release can't start failing CI on its own
+lint = ["ruff==0.17.5", "PySide6-Essentials>=6.8"]
 
 [project.scripts]
 couchside = "couchside.ui.app:main"
@@ -40,3 +42,33 @@ where = ["src"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["flatpak/requirements*"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes: undefined names, unused imports
+    "I",        # import order
+    "B",        # bugbear: likely bugs
+    "UP",       # newer Python syntax
+    "SIM",      # simpler code
+    "C4",       # comprehensions
+    "RUF",      # ruff's own checks (dangling tasks, unused noqa, …)
+    "PIE", "PL", "ASYNC", "LOG", "G", "PERF", "T10", "ISC", "RET", "TID",
+]
+ignore = [
+    "PLC0415",  # imports inside functions are on purpose: Qt, numpy and MA models load lazily
+    "PLR2004",  # comparing with plain numbers (seconds, ports, sizes) reads better than constants
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917",  # argument / branch counts: Qt slots and handlers
+    "RET505", "RET506",  # else after return: often the clearer way to say both cases
+    "G004",     # f-strings in log calls: messages here are cheap and rare
+    "ASYNC109", # a `timeout` argument is handed on (to a subprocess or socket), not used to cancel
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ASYNC110"]  # tests poll with sleep in their wait helpers

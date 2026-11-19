@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 
@@ -15,7 +16,7 @@ ListView {
     property bool stage: false
     // [current, next, other] line sizes as fractions of the screen width
     // (stage: 92 px at 1080p for medium, 15 % either way for the other two)
-    readonly property var scale: stage ? (({ large: [0.0551, 0.034, 0.026],
+    readonly property var lineSizes: stage ? (({ large: [0.0551, 0.034, 0.026],
                                              medium: [0.0479, 0.029, 0.023],
                                              small: [0.0407, 0.025, 0.020] })[size] || [0.0479, 0.029, 0.023])
                                        : (({ large: [0.060, 0.034, 0.026],
@@ -25,7 +26,7 @@ ListView {
     readonly property int activeIndex: {
         var lo = 0, hi = lines.length
         while (lo < hi) {
-            var mid = (lo + hi) >> 1
+            let mid = (lo + hi) >> 1
             if (lines[mid].t <= position) lo = mid + 1
             else hi = mid
         }
@@ -39,7 +40,7 @@ ListView {
     clip: true
     // lines not being sung are drawn smaller inside their full-size box: tuck the boxes
     // together a little so the gaps stay even
-    spacing: -0.18 * refWidth * scale[0]
+    spacing: -0.18 * refWidth * lineSizes[0]
     currentIndex: Math.max(0, activeIndex)
     highlightRangeMode: ListView.StrictlyEnforceRange
     // on stage the line being sung sits a third of the way down: most of the room is for
@@ -90,7 +91,7 @@ ListView {
         font.weight: Font.Bold
         // Long lines (rap, Punjabi) shrink so no line needs more than two rows; the 0.85
         // leaves room for word-wrap waste. Short lines keep the full size.
-        readonly property real fullSize: view.refWidth * view.scale[0]
+        readonly property real fullSize: view.refWidth * view.lineSizes[0]
         readonly property real fit: Math.min(1, (2 * width * 0.85) / Math.max(1, metrics.advanceWidth))
         font.pixelSize: fullSize * fit
         maximumLineCount: 2
@@ -130,7 +131,7 @@ ListView {
             maximumLineCount: 2
             elide: Text.ElideRight
             font.italic: true
-            font.pixelSize: view.refWidth * view.scale[1] * 0.85  // fixed, like the line itself
+            font.pixelSize: view.refWidth * view.lineSizes[1] * 0.85  // fixed, like the line itself
         }
         layer.enabled: current && !view.stage   // the stage line stands out by colour
         layer.effect: MultiEffect {
