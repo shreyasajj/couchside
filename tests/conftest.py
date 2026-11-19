@@ -105,6 +105,6 @@ async def house(qt_app, tmp_path, monkeypatch):
     await ctl.conn.stop()
     try:
         await asyncio.wait_for(runner, 2)
-    except (asyncio.TimeoutError, asyncio.CancelledError):
+    except (TimeoutError, asyncio.CancelledError):
         runner.cancel()
     await ctl.close()

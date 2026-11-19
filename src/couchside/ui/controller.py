@@ -9,32 +9,30 @@ import time
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
-from couchside.core import audio_devices
+from couchside.core import audio_devices, crossfade, library, logbuffer, queue, speakers, updates
+from couchside.core.admin_actions import AdminHost
 from couchside.core.beat import TempoTracker
-from couchside.core import logbuffer
-from couchside.core.health import Problem, ProblemWatch, diagnose, supervisor_outdated
 from couchside.core.connection import Connection, ConnState
 from couchside.core.discovery import choose_server, discover_mass
-from couchside.core.paths import sendspin_settings_dir
-from couchside.core import crossfade, library, queue, speakers, updates
 from couchside.core.format import art_url, format_time, palette_colour
-from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
 from couchside.core.guest_server import GuestServer, lan_ip
 from couchside.core.guests import CODE_TTL, GuestError, GuestRules, GuestSession
-from couchside.core.admin_actions import AdminHost
+from couchside.core.health import Problem, ProblemWatch, diagnose, supervisor_outdated
+from couchside.core.lyrics import HttpClient, LyricsFetcher, TrackInfo
 from couchside.core.lyrics_text import is_english, romanize
-from couchside.core.translate import DeepLTranslator, GoogleTranslator, LibreTranslator
+from couchside.core.paths import sendspin_settings_dir
 from couchside.core.playback import Playback, find_local_player
 from couchside.core.settings import (
     AppSettings,
+    load_secret,
     load_token,
     normalize_server_url,
-    load_secret,
     save_secret,
     save_settings,
     save_token,
 )
 from couchside.core.status import needs_setup, status_text
+from couchside.core.translate import DeepLTranslator, GoogleTranslator, LibreTranslator
 from couchside.sendspin.identity import read_client_id
 from couchside.sendspin.pairing import PairingEvent
 from couchside.sendspin.runner import (
@@ -1190,7 +1188,7 @@ class AppController(QObject):
             self.crossfadeChanged.emit()
         self._spawn(run())
 
-    def _change_crossfade(self, coro, updated: "crossfade.Crossfade") -> None:
+    def _change_crossfade(self, coro, updated: crossfade.Crossfade) -> None:
         async def run():
             if await coro:
                 self._crossfade = updated
@@ -1249,7 +1247,8 @@ class AppController(QObject):
         cf = self._crossfade
         if cf is None:
             return
-        seconds = max(crossfade.MIN_SECONDS, min(crossfade.MAX_SECONDS, cf.seconds + (1 if direction > 0 else -1)))
+        step = 1 if direction > 0 else -1
+        seconds = max(crossfade.MIN_SECONDS, min(crossfade.MAX_SECONDS, cf.seconds + step))
         if seconds == cf.seconds:
             return
         self._change_crossfade(crossfade.set_seconds(self.conn.client, seconds),
@@ -1294,7 +1293,7 @@ class AppController(QObject):
                                                     stderr=asyncio.subprocess.DEVNULL)
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), 20)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             return []
         return parse_audio_devices(out.decode(errors="replace"))

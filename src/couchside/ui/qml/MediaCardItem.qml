@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
@@ -26,7 +27,7 @@ FocusScope {
         id: artBox
         width: parent.width
         height: width
-        radius: (kind === "artist" ? width / 2 : 18 * card.u)
+        radius: (card.kind === "artist" ? width / 2 : 18 * card.u)
         color: Theme.surfaceHigh
         clip: true
         scale: card.activeFocus ? 1.05 : 1

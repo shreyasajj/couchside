@@ -1,6 +1,6 @@
 from types import SimpleNamespace as NS
 
-from couchside.core.speakers import SpeakerRow, speaker_action, speaker_rows
+from couchside.core.speakers import speaker_action, speaker_rows
 
 TV, MAC, DEN, GRP = "tv", "mac", "den", "grp"
 

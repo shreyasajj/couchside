@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // Party mode's light show: colour along all four edges of the screen, brighter and wider

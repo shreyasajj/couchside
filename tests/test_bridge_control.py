@@ -24,7 +24,7 @@ def test_invalid_content(kind, value):
 async def test_protocol_ui_only_and_idempotency():
     execute = AsyncMock(return_value={"view": "search"})
     dispatcher = Dispatcher(lambda: {"playback_owner": "music_assistant"}, execute)
-    request = dict(id="one", command="navigate", content_type="search", content_id="Björk")
+    request = {"id": "one", "command": "navigate", "content_type": "search", "content_id": "Björk"}
     first = await dispatcher.handle(json.dumps(request))
     assert json.loads(first)["ok"]
     assert await dispatcher.handle(json.dumps(request)) == first
@@ -32,7 +32,7 @@ async def test_protocol_ui_only_and_idempotency():
     bad = json.loads(await dispatcher.handle(json.dumps({**request, "content_id": "other"})))
     assert bad["error"]["code"] == "invalid_request"
     for cmd in ("play", "pause", "seek", "eval"):
-        result = json.loads(await dispatcher.handle(json.dumps(dict(id=cmd, command=cmd))))
+        result = json.loads(await dispatcher.handle(json.dumps({"id": cmd, "command": cmd})))
         assert result["error"]["code"] == "unsupported"
     execute.assert_awaited_once()
 
@@ -40,6 +40,6 @@ async def test_protocol_ui_only_and_idempotency():
 @pytest.mark.parametrize("raw", ["{", "[]", '{}', '{"id":[],"command":"focus"}'])
 async def test_invalid_envelopes(raw):
     execute = AsyncMock()
-    result = json.loads(await Dispatcher(lambda: {}, execute).handle(raw))
+    result = json.loads(await Dispatcher(dict, execute).handle(raw))
     assert not result["ok"]
     execute.assert_not_awaited()

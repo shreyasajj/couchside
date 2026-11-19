@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // Short message at the bottom for 4 s (failed actions). Never takes focus.

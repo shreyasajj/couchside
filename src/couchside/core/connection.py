@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Protocol
 
 from music_assistant_models.errors import (
     AuthenticationFailed,
@@ -217,11 +219,7 @@ class Connection:
             if not listener.done():
                 listener.cancel()
             self.client = None
-            try:
+            with contextlib.suppress(Exception):
                 unsubscribe()
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 await client.disconnect()
-            except Exception:
-                pass

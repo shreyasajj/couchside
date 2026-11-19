@@ -6,9 +6,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -34,14 +35,15 @@ async def latest_sendspin_version(http_get: HttpGet) -> str | None:
     except Exception as e:
         log.info("Sendspin version check failed: %s", e)
         return None
-    version = (data or {}).get("info", {}).get("version") if status == 200 and isinstance(data, dict) else None
+    ok = status == 200 and isinstance(data, dict)
+    version = (data or {}).get("info", {}).get("version") if ok else None
     if not isinstance(version, str) or len(version) > 40 or not _VERSION.match(version):
         return None
     return version
 
 
 def _key(v: str) -> tuple[int, ...]:
-    return tuple(int(p) for p in re.findall(r"\d+", v.split("+")[0])[:4])
+    return tuple(int(p) for p in re.findall(r"\d+", v.split("+", maxsplit=1)[0])[:4])
 
 
 def is_newer(candidate: str | None, current: str | None) -> bool:

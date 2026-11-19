@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("PySide6.QtQuick")
-from PySide6.QtCore import QCoreApplication, Qt, QUrl  # noqa: E402
-from PySide6.QtQuick import QQuickView  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtCore import QCoreApplication, Qt, QUrl
+from PySide6.QtQuick import QQuickView
+from PySide6.QtTest import QTest
 
 HARNESS = Path(__file__).parent / "qml/BlocksHarness.qml"
 
@@ -64,8 +64,8 @@ def test_every_icon_the_pages_use_has_a_shape(view):
         text = qml.read_text()
         for line in text.splitlines():
             if re.search(r"^\s*(iconName|name):", line) and "Kirigami" not in line:
-                line = re.sub(r'[=!]==? *"[^"]*"', "", line)   # comparisons are not icon names
-                used.update(n for n in re.findall(r'"([a-z-]+)"', line))
+                names = re.sub(r'[=!]==? *"[^"]*"', "", line)   # comparisons are not icon names
+                used.update(re.findall(r'"([a-z-]+)"', names))
     assert used and used <= set(paths), used - set(paths)
 
 
@@ -75,7 +75,7 @@ def plain_texts(item, min_size=28):
     assert texts
     for t in texts:
         expr = QQmlExpression(QQmlEngine.contextForObject(t), t,
-                              "textFormat === Text.PlainText && font.pixelSize >= %d" % min_size)
+                              f"textFormat === Text.PlainText && font.pixelSize >= {min_size}")
         assert expr.evaluate()[0] is True, t.property("text")
 
 
@@ -83,7 +83,8 @@ def test_up_next_hides_without_songs_lists_them_and_opens_the_queue(view):
     root = view.rootObject()
     card = child(view, "upNext")
     assert card.isVisible() is False
-    card.setProperty("rows", [{"title": "<b>Luna</b>", "subtitle": "Bolier", "imageUrl": "", "trailing": "3:05"},
+    card.setProperty("rows", [{"title": "<b>Luna</b>", "subtitle": "Bolier", "imageUrl": "",
+                               "trailing": "3:05"},
                               {"title": "Two", "subtitle": "", "imageUrl": "", "trailing": ""},
                               {"title": "Three", "subtitle": "", "imageUrl": "", "trailing": ""}])
     card.setProperty("maxRows", 2)

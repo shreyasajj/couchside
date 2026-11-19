@@ -61,7 +61,7 @@ async def request_autostart(enable: bool = True, timeout: float = 120.0) -> bool
         return False
     try:
         return await asyncio.wait_for(result, timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.warning("Background portal did not answer")
         return False
     finally:

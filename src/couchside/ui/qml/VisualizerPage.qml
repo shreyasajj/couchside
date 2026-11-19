@@ -1,5 +1,5 @@
+pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Layouts
 
 // The Visualizer (opened from Now Playing): the music drawn full-screen. Pictures along
 // the bottom (Left/Right change it): Radial Pulse, Flow Lines, Bars, Edge Lights, or Off; the
@@ -24,8 +24,9 @@ FocusScope {
     readonly property bool off: app.visualizerMode === "off"
 
     function modeButton() {
-        for (var i = 0; i < modeRepeater.count; i++)
-            if (modeRepeater.itemAt(i).mode === app.visualizerMode) return modeRepeater.itemAt(i)
+        for (let i = 0; i < modeRepeater.count; i++)
+            // the delegates are PillButtons with a `mode`; qmllint only knows itemAt() gives an Item
+            if (modeRepeater.itemAt(i).mode === app.visualizerMode) return modeRepeater.itemAt(i)  // qmllint disable missing-property
         return modeRepeater.itemAt(0)
     }
     function focusDefault() { reveal(); var b = modeButton(); if (b) b.forceActiveFocus() }

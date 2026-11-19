@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import "nav.js" as Nav
@@ -21,11 +22,11 @@ FocusScope {
 
     // in front: with another app in front nothing animates, listens or ticks (the connection
     // and Sendspin keep going); everything moves again when Couchside comes back
-    property bool appActive: Qt.application.state === Qt.ApplicationActive
+    property bool appActive: Qt.application.state === Qt.ApplicationActive  // qmllint disable missing-property
     readonly property var tabs: Nav.tabs()
     readonly property string speakerName: {
         var rows = app.speakerRows
-        for (var i = 0; i < rows.length; i++) if (rows[i].controlled) return rows[i].name
+        for (let i = 0; i < rows.length; i++) if (rows[i].controlled) return rows[i].name
         return ""
     }
 
@@ -85,7 +86,7 @@ FocusScope {
         focusScreen()
     }
     function inContent(item) {
-        for (var p = item; p; p = p.parent) if (p === content) return true
+        for (let p = item; p; p = p.parent) if (p === content) return true
         return false
     }
     function enterBar() {
@@ -114,7 +115,7 @@ FocusScope {
         var item = currentItem()
         if (item && item.handleBack && item.handleBack()) return
         if (topBar.activeFocus) { leaveBar(); return }
-        if (backTo !== "") { var prev = backTo; go(prev); backTo = ""; return }
+        if (backTo !== "") { let prev = backTo; go(prev); backTo = ""; return }
         var to = Nav.back(screen, lastTab)
         if (to === "exit") exitConfirm.open()
         else go(to)
@@ -139,7 +140,7 @@ FocusScope {
     // `couchside --screen=queue` starts on that screen (for screenshots and development).
     readonly property string startScreen: {
         var args = Qt.application.arguments
-        for (var i = 0; i < args.length; i++) if (args[i].indexOf("--screen=") === 0) return args[i].slice(9)
+        for (let i = 0; i < args.length; i++) if (args[i].indexOf("--screen=") === 0) return args[i].slice(9)
         return ""
     }
     Component.onCompleted: {

@@ -71,7 +71,7 @@ async def pactl_json(kind: str, timeout: float = 5.0) -> str:
         return ""
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         return ""
     return out.decode(errors="replace") if proc.returncode == 0 else ""
@@ -86,14 +86,14 @@ def _with_saved(choices: list[AudioChoice], saved: str | None) -> list[AudioChoi
 
 
 def output_choices(sinks: list[AudioChoice], direct: list[str], saved: str | None) -> list[AudioChoice]:
-    choices = [AudioChoice("", "Default", "")] + list(sinks)
+    choices = [AudioChoice("", "Default", ""), *list(sinks)]
     # "pulse" is the PipeWire route, which the outputs above already are
     choices += [AudioChoice(name, name, DIRECT) for name in direct if name != "pulse"]
     return _with_saved(choices, saved)
 
 
 def source_choices(sources: list[AudioChoice], saved: str | None) -> list[AudioChoice]:
-    return _with_saved([AudioChoice("", "What this TV is playing", "")] + list(sources), saved)
+    return _with_saved([AudioChoice("", "What this TV is playing", ""), *list(sources)], saved)
 
 
 def capture_source(visualizer_source: str | None, output: str | None,

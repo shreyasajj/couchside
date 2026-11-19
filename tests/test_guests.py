@@ -84,7 +84,7 @@ def test_boost_only_own_waiting_songs():
     s.note_added(other, "theirs", now=0)
     with pytest.raises(GuestError, match="your own"):
         s.use_boost(g, "theirs", upcoming_ids=["mine", "theirs"])
-    with pytest.raises(GuestError, match="already playing|not waiting"):
+    with pytest.raises(GuestError, match=r"already playing|not waiting"):
         s.use_boost(g, "mine", upcoming_ids=["theirs"])
     s.use_boost(g, "mine", upcoming_ids=["theirs", "mine"])
     with pytest.raises(GuestError, match="No boosts left"):

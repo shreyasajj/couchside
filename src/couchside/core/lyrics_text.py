@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from anyascii import anyascii
 
@@ -12,15 +12,15 @@ from anyascii import anyascii
 _NASALS = "ਂੰंँ"
 _LABIALS = "ਪਫਬਭਮपफबभम"
 _ADDAK = "ੱ"  # Gurmukhi: doubles the next consonant (ਗੱਲਾਂ -> gallan)
-_GURMUKHI_VOWEL_SIGNS = set(chr(c) for c in range(0x0A3E, 0x0A4D))
+_GURMUKHI_VOWEL_SIGNS = {chr(c) for c in range(0x0A3E, 0x0A4D)}
 # Gurmukhi letters with a nukta dot (both the precomposed and the letter + dot forms);
 # anyascii writes the dot as an apostrophe ("hos'" for ਹੋਸ਼).
 _NUKTA = {"\u0a36": "sh", "\u0a38\u0a3c": "sh", "\u0a59": "kh", "\u0a16\u0a3c": "kh",
           "\u0a5a": "gh", "\u0a17\u0a3c": "gh", "\u0a5b": "z", "\u0a1c\u0a3c": "z",
           "\u0a5e": "f", "\u0a2b\u0a3c": "f", "\u0a33": "l", "\u0a32\u0a3c": "l"}
 # consonants of Gurmukhi and Devanagari (incl. nukta forms)
-_CONSONANTS = set(chr(c) for c in [*range(0x0A15, 0x0A3A), *range(0x0A59, 0x0A5F),
-                                   *range(0x0915, 0x093A), *range(0x0958, 0x0960)])
+_CONSONANTS = {chr(c) for c in [*range(0x0A15, 0x0A3A), *range(0x0A59, 0x0A5F),
+                                   *range(0x0915, 0x093A), *range(0x0958, 0x0960)]}
 
 
 def _needs_romanizing(ch: str) -> bool:
@@ -84,14 +84,16 @@ def romanize(text: str) -> str:
     return "".join(out)
 
 
-_COMMON_EN = set("""
-the and you i to a me my it in of is that your on be we all for this don't i'm with
-can love just no so but what know like now oh when it's up down baby yeah be
-are was will do not get got go let say one time never way see feel make
-want need back night heart tonight never ever out come take give been there
-they she he her him our us they're we're you're can't won't if from at as by
-or how why who where then than too here have has had
-""".split())
+_COMMON_EN = {
+    "the", "and", "you", "i", "to", "a", "me", "my", "it", "in", "of", "is", "that", "your", "on", "be",
+    "we", "all", "for", "this", "don't", "i'm", "with", "can", "love", "just", "no", "so", "but", "what",
+    "know", "like", "now", "oh", "when", "it's", "up", "down", "baby", "yeah", "are", "was", "will",
+    "do", "not", "get", "got", "go", "let", "say", "one", "time", "never", "way", "see", "feel", "make",
+    "want", "need", "back", "night", "heart", "tonight", "ever", "out", "come", "take", "give", "been",
+    "there", "they", "she", "he", "her", "him", "our", "us", "they're", "we're", "you're", "can't",
+    "won't", "if", "from", "at", "as", "by", "or", "how", "why", "who", "where", "then", "than", "too",
+    "here", "have", "has", "had",
+}
 _WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?", re.UNICODE)
 
 

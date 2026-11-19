@@ -262,6 +262,11 @@ mockup the look follows is in `docs/design/`.
   - `tests/test_buttons_qml.py`: every button on every screen pressed with OK in the
     real UI, and its effect checked. A new button fails the test until it gets a check
     in `BUTTONS`.
+- **Lint** (CI's `lint` check; a pull request can't merge while it fails):
+  `.venv/bin/pip install -e '.[lint]'`, then `ruff check src tests flatpak scripts`
+  (`--fix` repairs what it can), `python scripts/lint-qml.py` (qmllint on every screen) and
+  `shellcheck scripts/*.sh`. The rules are in `pyproject.toml` under `[tool.ruff]`, each
+  one left out with its reason.
 - **On the TV:** `scripts/dev-deploy.sh --run` syncs this checkout to the TV over
   SSH (`COUCHSIDE_TV`, default `mediac@192.168.30.153`), rebuilds the Flatpak
   (only the app module rebuilds) and starts it on screen.

@@ -4,15 +4,23 @@ import json
 import logging
 import uuid
 
-from dbus_next.aio import MessageBus
 from dbus_next import Message, MessageType
+from dbus_next.aio import MessageBus
 from dbus_next.constants import NameFlag, RequestNameReply
-from dbus_next.service import ServiceInterface, method, signal as dbus_signal
+from dbus_next.service import ServiceInterface, method
+from dbus_next.service import signal as dbus_signal
 from PySide6.QtCore import QObject, Signal, Slot
 
 from couchside.core import library
 from couchside.core.bridge_control import (
-    BROWSE_PATHS, BUS_NAME, OBJECT_PATH, CONTENT_TYPES, ControlError, Dispatcher, validate_browse, validate_content,
+    BROWSE_PATHS,
+    BUS_NAME,
+    CONTENT_TYPES,
+    OBJECT_PATH,
+    ControlError,
+    Dispatcher,
+    validate_browse,
+    validate_content,
 )
 from couchside.core.connection import ConnState
 from couchside.core.playback import find_local_player
@@ -26,7 +34,7 @@ class Endpoint(ServiceInterface):
         self.control = control
 
     @method()
-    async def Execute(self, payload: 's') -> 's':
+    async def Execute(self, payload: 's') -> 's':  # noqa: F821 - D-Bus type signatures, not names
         # Serial dispatch also guarantees idempotency for simultaneous retries.
         async with self.control.lock:
             try:
@@ -163,7 +171,8 @@ class UiControl(QObject):
                 try:
                     item = await asyncio.wait_for(c.conn.client.music.get_item_by_uri(value), 15)
                 except Exception as exc:
-                    raise ControlError("content_not_found", "Music Assistant could not resolve this item") from exc
+                    raise ControlError("content_not_found",
+                                       "Music Assistant could not resolve this item") from exc
                 card = library.to_card(c.conn.client, item)
                 if card is None or card.kind != kind:
                     raise ControlError("content_not_found", "Resolved item does not match the requested type")

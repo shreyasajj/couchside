@@ -7,22 +7,20 @@ buttons that are really on screen and fails if one is missing from `BUTTONS` (a 
 needs a check) or if `BUTTONS` names one that is gone."""
 
 import os
-import time
 from pathlib import Path
-from types import SimpleNamespace as NS
 
 import pytest
 
 pytest.importorskip("PySide6.QtQuick")
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
-from PySide6.QtCore import QMetaObject, QObject, Q_ARG, Qt, QUrl, qInstallMessageHandler  # noqa: E402
-from PySide6.QtQuick import QQuickView  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtCore import Q_ARG, QMetaObject, Qt, QUrl, qInstallMessageHandler
+from PySide6.QtQuick import QQuickView
+from PySide6.QtTest import QTest
 
-from couchside.core.health import Problem  # noqa: E402
-from tests.conftest import settle, until  # noqa: E402
-from tests.fake_ma import KITCHEN, TV  # noqa: E402
-from tests.test_components_qml import BAD  # noqa: E402
+from couchside.core.health import Problem
+from tests.conftest import settle, until
+from tests.fake_ma import KITCHEN, TV
+from tests.test_components_qml import BAD
 
 SHELL = Path(__file__).parents[1] / "src/couchside/ui/qml/Shell.qml"
 SECTIONS = ["Music Assistant", "Guest mode", "This speaker", "Visualizer", "Lyrics", "Look", "Updates"]
@@ -98,7 +96,7 @@ class TV_:
     def in_overlay(self, item):
         while item is not None:
             if item.property("openedAt") is not None or item.objectName() in ("exitConfirm",) \
-                    or item.property("chosen") is not None and item.property("groupId") is not None:
+                    or (item.property("chosen") is not None and item.property("groupId") is not None):
                 return True
             item = item.parentItem()
         return False
@@ -226,7 +224,8 @@ async def now_next(t):
 
 
 async def now_volume(t):
-    popup = next(i for i in walk(t.root) if i.property("level") is not None and i.property("opener") is not None)
+    popup = next(i for i in walk(t.root)
+                 if i.property("level") is not None and i.property("opener") is not None)
     assert popup.isVisible() and popup.property("activeFocus")
     await t.press(Qt.Key.Key_Right)                    # the popup takes Left / Right
     await until(lambda: t.ctl.volume == 45 and calls(t, "volume_set") == [("volume_set", TV, 45)])
@@ -267,7 +266,7 @@ def goes_to(screen):
 def sheet_then(title, labels, choose, effect):
     """OK opened a sheet titled `title` offering `labels`; choosing `choose` does `effect`."""
     async def check(t):
-        await until(lambda: t.sheet_open(), what="the sheet")
+        await until(t.sheet_open, what="the sheet")
         assert t.sheet_title() == title
         if labels is not None:
             assert t.sheet_labels() == labels
@@ -349,7 +348,7 @@ async def edges_on(t):
 
 def colours_to(choice_index):
     async def check(t):
-        await until(lambda: t.sheet_open())
+        await until(t.sheet_open)
         before = t.ctl.visualizerColours
         label = t.sheet_labels()[choice_index]
         await t.choose(label)
@@ -358,7 +357,7 @@ def colours_to(choice_index):
 
 
 async def beat_source(t):
-    await until(lambda: t.sheet_open())
+    await until(t.sheet_open)
     assert t.sheet_title() == "Listen for the beat on"
     first = t.sheet_labels()[0]
     await t.choose(first)
@@ -394,20 +393,20 @@ def ma_command(command, **args):
 
 
 async def crossfade_style(t):
-    await until(lambda: t.sheet_open())
+    await until(t.sheet_open)
     await t.choose("Smart (beat-matched)")
     await until(lambda: t.ma.config["crossfade_mode"] == "smart_crossfade")
 
 
 async def audio_output(t):
-    await until(lambda: t.sheet_open())
+    await until(t.sheet_open)
     assert t.sheet_title() == "Audio output" and t.sheet_labels()[0] == "Default"
     await t.choose("Default")
     assert t.ctl.audioOutputLabel == "Default"
 
 
 async def accent(t):
-    await until(lambda: t.sheet_open())
+    await until(t.sheet_open)
     before = t.ctl.accent1
     await t.choose(t.sheet_labels()[1])
     await until(lambda: t.ctl.accent1 != before)
@@ -454,15 +453,18 @@ BUTTONS = {
     "queue": {
         "row:Neon Tide": sheet_then("Neon Tide", ["Move down", "Remove from queue"], "Remove from queue",
                                     queue_removed_current),
-        "row:Glass Harbour": sheet_then("Glass Harbour", ["Play this now", "Play next", "Move down",
-                                                          "Remove from queue"], "Play this now", queue_played_glass),
-        "row:Slow Comet": sheet_then("Slow Comet", ["Play this now", "Play next", "Move up", "Remove from queue"],
+        "row:Glass Harbour": sheet_then("Glass Harbour",
+                                        ["Play this now", "Play next", "Move down", "Remove from queue"],
+                                        "Play this now", queue_played_glass),
+        "row:Slow Comet": sheet_then("Slow Comet",
+                                     ["Play this now", "Play next", "Move up", "Remove from queue"],
                                      "Move up", queue_moved_slow_up),
     },
     "speakers": {
         "row:Living Room TV": sheet_then("Living Room TV", ["Close"], "Close", speakers_nothing),
-        "row:Kitchen": sheet_then("Kitchen", ["Control this speaker", "Move the queue here",
-                                              "Sync with Living Room TV"], "Sync with Living Room TV", speakers_synced),
+        "row:Kitchen": sheet_then("Kitchen",
+                                  ["Control this speaker", "Move the queue here", "Sync with Living Room TV"],
+                                  "Sync with Living Room TV", speakers_synced),
         "row:Den": sheet_then("Den", ["Offline — close"], "Offline — close", speakers_nothing),
         "row:New group": new_group,
     },
@@ -476,29 +478,34 @@ BUTTONS = {
         "mode-edge": picture("edge"), "mode-off": picture("off"),
         "sourceChip": beat_source, "coloursChip": colours_to(1), "edgesChip": edges_on,
     },
-    "logs": {"restartSpeaker": restarted, "showAppLog": log_shown("app"), "showSendspinLog": log_shown("sendspin")},
+    "logs": {"restartSpeaker": restarted, "showAppLog": log_shown("app"),
+             "showSendspinLog": log_shown("sendspin")},
     "settings/Music Assistant": {"Save and connect": save_and_connect},
     "settings/Guest mode": {
         "Guest mode": guest_mode_off, "Guests and admins": goes_to("guests"),
         "Skips per guest": changes("guestSkips", 5), "Boosts per guest": changes("guestBoosts", 3),
-        "Songs waiting per guest": changes("guestMaxWaiting", 5), "Wait between adds": changes("guestCooldown", 30),
+        "Songs waiting per guest": changes("guestMaxWaiting", 5),
+        "Wait between adds": changes("guestCooldown", 30),
     },
     "settings/This speaker": {
         "audioOutputRow": audio_output, "Sync delay": changes("sendspinDelay", 25),
         "crossfadeRow": ma_command("player_queues/crossfade", queue_id=TV, crossfade_enabled=True),
         "crossfadeStyleRow": crossfade_style,
-        "crossfadeLengthRow": ma_command("config/core/save", domain="player_queues", values={"crossfade_duration": 9}),
+        "crossfadeLengthRow": ma_command("config/core/save", domain="player_queues",
+                                         values={"crossfade_duration": 9}),
         "logsRow": goes_to("logs"),
     },
     "settings/Visualizer": {
         "Beat pulse on Now Playing": changes("visualizerEnabled", False), "beatSourceRow": beat_source,
         "beatIntensityRow": changes("visualizerIntensity", 1.5), "vizColoursRow": colours_to(1),
         "Edge lights on every picture": changes("visualizerEdges", True),
-        "vizPictureRow": sheet_then("Visualizer picture", ["Radial Pulse", "Flow Lines", "Bars", "Edge Lights", "Off"],
+        "vizPictureRow": sheet_then("Visualizer picture",
+                                    ["Radial Pulse", "Flow Lines", "Bars", "Edge Lights", "Off"],
                                     "Bars", picture("bars")),
     },
     "settings/Lyrics": {
-        "Show lyrics": changes("lyricsEnabled", False), "Visualizer behind the lyrics": changes("lyricsVisualizer", False),
+        "Show lyrics": changes("lyricsEnabled", False),
+        "Visualizer behind the lyrics": changes("lyricsVisualizer", False),
         "Size": changes("lyricsSize", "large"), "Language": changes("lyricsLanguage", "original"),
         "English underneath": changes("lyricsTranslate", True),
     },
@@ -538,8 +545,8 @@ async def test_every_button_has_a_check(tv, screen):
         found = set(section_items(tv))
     else:
         found = set(tv.buttons(top_bar=screen == "top bar"))
-    assert found == set(BUTTONS[screen]), f"on {screen}: new {sorted(found - set(BUTTONS[screen]))}, " \
-                                          f"gone {sorted(set(BUTTONS[screen]) - found)}"
+    new, gone = sorted(found - set(BUTTONS[screen])), sorted(set(BUTTONS[screen]) - found)
+    assert found == set(BUTTONS[screen]), f"on {screen}: new {new}, gone {gone}"
 
 
 @pytest.mark.parametrize("screen,key", CASES, ids=[f"{s}:{k}" for s, k in CASES])
@@ -581,7 +588,7 @@ async def test_play_button_plays_again_and_its_name_follows(tv):
 async def test_the_other_speaker_actions(tv, action, effect):
     await tv.go("speakers")
     await tv.press_button("row:Kitchen")
-    await until(lambda: tv.sheet_open())
+    await until(tv.sheet_open)
     await tv.choose(action)
     await until(lambda: effect(tv), what=action)
 
@@ -597,7 +604,7 @@ async def test_group_editor_cancel_and_edit(tv):
     await tv.ctl.conn.client.players.create_group_player("sync_group", "Both", [TV, KITCHEN])
     await settle(0.2)
     await tv.press_button("row:Both")
-    await until(lambda: tv.sheet_open())
+    await until(tv.sheet_open)
     assert tv.sheet_labels()[-2:] == ["Edit members", "Delete group"]
     await tv.choose("Edit members")
     await until(lambda: tv.editor.property("visible"))

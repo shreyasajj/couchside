@@ -1,8 +1,8 @@
 from types import SimpleNamespace as NS
 
-from couchside.core.connection import ConnState
 from music_assistant_models.enums import RepeatMode
 
+from couchside.core.connection import ConnState
 from couchside.core.playback import NowPlaying, Playback, find_local_player, position_at
 
 CID = "client-abc"
@@ -189,7 +189,7 @@ def make_playing(queue=None, media_elapsed=0.0, media_at=0.0, duration=200, volu
                elapsed_time=media_elapsed, elapsed_time_last_updated=media_at, palette=palette)
     p = player(CID, state=state, media=media, active_source=CID, volume_level=volume,
                volume_control=volume_control)
-    conn, pb, _ = make([p], queues=[queue] if queue is not None else [])
+    _conn, pb, _ = make([p], queues=[queue] if queue is not None else [])
     pb.refresh()
     return pb.now_playing
 

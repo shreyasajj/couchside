@@ -14,8 +14,8 @@ from __future__ import annotations
 import asyncio
 import re
 import secrets
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 _DEVICE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 MAX_NAME = 24

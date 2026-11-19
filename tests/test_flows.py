@@ -2,16 +2,14 @@
 library, queue, speakers, guest server and settings, on a fake Music Assistant
 (tests/fake_ma.py). Each test is one thing a person does, start to finish."""
 
-import asyncio
 
 import aiohttp
 import pytest
 from music_assistant_models.errors import AuthenticationFailed, InvalidToken
 
-from couchside.core.connection import ConnState
-from couchside.core.settings import AppSettings, load_settings, save_token
-from tests.conftest import NoLyrics, free_port, settle, until
-from tests.fake_ma import CATALOGUE, KITCHEN, TV, FakeMA
+from couchside.core.settings import load_settings
+from tests.conftest import free_port, settle, until
+from tests.fake_ma import CATALOGUE, KITCHEN, TV
 
 pytest.importorskip("PySide6.QtCore")
 
@@ -52,7 +50,7 @@ async def test_play_pause_next_previous_shuffle_repeat_and_volume(house):
     await until(lambda: ctl.shuffle, what="shuffle on")
     for mode in ("all", "one", "off"):
         ctl.cycleRepeat()
-        await until(lambda: ctl.repeatMode == mode, what=f"repeat {mode}")
+        await until(lambda mode=mode: ctl.repeatMode == mode, what=f"repeat {mode}")
     ctl.setVolume(55)
     await until(lambda: ctl.volume == 55, what="volume 55")
     ctl.volumeUp()

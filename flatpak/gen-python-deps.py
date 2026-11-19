@@ -43,6 +43,7 @@ def fetch_json(url: str, get=_get_json, sleep=time.sleep, attempts: int = 5):
                 raise
             print(f"  retrying {url}: {e}", file=sys.stderr)
             sleep(2 ** (attempt + 1))
+    raise ValueError("attempts must be at least 1")
 
 
 def pypi_url(filename: str, name: str, version: str) -> str:
@@ -90,8 +91,8 @@ def main() -> int:
         "name": "python-deps",
         "buildsystem": "simple",
         "build-commands": [
-            "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" "
-            f"--prefix=${{FLATPAK_DEST}} --no-build-isolation {reqs}"
+            ("pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" "
+             f"--prefix=${{FLATPAK_DEST}} --no-build-isolation {reqs}"),
         ],
         "sources": sources,
     }

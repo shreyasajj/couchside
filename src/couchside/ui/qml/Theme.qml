@@ -1,4 +1,5 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 import QtQuick
 
 // One place for the look: colours, text sizes, spacing, timing. Sizes are for a 1080p

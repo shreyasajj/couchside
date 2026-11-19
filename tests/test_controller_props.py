@@ -359,8 +359,8 @@ async def lyrics_for(ctl, lines, uri="x://1"):
 
 async def test_romanized_by_default(ctl):
     await lyrics_for(ctl, PUNJABI)
-    assert [l["text"] for l in ctl.lyricLines] == ["hae, ni old school jihi e", "", "lal gallan"]
-    assert all(l["sub"] == "" for l in ctl.lyricLines)
+    assert [ln["text"] for ln in ctl.lyricLines] == ["hae, ni old school jihi e", "", "lal gallan"]
+    assert all(ln["sub"] == "" for ln in ctl.lyricLines)
 
 
 async def test_original_keeps_script(ctl):
@@ -387,8 +387,8 @@ async def test_translation_fills_lines_underneath(ctl, monkeypatch):
     ctl.toggleLyricsTranslate()
     await lyrics_for(ctl, PUNJABI)
     await settle()
-    assert [l["sub"] for l in ctl.lyricLines] == ["Hey, not like old school", "", "red things"]
-    assert t.asked == [[l.text for l in PUNJABI]]  # the original text is translated
+    assert [ln["sub"] for ln in ctl.lyricLines] == ["Hey, not like old school", "", "red things"]
+    assert t.asked == [[ln.text for ln in PUNJABI]]  # the original text is translated
 
 
 async def test_translation_off_or_english_sends_nothing(ctl, monkeypatch):
@@ -410,7 +410,7 @@ async def test_stale_translation_dropped(ctl, monkeypatch):
     await lyrics_for(ctl, ENGLISH, uri="x://2")   # next song before the translation came back
     gate.set()
     await settle()
-    assert all(l["sub"] == "" for l in ctl.lyricLines)
+    assert all(ln["sub"] == "" for ln in ctl.lyricLines)
 
 
 def test_translate_service_cycles_and_saves(ctl):
@@ -556,7 +556,8 @@ async def test_credits_on_queue_rows_and_now_playing(guest_ctl, monkeypatch):
     ctl._guest_session.note_added(g, "a", now=0)
 
     async def fake_load(client, queue_id, current):
-        return [QueueRow("a", "Song", "Artist", None, 200, True), QueueRow("b", "Other", "X", None, 100, False)]
+        return [QueueRow("a", "Song", "Artist", None, 200, True),
+                QueueRow("b", "Other", "X", None, 100, False)]
     monkeypatch.setattr("couchside.ui.controller.queue.load_queue", fake_load)
     monkeypatch.setattr(ctl, "_current_item_id", lambda qid: "a")
     ctl.loadQueue()
@@ -579,7 +580,7 @@ async def test_qr_link_worked_out_once_per_session(guest_ctl):
     ctl.toggleGuestMode()
     await settle_long()
     for _ in range(5):
-        ctl.guestUrl, ctl.qrRows
+        _ = (ctl.guestUrl, ctl.qrRows)   # the screen reads both
         ctl.guestChanged.emit()          # joins, adds, song changes
     assert len(ctl._lan_calls) == 1
     ctl.toggleGuestMode()
@@ -604,7 +605,8 @@ async def test_guest_rows_for_the_tv(guest_ctl):
     s, ana, ben = await guests_on(ctl)
     ben.skips_used = 1
     rows = ctl.guestRows
-    assert [(r["id"], r["name"], r["admin"]) for r in rows] == [(ana.public_id, "Ana", False), (ben.public_id, "Ben", False)]
+    got = [(r["id"], r["name"], r["admin"]) for r in rows]
+    assert got == [(ana.public_id, "Ana", False), (ben.public_id, "Ben", False)]
     assert rows[1]["skipsLeft"] == s.rules.skips - 1
     assert "device" not in repr(rows)
 
@@ -632,7 +634,7 @@ async def test_admin_code_shown_and_cancelled(guest_ctl):
     assert ctl.adminCode == ""
     ctl.showAdminCode()  # guest mode off: nothing
     assert ctl.adminCode == ""
-    s, ana, _ = await guests_on(ctl)
+    s, _ana, _ = await guests_on(ctl)
     ctl.showAdminCode()
     code = ctl.adminCode
     assert len(code) == 6 and s.admin_code == code
@@ -1220,7 +1222,8 @@ async def test_the_same_search_again_is_answered_from_memory(ctl, monkeypatch):
 
 async def test_failed_searches_are_not_remembered(ctl, monkeypatch):
     wire(ctl)
-    answers = [SearchOutcome(error="Search failed — check the connection"), SearchOutcome(rows=[("Tracks", [CARD])])]
+    answers = [SearchOutcome(error="Search failed — check the connection"),
+               SearchOutcome(rows=[("Tracks", [CARD])])]
 
     async def fake_search(client, q, limit=12, library_only=False):
         if library_only:
@@ -1372,6 +1375,7 @@ async def test_a_stopped_speaker_is_started_and_reported_if_it_stays_down(health
 
 def test_logs_show_the_sendspin_log_tail_and_the_apps_lines(ctl, tmp_path, monkeypatch):
     import logging
+
     from couchside.core import logbuffer
     path = tmp_path / "sendspin.log"
     path.write_text("".join(f"line {i}\n" for i in range(1000)))
