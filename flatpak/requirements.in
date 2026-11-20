@@ -3,7 +3,7 @@
 #   pip-compile --strip-extras --output-file=requirements.txt requirements.in
 # (run inside org.kde.Sdk//6.11 so it resolves for the Flatpak's Python 3.13).
 # Dependabot updates both, so a bump only lands when the whole tree fits together.
-music-assistant-client==1.8.0
+music-assistant-client==1.8.1
 sendspin==9.1.0
 zeroconf==0.154.0
 qasync==0.28.0
