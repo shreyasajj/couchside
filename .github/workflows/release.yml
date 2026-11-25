@@ -120,7 +120,7 @@ jobs:
             repo Couchside-x86_64.flatpak "$APP_ID" master
           test -s Couchside-x86_64.flatpak
           sha256sum Couchside-x86_64.flatpak > Couchside-x86_64.flatpak.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bundle
           path: |
